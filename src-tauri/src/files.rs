@@ -1,7 +1,8 @@
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
+use std::sync::LazyLock;
+use std::time::{Duration, UNIX_EPOCH};
 
 use serde::Serialize;
 use tauri::ipc::{InvokeBody, Request, Response};
@@ -41,7 +42,7 @@ pub async fn fetch_bytes(url: String) -> Result<Response, String> {
         return Err("Only https links are supported".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
-        let mut response = ureq::get(&url).call().map_err(|e| e.to_string())?;
+        let mut response = http_agent().get(&url).call().map_err(|e| e.to_string())?;
         let bytes = response
             .body_mut()
             .with_config()
@@ -52,6 +53,27 @@ pub async fn fetch_bytes(url: String) -> Result<Response, String> {
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// `ureq` is built with `default-features = false, features = ["native-tls"]`,
+/// but `ureq::get` still defaults to `TlsProvider::Rustls` and panics on any
+/// `https://` connection unless the agent explicitly selects `NativeTls`.
+/// The timeout keeps a stalled download from blocking the video insert, which
+/// waits for the poster.
+fn http_agent() -> &'static ureq::Agent {
+    static AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
+        ureq::Agent::config_builder()
+            .tls_config(
+                ureq::tls::TlsConfig::builder()
+                    .provider(ureq::tls::TlsProvider::NativeTls)
+                    .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+                    .build(),
+            )
+            .timeout_global(Some(Duration::from_secs(15)))
+            .build()
+            .new_agent()
+    });
+    &AGENT
 }
 
 #[derive(Serialize)]
@@ -141,5 +163,19 @@ mod tests {
         assert_eq!(fs::read(&file).unwrap(), b"two");
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 1, "temp file left behind");
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn https_agent_uses_native_tls_without_panicking() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let _ = listener.accept();
+        });
+        // Calling `ureq::get` here panics because `ureq` defaults to `TlsProvider::Rustls`
+        // while only the `native-tls` feature is enabled. `http_agent()` should instead
+        // attempt a native-tls handshake and return a normal `Err` when the peer closes.
+        let result = http_agent().get(&format!("https://127.0.0.1:{}/", addr.port())).call();
+        assert!(result.is_err());
     }
 }
