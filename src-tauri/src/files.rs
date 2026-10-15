@@ -33,6 +33,27 @@ pub fn write_file(request: Request<'_>) -> Result<(), String> {
         .map_err(|e| format!("Couldn't save “{}”: {e}", display_name(&path.to_string_lossy())))
 }
 
+/// Downloads a small public resource (a video's thumbnail image) for embedding in a
+/// presentation. Only https URLs, capped at 10 MB.
+#[tauri::command]
+pub async fn fetch_bytes(url: String) -> Result<Response, String> {
+    if !url.starts_with("https://") {
+        return Err("Only https links are supported".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut response = ureq::get(&url).call().map_err(|e| e.to_string())?;
+        let bytes = response
+            .body_mut()
+            .with_config()
+            .limit(10 * 1024 * 1024)
+            .read_to_vec()
+            .map_err(|e| e.to_string())?;
+        Ok(Response::new(bytes))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PathInfo {

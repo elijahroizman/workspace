@@ -108,6 +108,9 @@ export default function PdfEditor({ tab, active }: EditorProps) {
       annotationEditorHighlightColors: HIGHLIGHT_COLORS.map((c, i) => `${['yellow', 'green', 'blue', 'pink', 'red'][i]}=${c}`).join(','),
       imageResourcesPath: `${ASSETS}web/images/`,
       supportsPinchToZoom: true,
+      // Cap a single page bitmap at 16 MP; pdf.js draws a sharp detail layer for the visible
+      // area when zoomed in further, so nothing gets blurry.
+      maxCanvasPixels: 2 ** 24,
     })
     linkService.setViewer(viewer)
     viewerRef.current = viewer
@@ -137,22 +140,31 @@ export default function PdfEditor({ tab, active }: EditorProps) {
     }
     container.addEventListener('click', onClick, true)
 
-    // Trackpad pinch: Safari sends gesture events, Chromium sends ctrl+wheel.
+    // Trackpad pinch: WebKit sends gesture events, Chromium sends ctrl+wheel. pdf.js scales the
+    // pages with CSS while the fingers move and re-renders once they stop (drawingDelay), which
+    // keeps pinching smooth on large documents.
+    const ZOOM_DELAY = 250
     let gestureStart = 1
+    let gestureActive = false
     const onGestureStart = (e: Event) => {
       e.preventDefault()
+      gestureActive = true
       gestureStart = viewer.currentScale
     }
     const onGestureChange = (e: Event) => {
       e.preventDefault()
       const ge = e as Event & { scale: number; clientX: number; clientY: number }
       const next = Math.min(10, Math.max(0.1, gestureStart * ge.scale))
-      viewer.updateScale({ scaleFactor: next / viewer.currentScale, origin: [ge.clientX, ge.clientY] })
+      viewer.updateScale({ drawingDelay: ZOOM_DELAY, scaleFactor: next / viewer.currentScale, origin: [ge.clientX, ge.clientY] })
+    }
+    const onGestureEnd = (e: Event) => {
+      e.preventDefault()
+      gestureActive = false
     }
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey) return
+      if (!e.ctrlKey || gestureActive) return
       e.preventDefault()
-      viewer.updateScale({ scaleFactor: Math.exp(-e.deltaY / 100), origin: [e.clientX, e.clientY] })
+      viewer.updateScale({ drawingDelay: ZOOM_DELAY, scaleFactor: Math.exp(-Math.max(-50, Math.min(50, e.deltaY)) / 250), origin: [e.clientX, e.clientY] })
     }
     // Re-fit "auto"/"page-width"/"page-fit" zoom when the canvas changes size: window resizes,
     // sidebars toggling, or the tab first becoming visible after loading in the background.
@@ -169,6 +181,7 @@ export default function PdfEditor({ tab, active }: EditorProps) {
 
     container.addEventListener('gesturestart', onGestureStart)
     container.addEventListener('gesturechange', onGestureChange)
+    container.addEventListener('gestureend', onGestureEnd)
     container.addEventListener('wheel', onWheel, { passive: false })
 
     return () => {
@@ -176,6 +189,7 @@ export default function PdfEditor({ tab, active }: EditorProps) {
       container.removeEventListener('click', onClick, true)
       container.removeEventListener('gesturestart', onGestureStart)
       container.removeEventListener('gesturechange', onGestureChange)
+      container.removeEventListener('gestureend', onGestureEnd)
       container.removeEventListener('wheel', onWheel)
       viewer.setDocument(null as unknown as PDFDocumentProxy)
       if (viewerRef.current === viewer) viewerRef.current = null
@@ -378,13 +392,24 @@ export default function PdfEditor({ tab, active }: EditorProps) {
   )
 
   useEffect(() => {
-    if (!active) return
-    containerRef.current?.focus({ preventScroll: true })
-    // A PDF that loaded in a background tab measured a zero-size canvas; fit it now.
     const v = viewerRef.current
-    const preset = pendingFit.current ?? (['auto', 'page-width', 'page-fit'].includes(v?.currentScaleValue ?? '') ? v!.currentScaleValue : null)
+    if (!active) {
+      // Rendered pages are large bitmaps (tens of MB each on a Retina screen). Let them go when
+      // the tab has been in the background for a while; visible pages redraw on return.
+      const timer = window.setTimeout(() => {
+        const viewer = viewerRef.current
+        if (!viewer?.pdfDocument) return
+        for (let i = 0; i < viewer.pagesCount; i++) viewer.getPageView(i)?.reset()
+        void viewer.pdfDocument.cleanup()
+      }, 30_000)
+      return () => window.clearTimeout(timer)
+    }
+    containerRef.current?.focus({ preventScroll: true })
+    if (v?.pdfDocument) {
+      if (pendingFit.current) v.currentScaleValue = pendingFit.current
+      v.update()
+    }
     pendingFit.current = null
-    if (v?.pdfDocument && preset) requestAnimationFrame(() => (v.currentScaleValue = preset))
   }, [active])
 
   const numPages = doc?.numPages ?? 0

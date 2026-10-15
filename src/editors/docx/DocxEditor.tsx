@@ -47,11 +47,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorProps } from '../../App'
 import { FindBar, InspectorHeader, Workbench, formatZoom } from '../../components/Workbench'
 import { ColorField, IconButton, NumberField, Section, Segmented, SelectField } from '../../components/ui'
+import { usePinchZoom } from '../../lib/pinch'
 import { registerEditor, useWorkspace } from '../../state/workspace'
 import './docx.css'
 
+// One font resolver for every Word tab, so each face is fetched and parsed once.
+const FONTS = packagedFonts()
+
 export default function DocxTab({ tab, active }: EditorProps) {
-  const fonts = useFonts(packagedFonts())
+  const fonts = useFonts(FONTS)
   const document = useMemo(() => tab.bytes ?? ('blank' as const), [tab.bytes])
   const savedRevision = useRef<number | null>(null)
   const markDirty = useWorkspace((s) => s.markDirty)
@@ -88,6 +92,14 @@ function DocxWorkbench({ tab, active, savedRevision }: EditorProps & { savedRevi
   editorRef.current = editor as Editor | null
   const zoomRef = useRef(zoom)
   zoomRef.current = zoom
+  const stageRef = useRef<HTMLDivElement>(null)
+  usePinchZoom(stageRef, {
+    getZoom: () => zoomRef.current.zoom,
+    setZoom: (z) => zoomRef.current.setZoom(z),
+    target: () => stageRef.current?.querySelector<HTMLElement>('.docx-content-mount') ?? null,
+    min: 0.25,
+    max: 4,
+  })
 
   useEffect(
     () =>
@@ -116,11 +128,34 @@ function DocxWorkbench({ tab, active, savedRevision }: EditorProps & { savedRevi
     if (active) editorRef.current?.focus()
   }, [active, editor])
 
+  // The engine turns spellcheck off on its editable pages; turn it back on (macOS draws the
+  // red underlines and offers corrections on right-click, which the engine applies).
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    const enable = () => stage.querySelectorAll<HTMLElement>('.docx-pages[contenteditable]').forEach((el) => el.spellcheck || (el.spellcheck = true))
+    enable()
+    // Typing mutates the pages constantly; check at most once per frame.
+    let queued = false
+    const observer = new MutationObserver(() => {
+      if (queued) return
+      queued = true
+      requestAnimationFrame(() => {
+        queued = false
+        enable()
+      })
+    })
+    observer.observe(stage, { childList: true, subtree: true, attributes: true, attributeFilter: ['spellcheck'] })
+    return () => observer.disconnect()
+  }, [editor])
+
   return (
     <Workbench tab={tab} left={<Outline />} leftFooter={page ? <span>{page.total === 1 ? '1 page' : `${page.total} pages`}</span> : undefined} right={<Inspector tab={tab} />}>
-      <DocxEditor.Viewport className="docx-viewport">
-        <DocxEditor.Content />
-      </DocxEditor.Viewport>
+      <div className="docx-stage" ref={stageRef}>
+        <DocxEditor.Viewport className="docx-viewport">
+          <DocxEditor.Content />
+        </DocxEditor.Viewport>
+      </div>
       <FindBar
         open={findOpen}
         onClose={() => {
@@ -445,7 +480,7 @@ function PageSection() {
 async function printPages() {
   const root = document.getElementById('print-root')!
   root.innerHTML = ''
-  const view = document.querySelector('.view:not([hidden]) .docx-viewport')
+  const view = document.querySelector(".view[data-active='true'] .docx-viewport")
   const pages = view ? Array.from(view.querySelectorAll<HTMLElement>('.docx-page')) : []
   if (!pages.length) return
   // Match the paper size of the document (layout is at 96 px per inch, as is CSS).

@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useEffect, useRef } from 'react'
+import { Component, lazy, memo, Suspense, useEffect, useRef } from 'react'
 import type { ComponentType, ErrorInfo, ReactNode } from 'react'
 import { Home } from './components/Home'
 import { TitleBar } from './components/TitleBar'
@@ -43,6 +43,20 @@ class EditorBoundary extends Component<{ name: string; children: ReactNode }, { 
   }
 }
 
+/** One tab's editor. Memoized so switching tabs only re-renders the two tabs involved. */
+const EditorSlot = memo(function EditorSlot({ tab, active }: EditorProps) {
+  const Editor = EDITORS[tab.kind]
+  return (
+    <div className="view" data-active={active} inert={!active}>
+      <EditorBoundary key={tab.loadId} name={tab.title}>
+        <Suspense fallback={<CenterState spinner />}>
+          <Editor key={tab.loadId} tab={tab} active={active} />
+        </Suspense>
+      </EditorBoundary>
+    </div>
+  )
+})
+
 export async function runCommand(id: string) {
   const ws = useWorkspace.getState()
   const editor = getEditor(ws.activeId)
@@ -82,6 +96,9 @@ export async function runCommand(id: string) {
     case 'close-tab':
       await ws.closeTab()
       break
+    case 'duplicate-tab':
+      await ws.duplicateTab()
+      break
     case 'reopen-tab':
       await ws.reopenClosed()
       break
@@ -102,6 +119,18 @@ export async function runCommand(id: string) {
       break
     case 'zoom-reset':
       editor?.zoom?.('reset')
+      break
+    case 'view-read':
+      editor?.viewMode?.('read')
+      break
+    case 'view-split':
+      editor?.viewMode?.('split')
+      break
+    case 'view-write':
+      editor?.viewMode?.('write')
+      break
+    case 'view-cycle':
+      editor?.viewMode?.('cycle')
       break
     case 'toggle-theme':
       ws.setTheme(ws.theme === 'dark' ? 'light' : 'dark')
@@ -147,6 +176,7 @@ const BROWSER_SHORTCUTS: Record<string, string> = {
   p: 'print',
   w: 'close-tab',
   'shift+t': 'reopen-tab',
+  'shift+d': 'duplicate-tab',
   f: 'find',
   '\\': 'toggle-left',
   'alt+\\': 'toggle-right',
@@ -154,6 +184,10 @@ const BROWSER_SHORTCUTS: Record<string, string> = {
   '-': 'zoom-out',
   '0': 'zoom-reset',
   'shift+l': 'toggle-theme',
+  e: 'view-cycle',
+  'alt+1': 'view-read',
+  'alt+2': 'view-split',
+  'alt+3': 'view-write',
   'shift+]': 'next-tab',
   'shift+[': 'prev-tab',
 }
@@ -211,7 +245,7 @@ export default function App() {
         return
       }
       if (platform.isTauri) return
-      const key = e.key === '+' ? '=' : e.key.length === 1 ? e.key.toLowerCase() : e.key
+      const key = e.code.startsWith('Digit') ? e.code.slice(5) : e.key === '+' ? '=' : e.key.length === 1 ? e.key.toLowerCase() : e.key
       const combo = `${e.shiftKey ? 'shift+' : ''}${e.altKey ? 'alt+' : ''}${e.code === 'Backslash' ? '\\' : e.code === 'BracketRight' ? ']' : e.code === 'BracketLeft' ? '[' : key}`
       const command = BROWSER_SHORTCUTS[combo]
       if (command) {
@@ -256,22 +290,12 @@ export default function App() {
     <div className="app">
       <TitleBar />
       <div className="views">
-        <div className="view" hidden={activeId !== HOME_TAB_ID}>
+        <div className="view" data-active={activeId === HOME_TAB_ID} inert={activeId !== HOME_TAB_ID}>
           <Home />
         </div>
-        {tabs.map((tab) => {
-          const Editor = EDITORS[tab.kind]
-          const active = tab.id === activeId
-          return (
-            <div key={tab.id} className="view" hidden={!active}>
-              <EditorBoundary key={tab.loadId} name={tab.title}>
-                <Suspense fallback={<CenterState spinner />}>
-                  <Editor key={tab.loadId} tab={tab} active={active} />
-                </Suspense>
-              </EditorBoundary>
-            </div>
-          )
-        })}
+        {tabs.map((tab) => (
+          <EditorSlot key={tab.id} tab={tab} active={tab.id === activeId} />
+        ))}
       </div>
       {dropHover && (
         <div className="drop-overlay">

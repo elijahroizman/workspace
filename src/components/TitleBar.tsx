@@ -1,6 +1,6 @@
-import { FolderOpen, LayoutGrid, Plus, X } from 'lucide-react'
+import { Copy, FolderOpen, LayoutGrid, Plus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { isMac, isTauri } from '../lib/platform'
+import { isMac, isTauri, revealInFinder } from '../lib/platform'
 import { HOME_TAB_ID, useWorkspace } from '../state/workspace'
 import { KindIcon } from './Workbench'
 import { PopoverMenu } from './ui'
@@ -8,8 +8,9 @@ import { PopoverMenu } from './ui'
 export function TitleBar() {
   const tabs = useWorkspace((s) => s.tabs)
   const activeId = useWorkspace((s) => s.activeId)
-  const { activate, closeTab, moveTab, newDocument, openDialog } = useWorkspace.getState()
+  const { activate, closeTab, moveTab, newDocument, openDialog, duplicateTab, closeOthers } = useWorkspace.getState()
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const [tabMenu, setTabMenu] = useState<{ x: number; y: number; id: string } | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
   const [drag, setDrag] = useState<{ id: string; dx: number } | null>(null)
   const tabRefs = useRef(new Map<string, HTMLDivElement>())
@@ -98,6 +99,11 @@ export function TitleBar() {
               onAuxClick={(e) => {
                 if (e.button === 1) void closeTab(tab.id)
               }}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                activate(tab.id)
+                setTabMenu({ x: e.clientX, y: e.clientY, id: tab.id })
+              }}
             >
               <span className="tab-icon">
                 <KindIcon kind={tab.kind} size={15} />
@@ -133,6 +139,20 @@ export function TitleBar() {
         <Plus size={16} />
       </button>
       <div className="titlebar-spacer" data-tauri-drag-region />
+      {tabMenu && (
+        <PopoverMenu
+          anchor={tabMenu}
+          onClose={() => setTabMenu(null)}
+          items={[
+            { label: 'Duplicate Tab', icon: <Copy size={14} />, shortcut: '⇧⌘D', onSelect: () => void duplicateTab(tabMenu.id) },
+            ...(isTauri && tabs.find((t) => t.id === tabMenu.id)?.path
+              ? [{ label: 'Show in Finder', icon: <FolderOpen size={14} />, onSelect: () => void revealInFinder(tabs.find((t) => t.id === tabMenu.id)!.path!) }]
+              : []),
+            { label: 'Close Tab', shortcut: '⌘W', separatorBefore: true, onSelect: () => void closeTab(tabMenu.id) },
+            { label: 'Close Other Tabs', onSelect: () => void closeOthers(tabMenu.id) },
+          ]}
+        />
+      )}
       {menu && (
         <PopoverMenu
           anchor={menu}

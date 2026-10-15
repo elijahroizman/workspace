@@ -32,6 +32,8 @@ export interface EditorHandle {
   find?(): void
   zoom?(direction: 'in' | 'out' | 'reset'): void
   print?(): Promise<void>
+  /** Markdown view mode: read, split, write, or cycle through them. */
+  viewMode?(mode: 'read' | 'split' | 'write' | 'cycle'): void
 }
 
 const handles = new Map<string, EditorHandle>()
@@ -69,6 +71,9 @@ interface WorkspaceState {
   closeTab(id?: string): Promise<boolean>
   closeAll(): Promise<boolean>
   reopenClosed(): Promise<void>
+  /** Open a second, independent tab on the same file (e.g. a textbook's questions and answers side by side). */
+  duplicateTab(id?: string): Promise<void>
+  closeOthers(id: string): Promise<void>
   removeRecent(path: string): void
   toggleLeft(kind?: DocKind): void
   toggleRight(kind?: DocKind): void
@@ -289,6 +294,28 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         if (!(await get().closeTab(tab.id))) return false
       }
       return true
+    },
+
+    duplicateTab: async (id) => {
+      const tab = activeDoc(id)
+      if (!tab) return
+      try {
+        // Unsaved edits come along (and the copy starts out unsaved too); otherwise read the file fresh.
+        const fromEditor = tab.dirty || !tab.path || tab.path.startsWith('browser:')
+        const bytes = fromEditor ? ((await getEditor(tab.id)?.getBytes()) ?? tab.bytes) : await platform.readFile(tab.path!)
+        const base = tab.title.replace(/ \(\d+\)$/, '')
+        const copies = get().tabs.filter((t) => t.path === tab.path && t.path !== null).length
+        addTab({ ...tab, id: newId(), title: tab.path ? `${base} (${copies + 1})` : `${base} copy`, bytes, loadId: 0, dirty: tab.dirty })
+      } catch (err) {
+        await platform.showError(String(err))
+      }
+    },
+
+    closeOthers: async (id) => {
+      for (const tab of get().tabs.filter((t) => t.id !== id)) {
+        if (!(await get().closeTab(tab.id))) return
+      }
+      set({ activeId: id })
     },
 
     reopenClosed: async () => {

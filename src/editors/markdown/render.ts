@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify'
 import hljs from 'highlight.js/lib/common'
 import MarkdownIt from 'markdown-it'
+import { parse as parseYaml } from 'yaml'
 import anchor from 'markdown-it-anchor'
 // @ts-expect-error: no bundled types
 import taskLists from 'markdown-it-task-lists'
@@ -46,9 +47,61 @@ md.core.ruler.push('source_lines', (state) => {
   }
 })
 
-export function renderMarkdown(source: string): { html: string; headings: Heading[] } {
+const FRONTMATTER = /^---[ \t]*\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/
+
+/**
+ * Split off a YAML front-matter block (Agent Skills, Jekyll, Obsidian…). The block is replaced
+ * by blank lines so line numbers in the rest of the document stay the same.
+ */
+export function splitFrontmatter(source: string): { data: Record<string, unknown> | null; body: string } {
+  const match = FRONTMATTER.exec(source)
+  if (!match) return { data: null, body: source }
+  try {
+    const data = parseYaml(match[1])
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return { data: null, body: source }
+    return { data: data as Record<string, unknown>, body: '\n'.repeat(match[0].split('\n').length - 1) + source.slice(match[0].length) }
+  } catch {
+    return { data: null, body: source }
+  }
+}
+
+function humanize(key: string) {
+  const spaced = key.replace(/[-_]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2')
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+function renderValue(value: unknown, depth = 0): string {
+  if (value === null || value === undefined || value === '') return '<span class="fm-empty">—</span>'
+  if (typeof value === 'boolean') return `<span class="fm-chip">${value ? 'Yes' : 'No'}</span>`
+  if (value instanceof Date) return escapeHtml(value.toISOString().slice(0, 10))
+  if (Array.isArray(value)) {
+    if (value.every((v) => typeof v !== 'object' || v === null)) return value.map((v) => `<span class="fm-chip">${escapeHtml(String(v))}</span>`).join(' ')
+    return value.map((v) => `<div class="fm-item">${renderValue(v, depth + 1)}</div>`).join('')
+  }
+  if (typeof value === 'object') {
+    if (depth > 2) return `<code>${escapeHtml(JSON.stringify(value))}</code>`
+    return `<table class="fm-nested"><tbody>${Object.entries(value as Record<string, unknown>)
+      .map(([k, v]) => `<tr><th>${escapeHtml(humanize(k))}</th><td>${renderValue(v, depth + 1)}</td></tr>`)
+      .join('')}</tbody></table>`
+  }
+  return escapeHtml(String(value)).replace(/\n/g, '<br>')
+}
+
+/** Front matter as a properties table; Agent Skills (name + description) get a titled card. */
+function renderFrontmatter(data: Record<string, unknown>): string {
+  const isSkill = typeof data.name === 'string' && typeof data.description === 'string'
+  const entries = Object.entries(data).filter(([k]) => !(isSkill && k === 'name'))
+  const title = isSkill
+    ? `<div class="fm-title"><span class="fm-kind">Skill</span><span class="fm-name">${escapeHtml(String(data.name))}</span></div>`
+    : `<div class="fm-title"><span class="fm-kind">Properties</span></div>`
+  const rows = entries.map(([k, v]) => `<tr><th>${escapeHtml(humanize(k))}</th><td>${renderValue(v)}</td></tr>`).join('')
+  return `<section class="frontmatter" data-line="0">${title}<table><tbody>${rows}</tbody></table></section>`
+}
+
+export function renderMarkdown(source: string): { html: string; headings: Heading[]; frontmatter: Record<string, unknown> | null } {
   const env = {}
-  const tokens = md.parse(source, env)
+  const { data: frontmatter, body } = splitFrontmatter(source)
+  const tokens = md.parse(body, env)
   const headings: Heading[] = []
   tokens.forEach((token, i) => {
     if (token.type === 'heading_open') {
@@ -62,16 +115,17 @@ export function renderMarkdown(source: string): { html: string; headings: Headin
       })
     }
   })
-  const html = DOMPurify.sanitize(md.renderer.render(tokens, md.options, env), {
+  const rendered = (frontmatter ? renderFrontmatter(frontmatter) : '') + md.renderer.render(tokens, md.options, env)
+  const html = DOMPurify.sanitize(rendered, {
     ADD_ATTR: ['data-line', 'target'],
     // Inline <script>/<style>/forms from untrusted files never run.
     FORBID_TAGS: ['style', 'form'],
   })
-  return { html, headings }
+  return { html, headings, frontmatter }
 }
 
 export function stats(source: string) {
-  const text = source
+  const text = splitFrontmatter(source).body
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/`[^`]*`/g, ' ')
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
@@ -82,6 +136,5 @@ export function stats(source: string) {
     words,
     characters: source.length,
     lines: source.split('\n').length,
-    minutes: Math.max(1, Math.round(words / 230)),
   }
 }

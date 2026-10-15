@@ -1,27 +1,14 @@
+.docx-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .docx-viewport {
   flex: 1;
   min-height: 0;
   background: var(--canvas);
-}
-
-.docx-font-row {
-  display: grid;
-  grid-template-columns: 1fr 84px;
-  gap: 8px;
-}
-
-.toggle-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--radius-sm);
-  background: var(--field);
-}
-
-.toggle-row .icon-btn {
-  flex: 1;
-  min-width: 0;
 }
 
 .highlight-swatches {
@@ -35,31 +22,12 @@
   height: 18px;
 }
 
-.insert-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-}
-
-.field-caption {
-  font-size: 12px;
-  color: var(--fg-faint);
-  margin-top: 2px;
-}
-
 .table-grid-wrap {
   padding: 8px;
   border-radius: var(--radius);
   background: var(--field);
   display: flex;
   justify-content: center;
-}
-
-.docx-color-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
-  align-items: center;
 }
 
 .highlight-swatches {

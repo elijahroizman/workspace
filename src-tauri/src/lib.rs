@@ -44,8 +44,24 @@ fn queue_open(app: &tauri::AppHandle, paths: Vec<String>) {
     }
 }
 
+/// WebKit only underlines misspellings while typing when the app opts in (Safari does by
+/// default; embedded web views don't). Set the default before the web view starts, unless
+/// the user already chose otherwise from a Spelling menu.
+#[cfg(target_os = "macos")]
+fn enable_spell_checking() {
+    use objc2_foundation::{NSString, NSUserDefaults};
+    let defaults = NSUserDefaults::standardUserDefaults();
+    let key = NSString::from_str("WebContinuousSpellCheckingEnabled");
+    if defaults.objectForKey(&key).is_none() {
+        defaults.setBool_forKey(true, &key);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "macos")]
+    enable_spell_checking();
+
     let cli_paths: Vec<String> = std::env::args()
         .skip(1)
         .filter(|arg| !arg.starts_with('-'))
@@ -66,6 +82,7 @@ pub fn run() {
             files::read_file,
             files::write_file,
             files::path_info,
+            files::fetch_bytes,
             take_pending_opens,
             quit_app,
         ])

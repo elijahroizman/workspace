@@ -114,20 +114,7 @@ button {
   outline-offset: -2px;
 }
 
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--scrollbar);
-  border-radius: 10px;
-  border: 3px solid transparent;
-  background-clip: padding-box;
-}
-::-webkit-scrollbar-track,
-::-webkit-scrollbar-corner {
-  background: transparent;
-}
+/* Scrollbars are left native: macOS overlay scrollbars are larger, auto-hide and scroll on the compositor. */
 
 .app {
   display: flex;
@@ -147,8 +134,15 @@ button {
   display: flex;
 }
 
-.view[hidden] {
-  display: none;
+/*
+ * Background tabs stay laid out (so switching back is instant and nothing re-paginates or
+ * re-fits) but are neither painted nor hit-tested. content-visibility skips their rendering
+ * work entirely where WebKit supports it.
+ */
+.view[data-active='false'] {
+  visibility: hidden;
+  content-visibility: hidden;
+  pointer-events: none;
 }
 
 /* ───────────────────────── Title bar & tabs ───────────────────────── */
@@ -904,6 +898,46 @@ button {
 
 .tool-btn:disabled {
   opacity: 0.4;
+}
+
+.insert-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+/* Inspector rows shared by the Word and PowerPoint inspectors */
+.docx-font-row {
+  display: grid;
+  grid-template-columns: 1fr 84px;
+  gap: 8px;
+}
+
+.toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--field);
+}
+
+.toggle-row .icon-btn {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-caption {
+  font-size: 12px;
+  color: var(--fg-faint);
+  margin-top: 2px;
+}
+
+.docx-color-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
 }
 
 /* ───────────────────────── Popover menu ───────────────────────── */

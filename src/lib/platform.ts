@@ -63,6 +63,18 @@ export async function writeFile(path: string, bytes: Uint8Array): Promise<void> 
   await invoke('write_file', bytes, { headers: { 'x-path': encodeURIComponent(path) } })
 }
 
+/** Fetch a public https resource (used for video thumbnails). */
+export async function fetchBytes(url: string): Promise<Uint8Array> {
+  if (!isTauri) {
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`Couldn't download ${url}`)
+    return new Uint8Array(await res.arrayBuffer())
+  }
+  const { invoke } = await core()
+  const data = await invoke<ArrayBuffer | number[]>('fetch_bytes', { url })
+  return data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data)
+}
+
 export async function pathExists(path: string): Promise<boolean> {
   if (!isTauri) return browserFiles.has(path)
   const { invoke } = await core()

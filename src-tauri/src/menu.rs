@@ -41,6 +41,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 
     let file_menu = SubmenuBuilder::new(app, "File")
         .item(&item("new-tab", "New Tab", Some("CmdOrCtrl+T"))?)
+        .item(&item("duplicate-tab", "Duplicate Tab", Some("CmdOrCtrl+Shift+D"))?)
         .item(&new_menu)
         .item(&item("open", "Open…", Some("CmdOrCtrl+O"))?)
         .separator()
@@ -68,7 +69,17 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .item(&item("find", "Find…", Some("CmdOrCtrl+F"))?)
         .build()?;
 
+    let markdown_menu = SubmenuBuilder::new(app, "Markdown View")
+        .item(&item("view-read", "Read", Some("CmdOrCtrl+Alt+1"))?)
+        .item(&item("view-split", "Split", Some("CmdOrCtrl+Alt+2"))?)
+        .item(&item("view-write", "Write", Some("CmdOrCtrl+Alt+3"))?)
+        .separator()
+        .item(&item("view-cycle", "Next View", Some("CmdOrCtrl+E"))?)
+        .build()?;
+
     let view_menu = SubmenuBuilder::new(app, "View")
+        .item(&markdown_menu)
+        .separator()
         .item(&item("toggle-left", "Toggle Sidebar", Some("CmdOrCtrl+\\"))?)
         .item(&item("toggle-right", "Toggle Inspector", Some("CmdOrCtrl+Alt+\\"))?)
         .separator()

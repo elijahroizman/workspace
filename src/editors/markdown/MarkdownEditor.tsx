@@ -12,6 +12,7 @@ import type { EditorProps } from '../../App'
 import { FindBar, InspectorHeader, Workbench, formatZoom } from '../../components/Workbench'
 import { IconButton, Section, Segmented } from '../../components/ui'
 import { kindFromPath } from '../../lib/kinds'
+import { usePinchZoom } from '../../lib/pinch'
 import * as platform from '../../lib/platform'
 import { getEditor, registerEditor, useWorkspace } from '../../state/workspace'
 import type { Heading } from './render'
@@ -21,6 +22,7 @@ import './markdown.css'
 type Mode = 'preview' | 'split' | 'source'
 
 const NEW_NOTE = '# Untitled\n\n'
+const MODES: Mode[] = ['preview', 'split', 'source']
 
 const highlight = HighlightStyle.define([
   { tag: tags.heading1, fontSize: '1.45em', fontWeight: '700' },
@@ -56,6 +58,16 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
   const sourceHost = useRef<HTMLDivElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const findQuery = useRef('')
+  const splitRef = useRef<HTMLDivElement>(null)
+  const zoomRef = useRef(zoom)
+  zoomRef.current = zoom
+  usePinchZoom(splitRef, {
+    getZoom: () => zoomRef.current,
+    setZoom: (z) => setZoom(Math.round(z * 20) / 20),
+    target: () => splitRef.current,
+    min: 0.6,
+    max: 2.5,
+  })
   const markDirty = useWorkspace((s) => s.markDirty)
 
   // Re-render the preview shortly after typing stops.
@@ -227,6 +239,8 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
         markSaved: () => {
           savedText.current = textRef.current
         },
+        viewMode: (next) =>
+          setMode((m) => (next === 'cycle' ? MODES[(MODES.indexOf(m) + 1) % MODES.length] : next === 'read' ? 'preview' : next === 'write' ? 'source' : 'split')),
         find: () => {
           if (mode === 'source' && viewRef.current) openSearchPanel(viewRef.current)
           else setFindOpen(true)
@@ -273,6 +287,7 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
       <InspectorHeader kind="md">Markdown</InspectorHeader>
       <Section title="View">
         <ModeSwitch mode={mode} setMode={setMode} labels />
+        <p className="faint hint">⌘E switches between Read, Split and Write.</p>
       </Section>
       <Section title="Document">
         <dl className="stats">
@@ -282,8 +297,6 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
           <dd>{s.characters.toLocaleString()}</dd>
           <dt>Lines</dt>
           <dd>{s.lines.toLocaleString()}</dd>
-          <dt>Reading time</dt>
-          <dd>{s.minutes} min</dd>
           <dt>Headings</dt>
           <dd>{headings.length}</dd>
         </dl>
@@ -300,8 +313,8 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
   )
 
   return (
-    <Workbench tab={tab} left={outline} leftFooter={<span>{s.words.toLocaleString()} words · {s.minutes} min read</span>} right={inspector}>
-      <div className={`md-split mode-${mode}`} style={{ ['--md-zoom' as string]: zoom }}>
+    <Workbench tab={tab} left={outline} leftFooter={<span>{s.words === 1 ? '1 word' : `${s.words.toLocaleString()} words`}</span>} right={inspector}>
+      <div className={`md-split mode-${mode}`} ref={splitRef} style={{ ['--md-zoom' as string]: zoom }}>
         <div className="md-source" ref={sourceHost} />
         <div className="md-preview" ref={previewRef} onClick={onPreviewClick}>
           <article className="md-body" dangerouslySetInnerHTML={{ __html: rendered.html }} />
@@ -339,9 +352,9 @@ function ModeSwitch({ mode, setMode, labels }: { mode: Mode; setMode: (m: Mode) 
       value={mode}
       onChange={setMode}
       options={[
-        { value: 'preview', icon: <BookOpen size={14} />, label: labels ? 'Read' : undefined, title: 'Read' },
-        { value: 'split', icon: <Columns2 size={14} />, label: labels ? 'Split' : undefined, title: 'Edit with preview' },
-        { value: 'source', icon: <SquarePen size={14} />, label: labels ? 'Write' : undefined, title: 'Edit source' },
+        { value: 'preview', icon: <BookOpen size={14} />, label: labels ? 'Read' : undefined, title: 'Read (⌥⌘1)' },
+        { value: 'split', icon: <Columns2 size={14} />, label: labels ? 'Split' : undefined, title: 'Edit with preview (⌥⌘2)' },
+        { value: 'source', icon: <SquarePen size={14} />, label: labels ? 'Write' : undefined, title: 'Edit source (⌥⌘3)' },
       ]}
     />
   )
