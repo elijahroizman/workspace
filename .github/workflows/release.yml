@@ -1,0 +1,52 @@
+name: Release
+
+# Builds the Windows (x64) installer and the macOS (Apple silicon) disk image and
+# attaches both to a GitHub Release. Run it from the Actions tab, or push a tag like v0.2.0.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            args: --bundles nsis
+          - name: macOS Apple silicon
+            os: macos-latest
+            args: --target aarch64-apple-darwin --bundles app,dmg
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: Workspace v__VERSION__
+          releaseBody: |
+            **Windows (x64):** download `Workspace_…_x64-setup.exe` and run it. Windows may show "Windows protected your PC" because the app isn't signed; click More info → Run anyway.
+
+            **Mac (Apple silicon):** download `Workspace_…_aarch64.dmg`, drag Workspace to Applications, then right-click it → Open the first time (the app isn't signed by Apple).
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

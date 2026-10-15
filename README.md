@@ -120,4 +120,4 @@ src-tauri/
   src/menu.rs             the native menu bar
 ```
 
-The GitHub Actions workflow in `.github/workflows/macos.yml` builds a `.dmg` on a Mac runner if you push this repository to GitHub.
+The **Release** workflow (`.github/workflows/release.yml`) builds a Windows x64 installer (`.exe`) and a Mac Apple-silicon `.dmg` on GitHub's runners and attaches both to a GitHub Release. Run it from the Actions tab, or push a tag such as `v0.2.0` after bumping the version in `src-tauri/tauri.conf.json`. On Windows, a local build is `npx tauri build --bundles nsis`.
