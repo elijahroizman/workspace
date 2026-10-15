@@ -1,7 +1,8 @@
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
+use std::sync::LazyLock;
+use std::time::{Duration, UNIX_EPOCH};
 
 use serde::Serialize;
 use tauri::ipc::{InvokeBody, Request, Response};
@@ -57,16 +58,22 @@ pub async fn fetch_bytes(url: String) -> Result<Response, String> {
 /// `ureq` is built with `default-features = false, features = ["native-tls"]`,
 /// but `ureq::get` still defaults to `TlsProvider::Rustls` and panics on any
 /// `https://` connection unless the agent explicitly selects `NativeTls`.
-fn http_agent() -> ureq::Agent {
-    ureq::Agent::config_builder()
-        .tls_config(
-            ureq::tls::TlsConfig::builder()
-                .provider(ureq::tls::TlsProvider::NativeTls)
-                .root_certs(ureq::tls::RootCerts::PlatformVerifier)
-                .build(),
-        )
-        .build()
-        .new_agent()
+/// The timeout keeps a stalled download from blocking the video insert, which
+/// waits for the poster.
+fn http_agent() -> &'static ureq::Agent {
+    static AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
+        ureq::Agent::config_builder()
+            .tls_config(
+                ureq::tls::TlsConfig::builder()
+                    .provider(ureq::tls::TlsProvider::NativeTls)
+                    .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+                    .build(),
+            )
+            .timeout_global(Some(Duration::from_secs(15)))
+            .build()
+            .new_agent()
+    });
+    &AGENT
 }
 
 #[derive(Serialize)]
