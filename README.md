@@ -2,7 +2,7 @@
 
 # Workspace
 
-A small, fast Mac app for the four document types most people actually use: **Word (.docx), PowerPoint (.pptx), PDF and Markdown**. Everything opens as a tab in one window, and each file type gets its own sidebar and inspector.
+A small, fast Mac and Windows app for the four document types most people actually use: **Word (.docx), PowerPoint (.pptx), PDF and Markdown**. Everything opens as a tab in one window, and each file type gets its own sidebar and inspector.
 
 - **Tabs across the top.** Open as many files as you like and switch with ⌘1–⌘9 or ⇧⌘[ / ⇧⌘]. Drag tabs to reorder them, and right-click a tab to duplicate it (⇧⌘D), for example to keep a textbook's questions and answers open side by side. Open tabs come back the next time you launch.
 - **Sidebars that fit the document.**
@@ -14,12 +14,22 @@ A small, fast Mac app for the four document types most people actually use: **Wo
   | PDF | Page thumbnails (drag to reorder) or the PDF's outline | Highlight, add text, draw/sign, place images; rotate/move/duplicate/delete/insert/extract pages; document info |
   | Markdown | Heading outline | Hidden by default: Markdown is mostly for reading. Read / Split / Write modes (⌘E to switch) and word count. Front matter, such as an Agent Skill's name and description, shows as a table |
 
-- **Fast.** Built on [Tauri](https://tauri.app), so it uses the WebKit that ships with macOS instead of bundling a browser. The app is small and launches quickly. Each editor engine loads only when you first open that kind of file.
-- **Works offline, no accounts.** Every document engine runs locally on your Mac.
+- **Fast.** Built on [Tauri](https://tauri.app), so it uses the web view built into the system (WebKit on macOS, WebView2 on Windows) instead of bundling a browser. The app is small and launches quickly. Each editor engine loads only when you first open that kind of file.
+- **Works offline, no accounts.** Every document engine runs locally on your computer.
+- **Keeps itself up to date.** New versions download in the background and install when you quit. To install one straight away, click **Restart to Update** in the tab bar.
 
-## Install on your Mac
+## Install
 
-You build the app once on your Mac. It takes about five minutes, most of it compiling.
+Download the latest build from [Releases](https://github.com/elijahroizman/workspace/releases/latest):
+
+- **Mac (Apple silicon):** open `Workspace_…_aarch64.dmg` and drag Workspace to Applications. The app isn't signed by Apple, so the first time, right-click it → **Open** → **Open**.
+- **Windows (x64):** run `Workspace_…_x64-setup.exe`. Windows may say "Windows protected your PC" because the app isn't signed. Click **More info** → **Run anyway**.
+
+After that, updates install themselves.
+
+## Build it yourself on a Mac
+
+It takes about five minutes, most of it compiling. A copy you build yourself doesn't update itself.
 
 1. **Install the build tools** (skip any you already have):
 
@@ -54,6 +64,8 @@ To update later, pull the new code and repeat steps 2–3.
 
 ## Keyboard shortcuts
 
+On Windows, use Ctrl for ⌘, Alt for ⌥ and Shift for ⇧. Ctrl+Tab and Ctrl+Shift+Tab also switch tabs, and F11 toggles full screen.
+
 | | |
 | --- | --- |
 | New document / presentation / note | ⌘N / ⇧⌘N / ⌥⌘N |
@@ -68,7 +80,7 @@ To update later, pull the new code and repeat steps 2–3.
 | Print (and Save as PDF from the print panel) | ⌘P |
 | Duplicate tab | ⇧⌘D |
 | Markdown: next view / Read / Split / Write | ⌘E / ⌥⌘1 / ⌥⌘2 / ⌥⌘3 |
-| Zoom | Pinch on the trackpad, or ⌘ + scroll |
+| Zoom (Word, PowerPoint, PDF) | Pinch on the trackpad, or ⌘ + scroll |
 | Light / dark appearance | ⇧⌘L |
 
 You can also drop files from Finder onto the window or the Dock icon.
@@ -101,7 +113,7 @@ npm install
 npm run app:dev        # runs the app with hot reload
 npm run dev            # just the UI in a browser at http://localhost:1420
 VITE_TEST_HOOKS=1 npx vite build && npx vite preview --port 1420   # lighter: a production build in the browser
-npm run typecheck
+npm run typecheck      # type checks with tsc-rs, a Rust port of the TypeScript compiler
 cd src-tauri && cargo test
 ```
 
@@ -120,4 +132,6 @@ src-tauri/
   src/menu.rs             the native menu bar
 ```
 
-The **Release** workflow (`.github/workflows/release.yml`) builds a Windows x64 installer (`.exe`) and a Mac Apple-silicon `.dmg` on GitHub's runners and attaches both to a GitHub Release. Run it from the Actions tab, or push a tag such as `v0.2.0` after bumping the version in `src-tauri/tauri.conf.json`. On Windows, a local build is `npx tauri build --bundles nsis`.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before you change anything. It covers who can push to `main` and what every pull request must say.
+
+The **Release** workflow (`.github/workflows/release.yml`) builds a Windows x64 installer (`.exe`) and a Mac Apple-silicon `.dmg` on GitHub's runners and attaches both to a GitHub Release. Run it from the Actions tab, or push a tag such as `v0.3.0` after bumping the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. The workflow also signs the update bundles and publishes `latest.json`, the feed installed copies check. The signing key is in the repository's Actions secrets (`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`), and its public half is in `tauri.conf.json`. If the key is lost, installed copies can't verify new versions, and everyone has to reinstall by hand once. On Windows, a local build is `npx tauri build --bundles nsis`.

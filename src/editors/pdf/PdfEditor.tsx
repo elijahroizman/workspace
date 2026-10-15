@@ -27,6 +27,7 @@ import type { EditorProps } from '../../App'
 import { FindBar, InspectorHeader, Workbench, formatZoom } from '../../components/Workbench'
 import type { MenuEntry } from '../../components/ui'
 import { CenterState, IconButton, PopoverMenu, Section, Segmented } from '../../components/ui'
+import { wheelZoomFactor } from '../../lib/pinch'
 import * as platform from '../../lib/platform'
 import { registerEditor, useWorkspace } from '../../state/workspace'
 import * as pages from './pages'
@@ -37,6 +38,9 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 
 const ASSETS = import.meta.env.DEV ? '/node_modules/pdfjs-dist/' : '/pdfjs/'
 const { AnnotationEditorType: Tool, AnnotationEditorParamsType: Param } = pdfjs
+
+/** Zooming stretches the drawn pages at once; pdf.js redraws them sharp this long after the last step. */
+const ZOOM_REDRAW_DELAY = 250
 
 const HIGHLIGHT_COLORS = ['#FFFF98', '#53FFBC', '#80EBFF', '#FFCBE6', '#FF4F5F']
 const INK_COLORS = ['#000000', '#E5484D', '#2F6FED', '#1F9D55', '#F5A524']
@@ -142,10 +146,22 @@ export default function PdfEditor({ tab, active }: EditorProps) {
 
     // Trackpad pinch: WebKit sends gesture events, Chromium sends ctrl+wheel. pdf.js scales the
     // pages with CSS while the fingers move and re-renders once they stop (drawingDelay), which
-    // keeps pinching smooth on large documents.
-    const ZOOM_DELAY = 250
+    // keeps pinching smooth on large documents. Events can outpace the screen, and each one
+    // re-lays out every page, so apply at most one zoom per frame.
     let gestureStart = 1
     let gestureActive = false
+    let pending: { factor: number; origin: [number, number] } | null = null
+    let frame = 0
+    const zoomBy = (factor: number, origin: [number, number]) => {
+      pending = { factor: (pending?.factor ?? 1) * factor, origin }
+      frame ||= requestAnimationFrame(() => {
+        frame = 0
+        if (!pending) return
+        const scaleFactor = Math.min(10, Math.max(0.1, viewer.currentScale * pending.factor)) / viewer.currentScale
+        viewer.updateScale({ drawingDelay: ZOOM_REDRAW_DELAY, scaleFactor, origin: pending.origin })
+        pending = null
+      })
+    }
     const onGestureStart = (e: Event) => {
       e.preventDefault()
       gestureActive = true
@@ -154,8 +170,10 @@ export default function PdfEditor({ tab, active }: EditorProps) {
     const onGestureChange = (e: Event) => {
       e.preventDefault()
       const ge = e as Event & { scale: number; clientX: number; clientY: number }
-      const next = Math.min(10, Math.max(0.1, gestureStart * ge.scale))
-      viewer.updateScale({ drawingDelay: ZOOM_DELAY, scaleFactor: next / viewer.currentScale, origin: [ge.clientX, ge.clientY] })
+      // Gesture scale is relative to the start; turn it into a step from where the zoom will be.
+      const target = gestureStart * ge.scale
+      const current = viewer.currentScale * (pending?.factor ?? 1)
+      zoomBy(target / current, [ge.clientX, ge.clientY])
     }
     const onGestureEnd = (e: Event) => {
       e.preventDefault()
@@ -164,7 +182,7 @@ export default function PdfEditor({ tab, active }: EditorProps) {
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey || gestureActive) return
       e.preventDefault()
-      viewer.updateScale({ drawingDelay: ZOOM_DELAY, scaleFactor: Math.exp(-Math.max(-50, Math.min(50, e.deltaY)) / 250), origin: [e.clientX, e.clientY] })
+      zoomBy(wheelZoomFactor(e), [e.clientX, e.clientY])
     }
     // Re-fit "auto"/"page-width"/"page-fit" zoom when the canvas changes size: window resizes,
     // sidebars toggling, or the tab first becoming visible after loading in the background.
@@ -185,6 +203,7 @@ export default function PdfEditor({ tab, active }: EditorProps) {
     container.addEventListener('wheel', onWheel, { passive: false })
 
     return () => {
+      cancelAnimationFrame(frame)
       resize.disconnect()
       container.removeEventListener('click', onClick, true)
       container.removeEventListener('gesturestart', onGestureStart)
@@ -381,8 +400,8 @@ export default function PdfEditor({ tab, active }: EditorProps) {
         zoom: (dir) => {
           const v = viewerRef.current
           if (!v) return
-          if (dir === 'in') v.increaseScale()
-          else if (dir === 'out') v.decreaseScale()
+          if (dir === 'in') v.increaseScale({ drawingDelay: ZOOM_REDRAW_DELAY })
+          else if (dir === 'out') v.decreaseScale({ drawingDelay: ZOOM_REDRAW_DELAY })
           else v.currentScaleValue = 'page-actual'
         },
         print: () => printPdf(currentBytes),
@@ -642,13 +661,13 @@ export default function PdfEditor({ tab, active }: EditorProps) {
             / {numPages}
           </span>
           <span className="sep" />
-          <IconButton label="Zoom out (⌘−)" size="sm" onClick={() => viewerRef.current?.decreaseScale()}>
+          <IconButton label="Zoom out (⌘−)" size="sm" onClick={() => viewerRef.current?.decreaseScale({ drawingDelay: ZOOM_REDRAW_DELAY })}>
             <Minus size={14} />
           </IconButton>
-          <button type="button" className="icon-btn sm readout" title="Actual size (⌘0)" onClick={() => (viewerRef.current!.currentScaleValue = 'page-actual')}>
+          <button type="button" className="icon-btn sm readout" title={platform.shortcut('Actual size (⌘0)')} onClick={() => (viewerRef.current!.currentScaleValue = 'page-actual')}>
             {formatZoom(scale)}
           </button>
-          <IconButton label="Zoom in (⌘+)" size="sm" onClick={() => viewerRef.current?.increaseScale()}>
+          <IconButton label="Zoom in (⌘+)" size="sm" onClick={() => viewerRef.current?.increaseScale({ drawingDelay: ZOOM_REDRAW_DELAY })}>
             <Plus size={14} />
           </IconButton>
           <span className="sep" />

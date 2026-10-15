@@ -6,13 +6,12 @@ import { openSearchPanel, search, searchKeymap } from '@codemirror/search'
 import { EditorState } from '@codemirror/state'
 import { drawSelection, EditorView, highlightActiveLine, keymap, placeholder } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
-import { BookOpen, Columns2, Minus, Plus, SquarePen } from 'lucide-react'
+import { BookOpen, Columns2, SquarePen } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorProps } from '../../App'
-import { FindBar, InspectorHeader, Workbench, formatZoom } from '../../components/Workbench'
-import { IconButton, Section, Segmented } from '../../components/ui'
+import { FindBar, InspectorHeader, Workbench } from '../../components/Workbench'
+import { Section, Segmented } from '../../components/ui'
 import { kindFromPath } from '../../lib/kinds'
-import { usePinchZoom } from '../../lib/pinch'
 import * as platform from '../../lib/platform'
 import { getEditor, registerEditor, useWorkspace } from '../../state/workspace'
 import type { Heading } from './render'
@@ -47,7 +46,6 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
   const initial = useMemo(() => (tab.bytes ? decode(tab.bytes) : NEW_NOTE), [tab.bytes])
   const [text, setText] = useState(initial)
   const [mode, setMode] = useState<Mode>(tab.bytes ? 'preview' : 'split')
-  const [zoom, setZoom] = useState(1)
   const [rendered, setRendered] = useState(() => renderMarkdown(initial))
   const [activeSlug, setActiveSlug] = useState<string | null>(null)
   const [findOpen, setFindOpen] = useState(false)
@@ -58,16 +56,6 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
   const sourceHost = useRef<HTMLDivElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const findQuery = useRef('')
-  const splitRef = useRef<HTMLDivElement>(null)
-  const zoomRef = useRef(zoom)
-  zoomRef.current = zoom
-  usePinchZoom(splitRef, {
-    getZoom: () => zoomRef.current,
-    setZoom: (z) => setZoom(Math.round(z * 20) / 20),
-    target: () => splitRef.current,
-    min: 0.6,
-    max: 2.5,
-  })
   const markDirty = useWorkspace((s) => s.markDirty)
 
   // Re-render the preview shortly after typing stops.
@@ -245,7 +233,6 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
           if (mode === 'source' && viewRef.current) openSearchPanel(viewRef.current)
           else setFindOpen(true)
         },
-        zoom: (dir) => setZoom((z) => (dir === 'reset' ? 1 : Math.min(2, Math.max(0.6, z + (dir === 'in' ? 0.1 : -0.1))))),
         print: async () => {
           const root = document.getElementById('print-root')!
           // Reuse the live preview so images already resolved from disk come along.
@@ -287,7 +274,7 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
       <InspectorHeader kind="md">Markdown</InspectorHeader>
       <Section title="View">
         <ModeSwitch mode={mode} setMode={setMode} labels />
-        <p className="faint hint">⌘E switches between Read, Split and Write.</p>
+        <p className="faint hint">{platform.shortcut('⌘E')} switches between Read, Split and Write.</p>
       </Section>
       <Section title="Document">
         <dl className="stats">
@@ -314,7 +301,7 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
 
   return (
     <Workbench tab={tab} left={outline} leftFooter={<span>{s.words === 1 ? '1 word' : `${s.words.toLocaleString()} words`}</span>} right={inspector}>
-      <div className={`md-split mode-${mode}`} ref={splitRef} style={{ ['--md-zoom' as string]: zoom }}>
+      <div className={`md-split mode-${mode}`}>
         <div className="md-source" ref={sourceHost} />
         <div className="md-preview" ref={previewRef} onClick={onPreviewClick}>
           <article className="md-body" dangerouslySetInnerHTML={{ __html: rendered.html }} />
@@ -331,16 +318,6 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
       />
       <div className="canvas-bar">
         <ModeSwitch mode={mode} setMode={setMode} />
-        <span className="sep" />
-        <IconButton label="Zoom out (⌘−)" size="sm" onClick={() => setZoom((z) => Math.max(0.6, z - 0.1))}>
-          <Minus size={14} />
-        </IconButton>
-        <button type="button" className="icon-btn sm readout" title="Actual size (⌘0)" onClick={() => setZoom(1)}>
-          {formatZoom(zoom)}
-        </button>
-        <IconButton label="Zoom in (⌘+)" size="sm" onClick={() => setZoom((z) => Math.min(2, z + 0.1))}>
-          <Plus size={14} />
-        </IconButton>
       </div>
     </Workbench>
   )

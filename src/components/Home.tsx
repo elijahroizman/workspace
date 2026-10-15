@@ -2,7 +2,7 @@ import { FolderOpen, MoreHorizontal, Moon, Sun } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { DocKind } from '../lib/kinds'
 import { KINDS } from '../lib/kinds'
-import { basename, dirname, revealInFinder, isTauri } from '../lib/platform'
+import { basename, dirname, revealInFinder, revealLabel, isTauri, shortcut } from '../lib/platform'
 import type { RecentFile } from '../state/workspace'
 import { useWorkspace } from '../state/workspace'
 import { DocBadge, KindIcon } from './Workbench'
@@ -45,7 +45,7 @@ export function Home() {
               <strong>Open…</strong>
               <span className="muted">Or drop files here</span>
             </span>
-            <span className="kbd">⌘O</span>
+            <span className="kbd">{shortcut('⌘O')}</span>
           </button>
           {CREATE.map((c) => (
             <button key={c.kind} type="button" className="home-card" onClick={() => newDocument(c.kind)}>
@@ -54,7 +54,7 @@ export function Home() {
                 <strong>{c.title}</strong>
                 <span className="muted">{c.hint}</span>
               </span>
-              <span className="kbd">{c.shortcut}</span>
+              <span className="kbd">{shortcut(c.shortcut)}</span>
             </button>
           ))}
         </div>
@@ -121,7 +121,7 @@ export function Home() {
           onClose={() => setMenu(null)}
           items={[
             { label: 'Open', onSelect: () => void openPaths([menu.file.path]) },
-            ...(isTauri ? [{ label: 'Show in Finder', onSelect: () => void revealInFinder(menu.file.path) }] : []),
+            ...(isTauri ? [{ label: revealLabel, onSelect: () => void revealInFinder(menu.file.path) }] : []),
             { label: 'Remove from Recents', onSelect: () => removeRecent(menu.file.path), separatorBefore: true },
           ]}
         />

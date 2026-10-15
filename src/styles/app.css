@@ -287,6 +287,25 @@ button {
   flex: none;
 }
 
+.update-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.update-btn:hover {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
 /* ───────────────────────── Generic controls ───────────────────────── */
 
 .icon-btn {
@@ -457,6 +476,10 @@ button {
 .field select {
   appearance: none;
   -webkit-appearance: none;
+  /* Reach under the chevron (14px + the 6px gap) so clicking the arrow opens the list. */
+  margin-right: -20px;
+  padding-right: 20px;
+  cursor: default;
 }
 
 .field .chevron {

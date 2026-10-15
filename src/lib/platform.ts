@@ -7,6 +7,29 @@ import { KINDS, kindFromPath } from './kinds'
 
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 export const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform || navigator.userAgent)
+export const isWindows = typeof navigator !== 'undefined' && /Win/.test(navigator.platform || navigator.userAgent)
+
+/** “Show in Finder” on a Mac, “Show in File Explorer” on Windows. */
+export const revealLabel = isMac ? 'Show in Finder' : isWindows ? 'Show in File Explorer' : 'Show in Folder'
+
+const KEY_NAMES: Record<string, string> = { '↩': 'Enter', '−': 'Minus', '+': 'Plus', '⌫': 'Backspace' }
+
+/**
+ * Shortcuts are written the Mac way in the source (“Duplicate (⇧⌘D)”). Everywhere else they
+ * read Ctrl+Shift+D, the way Windows apps write them.
+ */
+export function shortcut(text: string): string {
+  if (isMac) return text
+  return text.replace(/([⌃⌥⇧⌘]+)([^\s)]+)|↩/g, (match, mods: string | undefined, key: string | undefined) => {
+    if (!mods || !key) return KEY_NAMES[match] ?? match
+    const parts: string[] = []
+    if (/[⌘⌃]/.test(mods)) parts.push('Ctrl')
+    if (mods.includes('⌥')) parts.push('Alt')
+    if (mods.includes('⇧')) parts.push('Shift')
+    parts.push(KEY_NAMES[key] ?? key)
+    return parts.join('+')
+  })
+}
 
 const core = () => import('@tauri-apps/api/core')
 const dialog = () => import('@tauri-apps/plugin-dialog')
@@ -247,6 +270,13 @@ export async function setFullscreen(on: boolean): Promise<void> {
   }
   const { getCurrentWindow } = await import('@tauri-apps/api/window')
   await getCurrentWindow().setFullscreen(on)
+}
+
+export async function toggleFullscreen(): Promise<void> {
+  if (!isTauri) return setFullscreen(!document.fullscreenElement)
+  const { getCurrentWindow } = await import('@tauri-apps/api/window')
+  const win = getCurrentWindow()
+  await win.setFullscreen(!(await win.isFullscreen()))
 }
 
 export async function startWindowDrag(): Promise<void> {

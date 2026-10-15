@@ -1,5 +1,15 @@
 import { useEffect, useRef } from 'react'
 
+/**
+ * How much one ctrl+wheel event should zoom. Chromium (WebView2 on Windows, Chrome) reports a
+ * trackpad pinch as small deltas where scale = e^(−deltaY/100), so following that keeps the page
+ * under the fingers. A mouse wheel notch (±100 or more, or line mode) steps by 20%.
+ */
+export function wheelZoomFactor(e: WheelEvent): number {
+  if (e.deltaMode === 0 && Math.abs(e.deltaY) < 50) return Math.exp(-e.deltaY / 100)
+  return e.deltaY < 0 ? 1.2 : 1 / 1.2
+}
+
 interface PinchOptions {
   getZoom: () => number
   setZoom: (zoom: number) => void
@@ -109,8 +119,7 @@ export function usePinchZoom(containerRef: React.RefObject<HTMLElement | null>, 
       e.stopPropagation()
       if (gestureActive) return
       if (!el) begin(e.clientX, e.clientY)
-      // Trackpads send many small deltas, mouse wheels a few large ones; clamp so one notch is ~20%.
-      preview(factor * Math.exp(-Math.max(-50, Math.min(50, e.deltaY)) / 250))
+      preview(factor * wheelZoomFactor(e))
       window.clearTimeout(wheelTimer)
       wheelTimer = window.setTimeout(commit, 160)
     }

@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { shortcut } from '../lib/platform'
 
 export function IconButton({
   label,
@@ -11,11 +12,12 @@ export function IconButton({
   className = '',
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; active?: boolean; size?: 'sm' }) {
+  const text = shortcut(label)
   return (
     <button
       type="button"
-      aria-label={label}
-      title={label}
+      aria-label={text}
+      title={text}
       aria-pressed={active}
       className={`icon-btn ${active ? 'active' : ''} ${size ?? ''} ${className}`}
       {...rest}
@@ -78,8 +80,8 @@ export function Segmented<T extends string>({
           type="button"
           role="radio"
           aria-checked={value === o.value}
-          title={o.title ?? (typeof o.label === 'string' ? o.label : undefined)}
-          aria-label={o.title ?? (typeof o.label === 'string' ? o.label : o.value)}
+          title={shortcut(o.title ?? (typeof o.label === 'string' ? o.label : ''))}
+          aria-label={shortcut(o.title ?? (typeof o.label === 'string' ? o.label : o.value))}
           className={value === o.value ? 'on' : ''}
           disabled={disabled}
           onClick={() => onChange(o.value)}
@@ -188,10 +190,25 @@ export function SelectField({
   placeholder?: string
 }) {
   const known = value != null && options.some((o) => o.value === value)
+  const select = useRef<HTMLSelectElement>(null)
   return (
-    <label className="field">
+    <label
+      className="field"
+      onMouseDown={(e) => {
+        // A click on the label beside the list should open it, not just focus it.
+        const el = select.current
+        if (!el || disabled || e.target === el) return
+        e.preventDefault()
+        el.focus()
+        try {
+          el.showPicker()
+        } catch {
+          // Older WebKit has no showPicker for selects; the list stays focused for the keyboard.
+        }
+      }}
+    >
       {label && <span className="field-label">{label}</span>}
-      <select value={known ? value! : ''} disabled={disabled} onChange={(e) => onChange(e.currentTarget.value)}>
+      <select ref={select} value={known ? value! : ''} disabled={disabled} onChange={(e) => onChange(e.currentTarget.value)}>
         {!known && <option value="">{value ?? placeholder ?? '—'}</option>}
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -312,7 +329,7 @@ export function PopoverMenu({
             >
               {item.icon}
               <span className="label">{item.label}</span>
-              {item.shortcut && <span className="kbd">{item.shortcut}</span>}
+              {item.shortcut && <span className="kbd">{shortcut(item.shortcut)}</span>}
             </button>
           </div>
         ))}

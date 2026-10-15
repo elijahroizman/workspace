@@ -1,13 +1,16 @@
-import { Copy, FolderOpen, LayoutGrid, Plus, X } from 'lucide-react'
+import { ArrowDownToLine, Copy, FolderOpen, LayoutGrid, Plus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { isMac, isTauri, revealInFinder } from '../lib/platform'
+import { isMac, isTauri, revealInFinder, revealLabel, shortcut } from '../lib/platform'
+import { useUpdate } from '../lib/updater'
 import { HOME_TAB_ID, useWorkspace } from '../state/workspace'
+import { runCommand } from '../App'
 import { KindIcon } from './Workbench'
 import { PopoverMenu } from './ui'
 
 export function TitleBar() {
   const tabs = useWorkspace((s) => s.tabs)
   const activeId = useWorkspace((s) => s.activeId)
+  const updateReady = useUpdate((s) => s.ready)
   const { activate, closeTab, moveTab, newDocument, openDialog, duplicateTab, closeOthers } = useWorkspace.getState()
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; id: string } | null>(null)
@@ -72,7 +75,7 @@ export function TitleBar() {
           role="tab"
           aria-selected={activeId === HOME_TAB_ID}
           className={`tab tab-home ${activeId === HOME_TAB_ID ? 'active' : ''}`}
-          title="Home (⌘1)"
+          title={shortcut('Home (⌘1)')}
           onPointerDown={() => activate(HOME_TAB_ID)}
         >
           <span className="tab-icon">
@@ -113,7 +116,7 @@ export function TitleBar() {
                 type="button"
                 className="tab-close"
                 aria-label={tab.dirty ? `Close ${tab.title} (unsaved changes)` : `Close ${tab.title}`}
-                title={tab.dirty ? 'Unsaved changes — close (⌘W)' : 'Close (⌘W)'}
+                title={shortcut(tab.dirty ? 'Unsaved changes — close (⌘W)' : 'Close (⌘W)')}
                 onClick={(e) => {
                   e.stopPropagation()
                   void closeTab(tab.id)
@@ -139,6 +142,12 @@ export function TitleBar() {
         <Plus size={16} />
       </button>
       <div className="titlebar-spacer" data-tauri-drag-region />
+      {updateReady && (
+        <button type="button" className="update-btn" title={`Workspace ${updateReady} is ready to install`} onClick={() => void runCommand('install-update')}>
+          <ArrowDownToLine size={13} />
+          Restart to Update
+        </button>
+      )}
       {tabMenu && (
         <PopoverMenu
           anchor={tabMenu}
@@ -146,7 +155,7 @@ export function TitleBar() {
           items={[
             { label: 'Duplicate Tab', icon: <Copy size={14} />, shortcut: '⇧⌘D', onSelect: () => void duplicateTab(tabMenu.id) },
             ...(isTauri && tabs.find((t) => t.id === tabMenu.id)?.path
-              ? [{ label: 'Show in Finder', icon: <FolderOpen size={14} />, onSelect: () => void revealInFinder(tabs.find((t) => t.id === tabMenu.id)!.path!) }]
+              ? [{ label: revealLabel, icon: <FolderOpen size={14} />, onSelect: () => void revealInFinder(tabs.find((t) => t.id === tabMenu.id)!.path!) }]
               : []),
             { label: 'Close Tab', shortcut: '⌘W', separatorBefore: true, onSelect: () => void closeTab(tabMenu.id) },
             { label: 'Close Other Tabs', onSelect: () => void closeOthers(tabMenu.id) },

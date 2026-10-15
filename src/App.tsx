@@ -5,6 +5,7 @@ import { TitleBar } from './components/TitleBar'
 import { CenterState } from './components/ui'
 import type { DocKind } from './lib/kinds'
 import * as platform from './lib/platform'
+import { installUpdate, startUpdateChecks } from './lib/updater'
 import type { DocTab } from './state/workspace'
 import { getEditor, HOME_TAB_ID, persistSession, restoreSession, useWorkspace } from './state/workspace'
 
@@ -132,6 +133,9 @@ export async function runCommand(id: string) {
     case 'view-cycle':
       editor?.viewMode?.('cycle')
       break
+    case 'toggle-fullscreen':
+      await platform.toggleFullscreen()
+      break
     case 'toggle-theme':
       ws.setTheme(ws.theme === 'dark' ? 'light' : 'dark')
       break
@@ -142,7 +146,17 @@ export async function runCommand(id: string) {
       ws.activateOffset(-1)
       break
     case 'quit':
-      if (await confirmDiscardAll()) await platform.quitApp()
+      if (await confirmDiscardAll()) {
+        await installUpdate({ restart: false })
+        await platform.quitApp()
+      }
+      break
+    case 'install-update':
+      if (await confirmDiscardAll()) {
+        await installUpdate({ restart: true })
+        // Still here, so the install failed: keep saving the session.
+        sessionFrozen = false
+      }
       break
   }
 }
@@ -164,8 +178,9 @@ async function confirmDiscardAll(): Promise<boolean> {
 
 let sessionFrozen = false
 
-// Shortcuts the native menu bar owns inside the app; in a plain browser we handle them here.
-const BROWSER_SHORTCUTS: Record<string, string> = {
+// Shortcuts the native menu bar owns in the Mac app. Windows and the browser handle them here:
+// WebView2 keeps keystrokes to itself, so a Windows menu accelerator never sees them.
+const SHORTCUTS: Record<string, string> = {
   t: 'new-tab',
   n: 'new-docx',
   'shift+n': 'new-pptx',
@@ -190,6 +205,35 @@ const BROWSER_SHORTCUTS: Record<string, string> = {
   'alt+3': 'view-write',
   'shift+]': 'next-tab',
   'shift+[': 'prev-tab',
+}
+
+// Windows conventions that have no Mac menu item.
+const WINDOWS_SHORTCUTS: Record<string, string> = {
+  Tab: 'next-tab',
+  'shift+Tab': 'prev-tab',
+}
+
+const CODE_KEYS: Record<string, string> = { Equal: '=', NumpadAdd: '=', Minus: '-', NumpadSubtract: '-', Backslash: '\\', BracketRight: ']', BracketLeft: '[' }
+
+/**
+ * The key part of a shortcut. Letters follow the keyboard layout. When the key types something
+ * else (⌥ on a Mac, a Cyrillic layout) fall back to the physical key, except for Ctrl+Alt on
+ * Windows: that is AltGr, which types characters like ń.
+ */
+function comboKey(e: KeyboardEvent): string {
+  if (e.code.startsWith('Digit')) return e.code.slice(5)
+  if (CODE_KEYS[e.code]) return CODE_KEYS[e.code]
+  if (/^[a-z]$/i.test(e.key)) return e.key.toLowerCase()
+  if (e.code.startsWith('Key') && (platform.isMac || !e.altKey)) return e.code.slice(3).toLowerCase()
+  return e.key
+}
+
+/** Commands that only mean something in some editors; elsewhere the key goes to the document (Ctrl+E centers text in Word). */
+function editorHandles(command: string) {
+  const editor = getEditor(useWorkspace.getState().activeId)
+  if (command.startsWith('view-')) return !!editor?.viewMode
+  if (command.startsWith('zoom-')) return !!editor?.zoom
+  return true
 }
 
 export default function App() {
@@ -225,8 +269,18 @@ export default function App() {
         (on) => useWorkspace.getState().setDropHover(on),
       ),
     )
-    unlisteners.push(platform.onCloseRequested(confirmDiscardAll))
-    return () => unlisteners.forEach((u) => void u.then((fn) => fn()))
+    unlisteners.push(
+      platform.onCloseRequested(async () => {
+        if (!(await confirmDiscardAll())) return false
+        await installUpdate({ restart: false })
+        return true
+      }),
+    )
+    const stopUpdateChecks = startUpdateChecks()
+    return () => {
+      stopUpdateChecks()
+      unlisteners.forEach((u) => void u.then((fn) => fn()))
+    }
   }, [])
 
   // Keep the session snapshot current.
@@ -234,27 +288,35 @@ export default function App() {
     if (!sessionFrozen) persistSession()
   }, [tabs, activeId])
 
-  // Keyboard: ⌘1–⌘9 everywhere, plus everything the menu bar would handle when running in a browser.
+  // Keyboard: ⌘1–⌘9 everywhere, plus everything the Mac menu bar would handle on Windows and in a browser.
+  // Capture phase, so an editor that swallows keys can't eat Save or Close Tab.
   useEffect(() => {
+    const menuOwnsShortcuts = platform.isTauri && platform.isMac
     const onKey = (e: KeyboardEvent) => {
-      const mod = platform.isMac ? e.metaKey : e.ctrlKey
-      if (!mod) return
-      if (/^[1-9]$/.test(e.key) && !e.shiftKey && !e.altKey) {
+      if (!menuOwnsShortcuts && e.key === 'F11' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         e.preventDefault()
-        useWorkspace.getState().activateIndex(Number(e.key) - 1)
+        void runCommand('toggle-fullscreen')
         return
       }
-      if (platform.isTauri) return
-      const key = e.code.startsWith('Digit') ? e.code.slice(5) : e.key === '+' ? '=' : e.key.length === 1 ? e.key.toLowerCase() : e.key
-      const combo = `${e.shiftKey ? 'shift+' : ''}${e.altKey ? 'alt+' : ''}${e.code === 'Backslash' ? '\\' : e.code === 'BracketRight' ? ']' : e.code === 'BracketLeft' ? '[' : key}`
-      const command = BROWSER_SHORTCUTS[combo]
-      if (command) {
+      const mod = platform.isMac ? e.metaKey : e.ctrlKey
+      if (!mod || (!platform.isMac && e.metaKey)) return
+      if (/^Digit[1-9]$/.test(e.code) && !e.shiftKey && !e.altKey) {
         e.preventDefault()
+        useWorkspace.getState().activateIndex(Number(e.code.slice(5)) - 1)
+        return
+      }
+      if (menuOwnsShortcuts) return
+      const key = comboKey(e)
+      const combo = `${e.shiftKey ? 'shift+' : ''}${e.altKey ? 'alt+' : ''}${key}`
+      const command = SHORTCUTS[combo] ?? (platform.isMac ? undefined : WINDOWS_SHORTCUTS[combo])
+      if (command && editorHandles(command)) {
+        e.preventDefault()
+        e.stopPropagation()
         void runCommand(command)
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [])
 
   // Browser-only drag & drop (inside the app, Tauri delivers dropped paths natively).

@@ -48,6 +48,7 @@ import type { EditorProps } from '../../App'
 import { FindBar, InspectorHeader, Workbench, formatZoom } from '../../components/Workbench'
 import { ColorField, IconButton, NumberField, Section, Segmented, SelectField } from '../../components/ui'
 import { usePinchZoom } from '../../lib/pinch'
+import { shortcut } from '../../lib/platform'
 import { registerEditor, useWorkspace } from '../../state/workspace'
 import './docx.css'
 
@@ -183,7 +184,7 @@ function DocxWorkbench({ tab, active, savedRevision }: EditorProps & { savedRevi
         <IconButton label="Zoom out (⌘−)" size="sm" onClick={zoom.zoomOut} disabled={!zoom.canZoomOut}>
           <Minus size={14} />
         </IconButton>
-        <button type="button" className="icon-btn sm readout" title="Fit to window (⌘0)" onClick={zoom.auto}>
+        <button type="button" className="icon-btn sm readout" title={shortcut('Fit to window (⌘0)')} onClick={zoom.auto}>
           {formatZoom(zoom.zoom)}
         </button>
         <IconButton label="Zoom in (⌘+)" size="sm" onClick={zoom.zoomIn} disabled={!zoom.canZoomIn}>

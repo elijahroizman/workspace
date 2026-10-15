@@ -57,6 +57,22 @@ fn enable_spell_checking() {
     }
 }
 
+/// WebView2 runs browser shortcuts before the page can stop them: Ctrl+R and F5 reload the
+/// app (losing unsaved work), Ctrl+F opens Edge's find bar. Turn those off; the page still gets
+/// every key, and editing keys (copy, paste, undo) keep working.
+#[cfg(windows)]
+fn disable_browser_shortcuts(window: &tauri::WebviewWindow) {
+    let _ = window.with_webview(|webview| unsafe {
+        use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+        use windows_core::Interface;
+        let Ok(core) = webview.controller().CoreWebView2() else { return };
+        let Ok(settings) = core.Settings() else { return };
+        if let Ok(settings) = settings.cast::<ICoreWebView2Settings3>() {
+            let _ = settings.SetAreBrowserAcceleratorKeysEnabled(false);
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(target_os = "macos")]
@@ -73,7 +89,16 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(PendingOpens(Mutex::new(cli_paths)))
+        .setup(|_app| {
+            #[cfg(windows)]
+            if let Some(window) = _app.get_webview_window("main") {
+                disable_browser_shortcuts(&window);
+            }
+            Ok(())
+        })
         .menu(menu::build)
         .on_menu_event(|app, event| {
             let _ = app.emit("menu", event.id().0.as_str());
