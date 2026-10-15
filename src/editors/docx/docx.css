@@ -1,0 +1,128 @@
+.docx-viewport {
+  flex: 1;
+  min-height: 0;
+  background: var(--canvas);
+}
+
+.docx-font-row {
+  display: grid;
+  grid-template-columns: 1fr 84px;
+  gap: 8px;
+}
+
+.toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--field);
+}
+
+.toggle-row .icon-btn {
+  flex: 1;
+  min-width: 0;
+}
+
+.highlight-swatches {
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+}
+
+.highlight-swatches .swatch {
+  width: 18px;
+  height: 18px;
+}
+
+.insert-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.field-caption {
+  font-size: 12px;
+  color: var(--fg-faint);
+  margin-top: 2px;
+}
+
+.table-grid-wrap {
+  padding: 8px;
+  border-radius: var(--radius);
+  background: var(--field);
+  display: flex;
+  justify-content: center;
+}
+
+.docx-color-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.highlight-swatches {
+  flex-wrap: nowrap;
+  gap: 5px;
+}
+
+/* The packaged table picker, re-skinned for the inspector. */
+.table-grid-wrap {
+  --doc-border: var(--line);
+  --doc-surface: var(--raised);
+  --doc-primary: var(--accent);
+  --doc-text-muted: var(--fg-muted);
+}
+
+.table-grid-wrap .docx-menubar__grid {
+  padding: 0;
+}
+
+.table-grid-wrap .docx-menubar__grid-cell {
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  border-color: var(--line);
+  background: var(--raised);
+}
+
+.table-grid-wrap .docx-menubar__grid-cell[data-filled] {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.table-grid-wrap .docx-menubar__grid-caption {
+  color: var(--fg-muted);
+}
+
+/* The image trigger carries the editor's own toolbar class; ours wins. */
+.insert-grid .tool-btn.docx-toolbar__button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: auto;
+  height: 54px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--field);
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.insert-grid .tool-btn.docx-toolbar__button:hover {
+  color: var(--fg);
+  background: var(--field-hover);
+}
+
+@media print {
+  .docx-print-page {
+    display: block !important;
+  }
+  .docx-print-page .docx-hf--placeholder {
+    display: none;
+  }
+}

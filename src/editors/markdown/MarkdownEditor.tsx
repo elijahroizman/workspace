@@ -1,0 +1,381 @@
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { languages } from '@codemirror/language-data'
+import { openSearchPanel, search, searchKeymap } from '@codemirror/search'
+import { EditorState } from '@codemirror/state'
+import { drawSelection, EditorView, highlightActiveLine, keymap, placeholder } from '@codemirror/view'
+import { tags } from '@lezer/highlight'
+import { BookOpen, Columns2, Minus, Plus, SquarePen } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { EditorProps } from '../../App'
+import { FindBar, InspectorHeader, Workbench, formatZoom } from '../../components/Workbench'
+import { IconButton, Section, Segmented } from '../../components/ui'
+import { kindFromPath } from '../../lib/kinds'
+import * as platform from '../../lib/platform'
+import { getEditor, registerEditor, useWorkspace } from '../../state/workspace'
+import type { Heading } from './render'
+import { renderMarkdown, stats } from './render'
+import './markdown.css'
+
+type Mode = 'preview' | 'split' | 'source'
+
+const NEW_NOTE = '# Untitled\n\n'
+
+const highlight = HighlightStyle.define([
+  { tag: tags.heading1, fontSize: '1.45em', fontWeight: '700' },
+  { tag: tags.heading2, fontSize: '1.25em', fontWeight: '700' },
+  { tag: tags.heading3, fontSize: '1.1em', fontWeight: '650' },
+  { tag: [tags.heading4, tags.heading5, tags.heading6], fontWeight: '650' },
+  { tag: tags.strong, fontWeight: '700' },
+  { tag: tags.emphasis, fontStyle: 'italic' },
+  { tag: tags.strikethrough, textDecoration: 'line-through' },
+  { tag: [tags.link, tags.url], color: 'var(--accent)' },
+  { tag: tags.monospace, fontFamily: 'var(--font-mono)', color: 'var(--md-code)' },
+  { tag: [tags.processingInstruction, tags.meta, tags.contentSeparator], color: 'var(--fg-faint)' },
+  { tag: tags.quote, color: 'var(--fg-muted)', fontStyle: 'italic' },
+  { tag: [tags.keyword, tags.operator], color: '#c678dd' },
+  { tag: [tags.string, tags.special(tags.string)], color: '#98c379' },
+  { tag: [tags.number, tags.bool, tags.atom], color: '#d19a66' },
+  { tag: tags.comment, color: 'var(--fg-faint)', fontStyle: 'italic' },
+  { tag: [tags.function(tags.variableName), tags.propertyName], color: '#61afef' },
+])
+
+export default function MarkdownEditor({ tab, active }: EditorProps) {
+  const initial = useMemo(() => (tab.bytes ? decode(tab.bytes) : NEW_NOTE), [tab.bytes])
+  const [text, setText] = useState(initial)
+  const [mode, setMode] = useState<Mode>(tab.bytes ? 'preview' : 'split')
+  const [zoom, setZoom] = useState(1)
+  const [rendered, setRendered] = useState(() => renderMarkdown(initial))
+  const [activeSlug, setActiveSlug] = useState<string | null>(null)
+  const [findOpen, setFindOpen] = useState(false)
+  const [findState, setFindState] = useState<{ count: number; current: number } | null>(null)
+  const savedText = useRef(initial)
+  const textRef = useRef(initial)
+  const viewRef = useRef<EditorView | null>(null)
+  const sourceHost = useRef<HTMLDivElement>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
+  const findQuery = useRef('')
+  const markDirty = useWorkspace((s) => s.markDirty)
+
+  // Re-render the preview shortly after typing stops.
+  useEffect(() => {
+    const t = setTimeout(() => setRendered(renderMarkdown(text)), text.length > 200_000 ? 300 : 60)
+    return () => clearTimeout(t)
+  }, [text])
+
+  const onDocChange = useCallback(
+    (next: string) => {
+      textRef.current = next
+      setText(next)
+      markDirty(tab.id, next !== savedText.current)
+    },
+    [markDirty, tab.id],
+  )
+
+  // CodeMirror lives as long as the tab; it's hidden rather than destroyed in preview mode.
+  useEffect(() => {
+    if (!sourceHost.current) return
+    const view = new EditorView({
+      parent: sourceHost.current,
+      state: EditorState.create({
+        doc: textRef.current,
+        extensions: [
+          history(),
+          drawSelection(),
+          highlightActiveLine(),
+          search({ top: true }),
+          keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
+          markdown({ base: markdownLanguage, codeLanguages: languages }),
+          syntaxHighlighting(highlight),
+          EditorView.lineWrapping,
+          placeholder('Start writing…'),
+          EditorView.contentAttributes.of({ spellcheck: 'true', autocorrect: 'on', autocapitalize: 'sentences' }),
+          EditorView.updateListener.of((u) => {
+            if (u.docChanged) onDocChange(u.state.doc.toString())
+          }),
+          EditorView.domEventHandlers({
+            scroll: () => syncPreviewToSource(),
+          }),
+        ],
+      }),
+    })
+    viewRef.current = view
+    return () => view.destroy()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (active && mode !== 'preview') viewRef.current?.focus()
+  }, [active, mode])
+
+  /** Keep the preview roughly aligned with the editor in split view. */
+  const syncPreviewToSource = () => {
+    const view = viewRef.current
+    const preview = previewRef.current
+    if (!view || !preview || preview.offsetParent === null) return
+    const top = view.lineBlockAtHeight(view.scrollDOM.scrollTop)
+    const line = view.state.doc.lineAt(top.from).number - 1
+    const blocks = Array.from(preview.querySelectorAll<HTMLElement>('[data-line]'))
+    let target: HTMLElement | undefined
+    for (const block of blocks) {
+      if (Number(block.dataset.line) <= line) target = block
+      else break
+    }
+    preview.scrollTop = target ? target.offsetTop - 24 : 0
+  }
+
+  // Track which heading is on screen to highlight it in the outline.
+  useEffect(() => {
+    const preview = previewRef.current
+    if (!preview || mode === 'source') return
+    const onScroll = () => {
+      let current: string | null = null
+      for (const h of preview.querySelectorAll<HTMLElement>('h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]')) {
+        if (h.offsetTop - preview.scrollTop < 80) current = h.id
+        else break
+      }
+      setActiveSlug(current)
+    }
+    onScroll()
+    preview.addEventListener('scroll', onScroll, { passive: true })
+    return () => preview.removeEventListener('scroll', onScroll)
+  }, [mode, rendered])
+
+  // Relative images resolve against the file's folder.
+  useEffect(() => {
+    const preview = previewRef.current
+    if (!preview || !tab.path || tab.path.startsWith('browser:')) return
+    const dir = platform.dirname(tab.path)
+    const urls: string[] = []
+    for (const img of preview.querySelectorAll('img')) {
+      const src = img.getAttribute('src') ?? ''
+      if (!src || /^(https?:|data:|blob:)/i.test(src)) continue
+      const path = src.startsWith('/') ? src : platform.joinPath(dir, decodeURI(src))
+      void platform
+        .readFile(path)
+        .then((bytes) => {
+          const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: mimeFor(path) }))
+          urls.push(url)
+          img.src = url
+        })
+        .catch(() => img.classList.add('missing'))
+    }
+    return () => urls.forEach(URL.revokeObjectURL)
+  }, [rendered, tab.path])
+
+  const onPreviewClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement
+    const link = target.closest('a')
+    if (!link) return
+    const href = link.getAttribute('href') ?? ''
+    e.preventDefault()
+    if (href.startsWith('#')) {
+      previewRef.current?.querySelector(`#${CSS.escape(decodeURIComponent(href.slice(1)))}`)?.scrollIntoView({ behavior: 'smooth' })
+    } else if (/^(https?:|mailto:)/i.test(href)) {
+      void platform.openExternal(href)
+    } else if (tab.path && kindFromPath(href.split('#')[0])) {
+      // Links to other documents open as tabs.
+      void useWorkspace.getState().openPaths([platform.joinPath(platform.dirname(tab.path), decodeURI(href.split('#')[0]))])
+    }
+  }
+
+  const goToHeading = (h: Heading) => {
+    if (mode !== 'source') {
+      const el = previewRef.current?.querySelector<HTMLElement>(`#${CSS.escape(h.slug)}`)
+      if (el && previewRef.current) previewRef.current.scrollTo({ top: el.offsetTop - 20, behavior: 'smooth' })
+    }
+    const view = viewRef.current
+    if (view && mode !== 'preview') {
+      const line = view.state.doc.line(Math.min(h.line + 1, view.state.doc.lines))
+      view.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: 'start', yMargin: 20 }) })
+      view.focus()
+    }
+  }
+
+  // ── Find in preview (the source editor uses CodeMirror's own search panel).
+  const runFind = (query: string, backwards = false) => {
+    findQuery.current = query
+    const preview = previewRef.current
+    if (!preview || !query) {
+      setFindState(null)
+      return
+    }
+    const haystack = preview.innerText.toLowerCase()
+    const needle = query.toLowerCase()
+    let count = 0
+    for (let i = haystack.indexOf(needle); i !== -1; i = haystack.indexOf(needle, i + needle.length)) count++
+    // window.find is non-standard but supported by WebKit; it selects and scrolls to the match.
+    const find = (window as unknown as { find?: (...args: unknown[]) => boolean }).find
+    if (count && find) {
+      if (!preview.contains(window.getSelection()?.anchorNode ?? null)) {
+        const range = document.createRange()
+        range.setStart(preview, 0)
+        range.collapse(true)
+        window.getSelection()?.removeAllRanges()
+        window.getSelection()?.addRange(range)
+      }
+      find(query, false, backwards, true, false, false, false)
+    }
+    setFindState({ count, current: currentMatchIndex(preview, needle) })
+  }
+
+  useEffect(
+    () =>
+      registerEditor(tab.id, {
+        getBytes: async () => new TextEncoder().encode(textRef.current),
+        markSaved: () => {
+          savedText.current = textRef.current
+        },
+        find: () => {
+          if (mode === 'source' && viewRef.current) openSearchPanel(viewRef.current)
+          else setFindOpen(true)
+        },
+        zoom: (dir) => setZoom((z) => (dir === 'reset' ? 1 : Math.min(2, Math.max(0.6, z + (dir === 'in' ? 0.1 : -0.1))))),
+        print: async () => {
+          const root = document.getElementById('print-root')!
+          // Reuse the live preview so images already resolved from disk come along.
+          const html = previewRef.current?.querySelector('article')?.innerHTML ?? renderMarkdown(textRef.current).html
+          root.innerHTML = `<article class="md-body md-print">${html}</article>`
+          await waitForImages(root)
+          window.print()
+        },
+      }),
+    [tab.id, mode],
+  )
+
+  const s = useMemo(() => stats(text), [text])
+  const headings = rendered.headings
+
+  const outline =
+    headings.length === 0 ? (
+      <div className="empty-hint">Headings will appear here as an outline.</div>
+    ) : (
+      <nav className="list" aria-label="Outline">
+        {headings.map((h, i) => (
+          <button
+            key={i}
+            type="button"
+            className={`list-item outline-item ${activeSlug === h.slug ? 'active' : ''}`}
+            style={{ paddingLeft: 8 + (h.level - Math.min(...headings.map((x) => x.level))) * 14 }}
+            onClick={() => goToHeading(h)}
+          >
+            <span className="label" style={{ fontWeight: h.level <= 2 ? 550 : 400 }}>
+              {h.text || 'Untitled'}
+            </span>
+          </button>
+        ))}
+      </nav>
+    )
+
+  const inspector = (
+    <>
+      <InspectorHeader kind="md">Markdown</InspectorHeader>
+      <Section title="View">
+        <ModeSwitch mode={mode} setMode={setMode} labels />
+      </Section>
+      <Section title="Document">
+        <dl className="stats">
+          <dt>Words</dt>
+          <dd>{s.words.toLocaleString()}</dd>
+          <dt>Characters</dt>
+          <dd>{s.characters.toLocaleString()}</dd>
+          <dt>Lines</dt>
+          <dd>{s.lines.toLocaleString()}</dd>
+          <dt>Reading time</dt>
+          <dd>{s.minutes} min</dd>
+          <dt>Headings</dt>
+          <dd>{headings.length}</dd>
+        </dl>
+      </Section>
+      <Section title="Export">
+        <button type="button" className="btn block" onClick={() => void useWorkspace.getState().save(tab.id, { saveAs: true })}>
+          Save a copy…
+        </button>
+        <button type="button" className="btn block" onClick={() => void runPrint(tab.id)}>
+          Print or save as PDF…
+        </button>
+      </Section>
+    </>
+  )
+
+  return (
+    <Workbench tab={tab} left={outline} leftFooter={<span>{s.words.toLocaleString()} words · {s.minutes} min read</span>} right={inspector}>
+      <div className={`md-split mode-${mode}`} style={{ ['--md-zoom' as string]: zoom }}>
+        <div className="md-source" ref={sourceHost} />
+        <div className="md-preview" ref={previewRef} onClick={onPreviewClick}>
+          <article className="md-body" dangerouslySetInnerHTML={{ __html: rendered.html }} />
+        </div>
+      </div>
+      <FindBar
+        open={findOpen}
+        onClose={() => setFindOpen(false)}
+        onQuery={(q) => runFind(q)}
+        onNext={() => runFind(findQuery.current)}
+        onPrev={() => runFind(findQuery.current, true)}
+        count={findState?.count ?? null}
+        current={findState?.current ?? null}
+      />
+      <div className="canvas-bar">
+        <ModeSwitch mode={mode} setMode={setMode} />
+        <span className="sep" />
+        <IconButton label="Zoom out (⌘−)" size="sm" onClick={() => setZoom((z) => Math.max(0.6, z - 0.1))}>
+          <Minus size={14} />
+        </IconButton>
+        <button type="button" className="icon-btn sm readout" title="Actual size (⌘0)" onClick={() => setZoom(1)}>
+          {formatZoom(zoom)}
+        </button>
+        <IconButton label="Zoom in (⌘+)" size="sm" onClick={() => setZoom((z) => Math.min(2, z + 0.1))}>
+          <Plus size={14} />
+        </IconButton>
+      </div>
+    </Workbench>
+  )
+}
+
+function ModeSwitch({ mode, setMode, labels }: { mode: Mode; setMode: (m: Mode) => void; labels?: boolean }) {
+  return (
+    <Segmented
+      value={mode}
+      onChange={setMode}
+      options={[
+        { value: 'preview', icon: <BookOpen size={14} />, label: labels ? 'Read' : undefined, title: 'Read' },
+        { value: 'split', icon: <Columns2 size={14} />, label: labels ? 'Split' : undefined, title: 'Edit with preview' },
+        { value: 'source', icon: <SquarePen size={14} />, label: labels ? 'Write' : undefined, title: 'Edit source' },
+      ]}
+    />
+  )
+}
+
+async function runPrint(tabId: string) {
+  await getEditor(tabId)?.print?.()
+}
+
+function decode(bytes: Uint8Array) {
+  return new TextDecoder('utf-8').decode(bytes).replace(/^﻿/, '')
+}
+
+function mimeFor(path: string) {
+  const ext = path.split('.').pop()?.toLowerCase()
+  return ext === 'svg' ? 'image/svg+xml' : ext === 'jpg' ? 'image/jpeg' : `image/${ext}`
+}
+
+function currentMatchIndex(root: HTMLElement, needle: string) {
+  const sel = window.getSelection()
+  if (!sel || !sel.rangeCount || !root.contains(sel.anchorNode)) return 0
+  const range = document.createRange()
+  range.setStart(root, 0)
+  range.setEnd(sel.getRangeAt(0).startContainer, sel.getRangeAt(0).startOffset)
+  const before = range.toString().toLowerCase()
+  let n = 0
+  for (let i = before.indexOf(needle); i !== -1; i = before.indexOf(needle, i + needle.length)) n++
+  return n
+}
+
+function waitForImages(root: HTMLElement) {
+  return Promise.all(
+    Array.from(root.querySelectorAll('img')).map(
+      (img) => img.complete || new Promise((r) => ((img.onload = r), (img.onerror = r))),
+    ),
+  )
+}

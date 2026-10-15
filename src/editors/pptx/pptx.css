@@ -1,0 +1,165 @@
+:root {
+  --presentation-selection: var(--accent);
+}
+
+.deck-root {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.deck-viewport {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  padding: 48px 48px 88px;
+}
+
+/* margin:auto centers the slide while still letting a zoomed-in slide scroll from its edge */
+.deck-slide {
+  margin: auto;
+  flex: none;
+}
+
+.deck-slide > * {
+  box-shadow: var(--page-shadow);
+}
+
+.deck-loading {
+  position: absolute;
+  inset: 0;
+}
+
+.slide-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 10px 24px 4px;
+  outline: none;
+}
+
+.slide-item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.slide-item.dragging {
+  opacity: 0.5;
+}
+
+.slide-item.drop-before::before,
+.slide-item.drop-after::after {
+  content: '';
+  position: absolute;
+  left: 24px;
+  right: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.slide-item.drop-before::before {
+  top: -2px;
+}
+
+.slide-item.drop-after::after {
+  bottom: -2px;
+}
+
+.slide-number {
+  width: 18px;
+  flex: none;
+  text-align: right;
+  font-size: 11.5px;
+  color: var(--fg-faint);
+  padding-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.slide-thumb {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  outline: none;
+  box-shadow: 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+
+.slide-thumb[aria-selected='true'] {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.slide-item:has(.slide-thumb[aria-selected='true']) .slide-number {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.slide-thumb-preview {
+  display: block;
+  width: 100%;
+  background: #fff;
+}
+
+.hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.node-name {
+  font-size: 12px;
+  margin-top: -4px;
+}
+
+/* Slideshow */
+.present {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: #000;
+  display: flex;
+  cursor: none;
+}
+
+.present:hover {
+  cursor: default;
+}
+
+.present-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.present-hud {
+  position: absolute;
+  right: 20px;
+  bottom: 16px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.present:hover .present-hud {
+  opacity: 1;
+}
+
+@media print {
+  .pptx-print-page {
+    height: 100vh;
+  }
+  .pptx-print-frame {
+    position: relative;
+    overflow: hidden;
+  }
+}
