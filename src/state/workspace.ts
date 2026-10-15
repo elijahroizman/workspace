@@ -168,6 +168,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
 
     openPaths: async (paths) => {
       const failures: string[] = []
+      const opened: DocTab[] = []
       for (const path of paths) {
         const existing = get().tabs.find((t) => t.path === path)
         if (existing) {
@@ -179,14 +180,20 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
           failures.push(`“${platform.basename(path)}” isn't a file type Workspace opens (Word, PowerPoint, PDF or Markdown).`)
           continue
         }
+        if (opened.some((t) => t.path === path)) continue
         try {
           const bytes = await platform.readFile(path)
-          addTab({ id: newId(), kind, title: stripExtension(platform.basename(path)), path, bytes, loadId: 0, dirty: false })
-          addRecent(path, kind)
+          opened.push({ id: newId(), kind, title: stripExtension(platform.basename(path)), path, bytes, loadId: 0, dirty: false })
         } catch (err) {
           failures.push(String(err))
           if (!(await platform.pathExists(path))) get().removeRecent(path)
         }
+      }
+      // Add them in one go, so only the last one is shown. The others load when first opened
+      // (see EditorSlot), which keeps a restored session from loading every document at launch.
+      for (const tab of opened) {
+        addTab(tab)
+        addRecent(tab.path!, tab.kind)
       }
       if (failures.length) void platform.showError(failures.join('\n\n'))
     },

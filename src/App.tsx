@@ -1,4 +1,4 @@
-import { Component, lazy, memo, Suspense, useEffect, useRef } from 'react'
+import { Component, lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
 import type { ComponentType, ErrorInfo, ReactNode } from 'react'
 import { Home } from './components/Home'
 import { TitleBar } from './components/TitleBar'
@@ -44,16 +44,25 @@ class EditorBoundary extends Component<{ name: string; children: ReactNode }, { 
   }
 }
 
-/** One tab's editor. Memoized so switching tabs only re-renders the two tabs involved. */
+/**
+ * One tab's editor. Memoized so switching tabs only re-renders the two tabs involved.
+ * A tab's editor loads the first time the tab is shown: tabs restored from the last session or
+ * opened in the background cost nothing (a large document can take hundreds of MB in WebKit)
+ * until you look at them. After that it stays loaded, so switching back is instant.
+ */
 const EditorSlot = memo(function EditorSlot({ tab, active }: EditorProps) {
   const Editor = EDITORS[tab.kind]
+  const [shown, setShown] = useState(active)
+  if (active && !shown) setShown(true)
   return (
     <div className="view" data-active={active} inert={!active}>
-      <EditorBoundary key={tab.loadId} name={tab.title}>
-        <Suspense fallback={<CenterState spinner />}>
-          <Editor key={tab.loadId} tab={tab} active={active} />
-        </Suspense>
-      </EditorBoundary>
+      {shown && (
+        <EditorBoundary key={tab.loadId} name={tab.title}>
+          <Suspense fallback={<CenterState spinner />}>
+            <Editor key={tab.loadId} tab={tab} active={active} />
+          </Suspense>
+        </EditorBoundary>
+      )}
     </div>
   )
 })
