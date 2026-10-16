@@ -132,6 +132,12 @@ export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer({ store, p
     update()
   }, [layout, update])
 
+  // A zoom that left the layout as it was (already at 800%, the same fit) has nothing to restore.
+  // Runs after the effect above, so a real change has used its anchor by now.
+  useLayoutEffect(() => {
+    pendingAnchor.current = null
+  }, [zoomState])
+
   // When pages change shape (rotate, delete…), keep the page at the top of the window steady.
   const prevPages = useRef(pages)
   if (prevPages.current !== pages) {

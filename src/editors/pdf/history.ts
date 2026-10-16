@@ -35,8 +35,10 @@ export class History {
     try {
       await step.undo()
     } catch (err) {
-      // Can't be undone any more (say, its page was deleted); drop it.
+      // Can't be undone any more (say, its page was deleted); drop it. Its change may still be
+      // in the document, so no step counts as the saved state any more.
       console.warn(err)
+      this.savedId = -1
       return false
     }
     this.undone.push(step)
@@ -50,6 +52,7 @@ export class History {
       await step.redo()
     } catch (err) {
       console.warn(err)
+      this.savedId = -1
       return false
     }
     this.done.push(step)

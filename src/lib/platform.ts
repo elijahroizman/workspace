@@ -138,6 +138,42 @@ function pickFilesInBrowser(): Promise<OpenedFile[]> {
   })
 }
 
+const IMAGE_TYPES: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  heic: 'image/heic',
+  svg: 'image/svg+xml',
+}
+
+/** Ask for pictures. Resolves to none when cancelled. */
+export async function pickImages({ multiple = false } = {}): Promise<File[]> {
+  if (!isTauri) {
+    return new Promise((resolve) => {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.multiple = multiple
+      input.accept = Object.values(IMAGE_TYPES).join(',')
+      input.onchange = () => resolve(Array.from(input.files ?? []))
+      input.oncancel = () => resolve([])
+      input.click()
+    })
+  }
+  const { open } = await dialog()
+  const picked = await open({ multiple, directory: false, filters: [{ name: 'Images', extensions: Object.keys(IMAGE_TYPES) }] })
+  if (!picked) return []
+  const paths = Array.isArray(picked) ? picked : [picked]
+  return Promise.all(
+    paths.map(async (path) => {
+      const name = basename(path)
+      const type = IMAGE_TYPES[name.split('.').pop()!.toLowerCase()] ?? ''
+      return new File([(await readFile(path)) as Uint8Array<ArrayBuffer>], name, { type })
+    }),
+  )
+}
+
 export async function fileToOpened(file: File): Promise<OpenedFile> {
   const bytes = new Uint8Array(await file.arrayBuffer())
   const path = `browser:/${crypto.randomUUID()}/${file.name}`

@@ -153,18 +153,20 @@ export function Thumbnails({
     }
     const up = () => {
       cancelAnimationFrame(auto)
-      el.removeEventListener('pointermove', move)
-      el.removeEventListener('pointerup', up)
-      el.removeEventListener('pointercancel', up)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
       setDrag(null)
       if (dragging) {
         const to = target > index ? target - 1 : target
         if (to !== index) onMove(index, to)
       }
     }
-    el.addEventListener('pointermove', move)
-    el.addEventListener('pointerup', up)
-    el.addEventListener('pointercancel', up)
+    // On window: auto-scroll can take the dragged thumbnail out of the list, and its own
+    // listeners would go with it.
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
   }
 
   const items = []

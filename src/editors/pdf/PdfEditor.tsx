@@ -188,8 +188,8 @@ export default function PdfEditor({ tab, active }: EditorProps) {
   const touch = (key: number) => storeRef.current?.touch(indexOfKey(key))
   const setDocPages = (p: PageInfo[]) => storeRef.current!.setPages(p)
 
-  const undo = useCallback(() => run(async () => void ((await history.current.undo()) && refreshDirty())), [run, refreshDirty])
-  const redo = useCallback(() => run(async () => void ((await history.current.redo()) && refreshDirty())), [run, refreshDirty])
+  const undo = useCallback(() => run(async () => void (await history.current.undo(), refreshDirty())), [run, refreshDirty])
+  const redo = useCallback(() => run(async () => void (await history.current.redo(), refreshDirty())), [run, refreshDirty])
 
   // ── Page operations: in place in PDFium, so they're instant even on big files.
   const keyAt = (index: number) => storeRef.current!.pages[index].key
@@ -479,7 +479,7 @@ export default function PdfEditor({ tab, active }: EditorProps) {
   // Image tool: pick a picture, drop it in the middle of the current page, selected so it can be moved.
   const placeImage = async () => {
     const s = storeRef.current
-    const file = (await pickImage())[0]
+    const file = (await platform.pickImages())[0]
     setTool('select')
     if (!s || !file) return
     try {
@@ -994,17 +994,6 @@ function formatBytes(n: number) {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`
   return `${(n / 1024 / 1024).toFixed(1)} MB`
-}
-
-function pickImage(): Promise<File[]> {
-  return new Promise((resolve) => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/png,image/jpeg,image/gif,image/webp,image/heic,image/svg+xml'
-    input.onchange = () => resolve(Array.from(input.files ?? []))
-    input.oncancel = () => resolve([])
-    input.click()
-  })
 }
 
 /** PNG and JPEG go into the PDF as they are; anything else is converted to PNG. */

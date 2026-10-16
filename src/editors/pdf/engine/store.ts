@@ -150,7 +150,9 @@ export class DocStore {
           if (!isCancelled(err)) console.warn(err)
           return null
         })
-        .finally(() => this.thumbJobs.delete(job))
+        .finally(() => forget())
+      const forget = () => this.thumbJobs.get(job) === pending && this.thumbJobs.delete(job)
+      signal.addEventListener('abort', forget, { once: true })
       this.thumbJobs.set(job, pending)
     }
     return pending
