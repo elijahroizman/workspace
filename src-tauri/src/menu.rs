@@ -127,6 +127,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             .about(Some(about))
             .separator()
             .item(&item(app, "settings", "Settings…", Some("CmdOrCtrl+,"))?)
+            .item(&item(app, "check-updates", "Check for Updates…", None)?)
             .separator()
             .services()
             .separator()
@@ -140,7 +141,11 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         vec![app_menu, file_menu, edit_menu, view_menu, window_menu]
     } else {
         // No app menu: its Hide item would make the window vanish with no way back on Windows.
-        let help_menu = SubmenuBuilder::new(app, "Help").about(Some(about)).build()?;
+        let help_menu = SubmenuBuilder::new(app, "Help")
+            .item(&item(app, "check-updates", "Check for Updates…", None)?)
+            .separator()
+            .about(Some(about))
+            .build()?;
         vec![file_menu, edit_menu, view_menu, window_menu, help_menu]
     };
     let refs: Vec<&dyn tauri::menu::IsMenuItem<R>> = menus.iter().map(|m| m as &dyn tauri::menu::IsMenuItem<R>).collect();

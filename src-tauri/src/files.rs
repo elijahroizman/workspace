@@ -60,7 +60,7 @@ pub async fn fetch_bytes(url: String) -> Result<Response, String> {
 /// `https://` connection unless the agent explicitly selects `NativeTls`.
 /// The timeout keeps a stalled download from blocking the video insert, which
 /// waits for the poster.
-fn http_agent() -> &'static ureq::Agent {
+pub(crate) fn http_agent() -> &'static ureq::Agent {
     static AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
         ureq::Agent::config_builder()
             .tls_config(

@@ -5,6 +5,7 @@ mod files;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod launch_services;
 mod menu;
+mod update;
 
 use std::sync::Mutex;
 
@@ -82,6 +83,9 @@ fn disable_browser_shortcuts(window: &tauri::WebviewWindow) {
 pub fn run() {
     #[cfg(target_os = "macos")]
     enable_spell_checking();
+    // Captured before an update moves this bundle aside. See `relaunch_in_place`.
+    #[cfg(target_os = "macos")]
+    update::remember_bundle();
 
     let cli_paths: Vec<String> = std::env::args()
         .skip(1)
@@ -130,6 +134,8 @@ pub fn run() {
             cloud::ensure_dir,
             take_pending_opens,
             quit_app,
+            update::latest_release,
+            update::relaunch_in_place,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Workspace");
