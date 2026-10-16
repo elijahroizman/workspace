@@ -1,7 +1,10 @@
+import type { PdfAnnotationObject } from '@embedpdf/models'
+import { PdfAnnotationSubtype, PdfBlendMode, PdfStandardFont, PdfTextAlignment, PdfVerticalAlignment } from '@embedpdf/models'
 import {
   ArrowDownToLine,
   ArrowUpToLine,
   Copy,
+  FileOutput,
   FilePlus2,
   Highlighter,
   ImagePlus,
@@ -10,340 +13,273 @@ import {
   MoveHorizontal,
   PenLine,
   Plus,
+  Redo2,
   RotateCcw,
   RotateCw,
   Scaling,
   Trash2,
   Type,
-  FileOutput,
+  Undo2,
 } from 'lucide-react'
-import type { PDFDocumentProxy } from 'pdfjs-dist'
-import * as pdfjs from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { EventBus, PDFFindController, PDFLinkService, PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs'
-import 'pdfjs-dist/web/pdf_viewer.css'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorProps } from '../../App'
 import { FindBar, InspectorHeader, Workbench, formatZoom } from '../../components/Workbench'
 import type { MenuEntry } from '../../components/ui'
 import { CenterState, IconButton, PopoverMenu, Section, Segmented } from '../../components/ui'
-import { wheelZoomFactor } from '../../lib/pinch'
 import * as platform from '../../lib/platform'
 import { registerEditor, useWorkspace } from '../../state/workspace'
-import * as pages from './pages'
+import { isCancelled, PdfEngine, Priority } from './engine/client'
+import type { Box, DocMeta, OutlineItem, PageInfo } from './engine/protocol'
+import { DocStore, drawBitmap } from './engine/store'
+import { History } from './history'
 import { Outline, Thumbnails } from './Sidebar'
+import type { AnnotationActions, Stroke } from './viewer/layers'
+import { AnnotationLayer, DrawLayer, InkPreview, SearchLayer, selectedCharacters, TextDraft, TextLayer, TextToolLayer } from './viewer/layers'
+import type { PageSlot, ViewerHandle } from './viewer/Viewer'
+import { Viewer } from './viewer/Viewer'
 import './pdf.css'
-
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
-
-const ASSETS = import.meta.env.DEV ? '/node_modules/pdfjs-dist/' : '/pdfjs/'
-const { AnnotationEditorType: Tool, AnnotationEditorParamsType: Param } = pdfjs
-
-/** Zooming stretches the drawn pages at once; pdf.js redraws them sharp this long after the last step. */
-const ZOOM_REDRAW_DELAY = 250
 
 const HIGHLIGHT_COLORS = ['#FFFF98', '#53FFBC', '#80EBFF', '#FFCBE6', '#FF4F5F']
 const INK_COLORS = ['#000000', '#E5484D', '#2F6FED', '#1F9D55', '#F5A524']
+/** Drawing pauses longer than this finish the drawing (strokes before it become one annotation). */
+const INK_IDLE_MS = 1200
+/** Background tabs let go of their page drawings after this long. */
+const SLEEP_AFTER_MS = 30_000
 
 type ToolId = 'select' | 'highlight' | 'text' | 'draw' | 'image'
-const TOOLS: { id: ToolId; mode: number; label: string; icon: React.ReactNode; hint: string }[] = [
-  { id: 'select', mode: Tool.NONE, label: 'Select', icon: <MousePointer2 size={15} />, hint: 'Select text and annotations' },
-  { id: 'highlight', mode: Tool.HIGHLIGHT, label: 'Highlight', icon: <Highlighter size={15} />, hint: 'Select text to highlight it' },
-  { id: 'text', mode: Tool.FREETEXT, label: 'Text', icon: <Type size={15} />, hint: 'Click on a page to add text' },
-  { id: 'draw', mode: Tool.INK, label: 'Draw', icon: <PenLine size={15} />, hint: 'Draw freehand on a page, or sign your name' },
-  { id: 'image', mode: Tool.STAMP, label: 'Image', icon: <ImagePlus size={15} />, hint: 'Place an image on a page' },
+const TOOLS: { id: ToolId; label: string; icon: React.ReactNode; hint: string }[] = [
+  { id: 'select', label: 'Select', icon: <MousePointer2 size={15} />, hint: 'Select text and annotations' },
+  { id: 'highlight', label: 'Highlight', icon: <Highlighter size={15} />, hint: 'Select text to highlight it' },
+  { id: 'text', label: 'Text', icon: <Type size={15} />, hint: 'Click on a page to add text' },
+  { id: 'draw', label: 'Draw', icon: <PenLine size={15} />, hint: 'Draw freehand on a page, or sign your name' },
+  { id: 'image', label: 'Image', icon: <ImagePlus size={15} />, hint: 'Place an image on a page' },
 ]
 
-interface DocInfo {
-  title?: string
-  author?: string
-  producer?: string
-  version?: string
-  pageSize?: string
+interface FindState {
+  query: string
+  /** Matches per page key; each match is one or more boxes. */
+  hits: Map<number, Box[][]>
+  done: boolean
 }
 
-export default function PdfEditor({ tab, active }: EditorProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const viewerRef = useRef<PDFViewer | null>(null)
-  const busRef = useRef<EventBus | null>(null)
-  const linkRef = useRef<PDFLinkService | null>(null)
-  const docRef = useRef<PDFDocumentProxy | null>(null)
-  /** The PDF as of the last page operation (annotations live in pdf.js until saved). */
-  const bytesRef = useRef<Uint8Array>(tab.bytes ?? new Uint8Array())
-  const pageOpsDirty = useRef(false)
-  /** pdf.js only reports transitions, so remember whether annotations changed since load/save. */
-  const annotationsDirty = useRef(false)
+const toRect = (b: Box) => ({ origin: { x: b.x, y: b.y }, size: { width: b.w, height: b.h } })
+const union = (boxes: Box[]): Box => {
+  const x = Math.min(...boxes.map((b) => b.x))
+  const y = Math.min(...boxes.map((b) => b.y))
+  return { x, y, w: Math.max(...boxes.map((b) => b.x + b.w)) - x, h: Math.max(...boxes.map((b) => b.y + b.h)) - y }
+}
+const isEditable = (el: EventTarget | null) => el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
 
-  const [doc, setDoc] = useState<PDFDocumentProxy | null>(null)
+export default function PdfEditor({ tab, active }: EditorProps) {
+  const viewer = useRef<ViewerHandle>(null)
+  const storeRef = useRef<DocStore | null>(null)
+  const [store, setStore] = useState<DocStore | null>(null)
+  const [pages, setPages] = useState<PageInfo[]>([])
+  const [meta, setMeta] = useState<DocMeta>({})
   const [error, setError] = useState<string | null>(null)
-  const [password, setPassword] = useState<{ retry: boolean; submit: (pw: string) => void } | null>(null)
-  const [page, setPage] = useState(1)
-  const [scale, setScale] = useState(1)
+  const [password, setPassword] = useState<{ retry: boolean } | null>(null)
+  const [page, setPage] = useState(0)
+  const [zoom, setZoom] = useState(1)
   const [tool, setTool] = useState<ToolId>('select')
   const [highlightColor, setHighlightColor] = useState(HIGHLIGHT_COLORS[0])
   const [inkColor, setInkColor] = useState(INK_COLORS[0])
   const [inkThickness, setInkThickness] = useState(2)
   const [fontSize, setFontSize] = useState(12)
   const [sideTab, setSideTab] = useState<'pages' | 'outline'>('pages')
-  const [info, setInfo] = useState<DocInfo>({})
-  const [busy, setBusy] = useState(false)
   const [findOpen, setFindOpen] = useState(false)
-  const [matches, setMatches] = useState<{ current: number; total: number } | null>(null)
+  const [find, setFind] = useState<FindState | null>(null)
+  const [findIndex, setFindIndex] = useState(0)
   const [menu, setMenu] = useState<{ x: number; y: number; index: number } | null>(null)
-  const findQuery = useRef('')
+  const [selected, setSelected] = useState<{ key: number; id: string } | null>(null)
+  const [ink, setInk] = useState<{ key: number; strokes: Stroke[]; committing?: boolean } | null>(null)
+  const [draft, setDraft] = useState<{ key: number; x: number; y: number } | null>(null)
+  const [awake, setAwake] = useState(true)
+  const [, setHistoryVersion] = useState(0)
+  const history = useRef(new History())
+  const fieldsDirty = useRef(false)
+  const passwordRef = useRef('')
+  /** The document as last saved (or as opened), for reopening a suspended engine. */
+  const cleanBytes = useRef<Uint8Array | null>(null)
+  const lastWritten = useRef<Uint8Array | null>(null)
   const markDirty = useWorkspace((s) => s.markDirty)
 
   const refreshDirty = useCallback(() => {
-    markDirty(tab.id, pageOpsDirty.current || annotationsDirty.current)
+    markDirty(tab.id, history.current.dirty || fieldsDirty.current)
+    setHistoryVersion((v) => v + 1)
   }, [markDirty, tab.id])
 
-  // ── Viewer lifecycle (one per tab)
-  useEffect(() => {
-    const container = containerRef.current!
-    const eventBus = new EventBus()
-    const linkService = new PDFLinkService({ eventBus })
-    const findController = new PDFFindController({ eventBus, linkService })
-    const viewer = new PDFViewer({
-      container,
-      eventBus,
-      linkService,
-      findController,
-      annotationEditorMode: Tool.NONE,
-      annotationEditorHighlightColors: HIGHLIGHT_COLORS.map((c, i) => `${['yellow', 'green', 'blue', 'pink', 'red'][i]}=${c}`).join(','),
-      imageResourcesPath: `${ASSETS}web/images/`,
-      supportsPinchToZoom: true,
-      // Cap a single page bitmap at 16 MP; pdf.js draws a sharp detail layer for the visible
-      // area when zoomed in further, so nothing gets blurry.
-      maxCanvasPixels: 2 ** 24,
-    })
-    linkService.setViewer(viewer)
-    viewerRef.current = viewer
-    busRef.current = eventBus
-    linkRef.current = linkService
-
-    eventBus.on('pagechanging', (e: { pageNumber: number }) => setPage(e.pageNumber))
-    eventBus.on('scalechanging', (e: { scale: number }) => setScale(e.scale))
-    eventBus.on('updatefindmatchescount', (e: { matchesCount: { current: number; total: number } }) => setMatches(e.matchesCount))
-    eventBus.on('updatefindcontrolstate', (e: { matchesCount?: { current: number; total: number } }) => {
-      if (e.matchesCount) setMatches(e.matchesCount)
-    })
-    eventBus.on('annotationeditormodechanged', (e: { mode: number }) => {
-      const t = TOOLS.find((x) => x.mode === e.mode)
-      setTool(t?.id ?? 'select')
-    })
-
-    // Web links open in the default browser instead of a new webview window.
-    const onClick = (e: MouseEvent) => {
-      const a = (e.target as HTMLElement).closest('a')
-      const href = a?.getAttribute('href')
-      if (a && href && /^(https?:|mailto:)/i.test(href)) {
-        e.preventDefault()
-        e.stopPropagation()
-        void platform.openExternal(href)
-      }
-    }
-    container.addEventListener('click', onClick, true)
-
-    // Trackpad pinch: WebKit sends gesture events, Chromium sends ctrl+wheel. pdf.js scales the
-    // pages with CSS while the fingers move and re-renders once they stop (drawingDelay), which
-    // keeps pinching smooth on large documents. Events can outpace the screen, and each one
-    // re-lays out every page, so apply at most one zoom per frame.
-    let gestureStart = 1
-    let gestureActive = false
-    let pending: { factor: number; origin: [number, number] } | null = null
-    let frame = 0
-    const zoomBy = (factor: number, origin: [number, number]) => {
-      pending = { factor: (pending?.factor ?? 1) * factor, origin }
-      frame ||= requestAnimationFrame(() => {
-        frame = 0
-        if (!pending) return
-        const scaleFactor = Math.min(10, Math.max(0.1, viewer.currentScale * pending.factor)) / viewer.currentScale
-        viewer.updateScale({ drawingDelay: ZOOM_REDRAW_DELAY, scaleFactor, origin: pending.origin })
-        pending = null
-      })
-    }
-    const onGestureStart = (e: Event) => {
-      e.preventDefault()
-      gestureActive = true
-      gestureStart = viewer.currentScale
-    }
-    const onGestureChange = (e: Event) => {
-      e.preventDefault()
-      const ge = e as Event & { scale: number; clientX: number; clientY: number }
-      // Gesture scale is relative to the start; turn it into a step from where the zoom will be.
-      const target = gestureStart * ge.scale
-      const current = viewer.currentScale * (pending?.factor ?? 1)
-      zoomBy(target / current, [ge.clientX, ge.clientY])
-    }
-    const onGestureEnd = (e: Event) => {
-      e.preventDefault()
-      gestureActive = false
-    }
-    const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey || gestureActive) return
-      e.preventDefault()
-      zoomBy(wheelZoomFactor(e), [e.clientX, e.clientY])
-    }
-    // Re-fit "auto"/"page-width"/"page-fit" zoom when the canvas changes size: window resizes,
-    // sidebars toggling, or the tab first becoming visible after loading in the background.
-    let lastWidth = container.clientWidth
-    const resize = new ResizeObserver(() => {
-      const width = container.clientWidth
-      if (!width || width === lastWidth || !viewer.pdfDocument) return
-      lastWidth = width
-      const preset = viewer.currentScaleValue
-      if (['auto', 'page-width', 'page-fit'].includes(preset)) viewer.currentScaleValue = preset
-      else viewer.update()
-    })
-    resize.observe(container)
-
-    container.addEventListener('gesturestart', onGestureStart)
-    container.addEventListener('gesturechange', onGestureChange)
-    container.addEventListener('gestureend', onGestureEnd)
-    container.addEventListener('wheel', onWheel, { passive: false })
-
-    return () => {
-      cancelAnimationFrame(frame)
-      resize.disconnect()
-      container.removeEventListener('click', onClick, true)
-      container.removeEventListener('gesturestart', onGestureStart)
-      container.removeEventListener('gesturechange', onGestureChange)
-      container.removeEventListener('gestureend', onGestureEnd)
-      container.removeEventListener('wheel', onWheel)
-      viewer.setDocument(null as unknown as PDFDocumentProxy)
-      if (viewerRef.current === viewer) viewerRef.current = null
-      loadGeneration.current++
-      void docRef.current?.loadingTask.destroy()
-      docRef.current = null
-    }
-  }, [])
-
-  /** (Re)load the PDF into the viewer, optionally staying on the same page and zoom. */
-  const loadGeneration = useRef(0)
-  const pendingFit = useRef<string | null>(null)
-  const load = useCallback(
-    async (bytes: Uint8Array, keepView = false) => {
-      const generation = ++loadGeneration.current
-      const before = viewerRef.current
-      const prev = { page: before?.currentPageNumber ?? 1, scale: before?.currentScaleValue ?? 'auto' }
+  // ── Engine lifecycle: one PDFium worker per tab, gone when the tab closes.
+  const openWith = useCallback(
+    async (pw: string) => {
+      const s = storeRef.current
+      if (!s) return
       setError(null)
-      const task = pdfjs.getDocument({
-        data: bytes.slice(), // pdf.js transfers the buffer to its worker; keep ours intact
-        cMapUrl: `${ASSETS}cmaps/`,
-        cMapPacked: true,
-        standardFontDataUrl: `${ASSETS}standard_fonts/`,
-        wasmUrl: `${ASSETS}wasm/`,
-        iccUrl: `${ASSETS}iccs/`,
-        enableXfa: true,
-      })
-      task.onPassword = (submit: (pw: string) => void, reason: number) => {
-        setPassword({ retry: reason === pdfjs.PasswordResponses.INCORRECT_PASSWORD, submit })
-      }
       try {
-        const next = await task.promise
-        const viewer = viewerRef.current
-        // A newer load (or unmount) superseded this one.
-        if (generation !== loadGeneration.current || !viewer) {
-          void task.destroy()
-          return
-        }
+        const bytes = tab.bytes ?? new Uint8Array()
+        const result = await s.engine.call('open', [bytes.slice().buffer, pw])
+        passwordRef.current = pw
         setPassword(null)
-        const old = docRef.current
-        docRef.current = next
-        annotationsDirty.current = false
-        const storage = next.annotationStorage as unknown as { onSetModified: () => void; onResetModified: () => void }
-        storage.onSetModified = () => {
-          annotationsDirty.current = true
-          refreshDirty()
-        }
-        storage.onResetModified = () => {
-          annotationsDirty.current = false
-          refreshDirty()
-        }
-        const onInit = () => {
-          busRef.current?.off('pagesinit', onInit)
-          if (keepView) {
-            viewer.currentScaleValue = prev.scale
-            viewer.currentPageNumber = Math.min(prev.page, next.numPages)
-          } else if (containerRef.current?.offsetParent) {
-            viewer.currentScaleValue = 'auto'
-          } else {
-            // Hidden tab: laying out now would measure a zero-size canvas. Fit when shown.
-            pendingFit.current = 'auto'
-          }
-        }
-        busRef.current!.on('pagesinit', onInit)
-        viewer.setDocument(next)
-        linkRef.current!.setDocument(next, null)
-        setDoc(next)
-        void old?.loadingTask.destroy()
-        void readInfo(next).then(setInfo)
+        s.setPages(result.pages)
+        setMeta(result.meta)
+        setStore(s)
       } catch (err) {
-        setPassword(null)
-        setError(err instanceof Error ? err.message : String(err))
+        if (isCancelled(err)) return
+        const code = (err as { code?: number }).code
+        if (code === 4) setPassword({ retry: pw !== '' })
+        else setError(code === 3 || code === 2 ? 'The file is damaged or isn’t a PDF.' : (err as Error).message)
       }
     },
-    [refreshDirty],
+    [tab.bytes],
   )
 
   useEffect(() => {
-    void load(bytesRef.current)
-  }, [load])
-
-  // ── Annotation tools
-  const selectTool = (id: ToolId) => {
-    const t = TOOLS.find((x) => x.id === id)!
-    try {
-      viewerRef.current!.annotationEditorMode = { mode: t.mode }
-      setTool(id)
-    } catch (err) {
-      console.warn(err)
+    let s: DocStore | null = null
+    let cancelled = false
+    void PdfEngine.create().then((engine) => {
+      if (cancelled) return engine.destroy()
+      s = new DocStore(engine)
+      storeRef.current = s
+      void openWith('')
+    })
+    return () => {
+      cancelled = true
+      s?.destroy()
+      storeRef.current = null
     }
+  }, [openWith])
+
+  useEffect(() => {
+    if (!store) return
+    setPages(store.pages)
+    return store.subscribe(() => setPages(store.pages))
+  }, [store])
+
+  // ── Everything that changes the document goes through here, one at a time.
+  const queue = useRef(Promise.resolve())
+  const [busy, setBusy] = useState(false)
+  const run = useCallback((fn: () => Promise<void>) => {
+    const next = queue.current.then(async () => {
+      setBusy(true)
+      try {
+        await fn()
+      } catch (err) {
+        if (!isCancelled(err)) await platform.showError(err instanceof Error ? err.message : String(err))
+      } finally {
+        setBusy(false)
+      }
+    })
+    queue.current = next
+    return next
+  }, [])
+
+  /** Do something, remember how to undo it, and mark the tab edited. */
+  const perform = useCallback(
+    (doIt: () => Promise<void>, undo: () => Promise<void>, redo: () => Promise<void> = doIt) =>
+      run(async () => {
+        await doIt()
+        history.current.push({ undo, redo })
+        refreshDirty()
+      }),
+    [run, refreshDirty],
+  )
+
+  const call = useCallback(<T,>(fn: (s: DocStore) => Promise<T>) => fn(storeRef.current!), [])
+  const indexOfKey = (key: number) => storeRef.current?.pages.findIndex((p) => p.key === key) ?? -1
+  const touch = (key: number) => storeRef.current?.touch(indexOfKey(key))
+  const setDocPages = (p: PageInfo[]) => storeRef.current!.setPages(p)
+
+  const undo = useCallback(() => run(async () => void ((await history.current.undo()) && refreshDirty())), [run, refreshDirty])
+  const redo = useCallback(() => run(async () => void ((await history.current.redo()) && refreshDirty())), [run, refreshDirty])
+
+  // ── Page operations: in place in PDFium, so they're instant even on big files.
+  const keyAt = (index: number) => storeRef.current!.pages[index].key
+  const goToKey = (key: number) => requestAnimationFrame(() => viewer.current?.goTo(Math.max(0, indexOfKey(key))))
+
+  const rotatePage = (index: number, turns: number) => {
+    const key = keyAt(index)
+    const rotate = (t: number) => async () => {
+      const pages = await call((s) => s.engine.call('rotate', [[key], t]))
+      viewer.current?.hold(indexOfKey(key))
+      setDocPages(pages)
+    }
+    void perform(rotate(turns), rotate(-turns))
   }
 
-  const setParam = (type: number, value: unknown) => busRef.current?.dispatch('switchannotationeditorparams', { source: null, type, value })
-
-  // ── Page operations go through pdf-lib, then reload.
-  const currentBytes = async () => {
-    const d = docRef.current
-    return d && annotationsDirty.current ? new Uint8Array(await d.saveDocument()) : bytesRef.current
+  const movePage = (from: number, to: number) => {
+    if (from === to || to < 0 || to >= pages.length) return
+    const key = keyAt(from)
+    const move = (at: number) => async () => {
+      setDocPages(await call((s) => s.engine.call('move', [key, at])))
+      goToKey(key)
+    }
+    void perform(move(to), move(from))
   }
 
-  const pageOp = async (op: (bytes: Uint8Array) => Promise<Uint8Array>, goTo?: number) => {
-    if (busy) return
-    setBusy(true)
-    try {
-      const next = await op(await currentBytes())
-      bytesRef.current = next
-      pageOpsDirty.current = true
-      await load(next, true)
-      if (goTo) setTimeout(() => (viewerRef.current!.currentPageNumber = goTo), 0)
-      markDirty(tab.id, true)
-    } catch (err) {
-      await platform.showError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
+  /** Add pages with `add` (which returns the new page list and where the new pages are); undo deletes them. */
+  const addPages = (add: () => Promise<{ pages: PageInfo[]; at: number; count: number }>) => {
+    let added: number[] = []
+    const doIt = async () => {
+      const r = await add()
+      setDocPages(r.pages)
+      added = r.pages.slice(r.at, r.at + r.count).map((p) => p.key)
+      goToKey(added[0])
     }
+    void perform(doIt, async () => setDocPages((await call((s) => s.engine.call('deletePages', [added]))).pages))
+  }
+
+  const duplicatePage = (index: number) => {
+    const key = keyAt(index)
+    addPages(async () => {
+      const p = await call((s) => s.engine.call('duplicate', [key]))
+      return { pages: p, at: p.findIndex((x) => x.key === key) + 1, count: 1 }
+    })
+  }
+
+  const insertBlank = (afterIndex: number) => {
+    const key = keyAt(Math.max(0, afterIndex))
+    addPages(async () => {
+      const ref = storeRef.current!.pages.find((p) => p.key === key)!
+      const at = indexOfKey(key) + 1
+      const [w, h] = ref.rotation % 2 ? [ref.height, ref.width] : [ref.width, ref.height]
+      return { pages: await call((s) => s.engine.call('insertBlank', [at, w, h])), at, count: 1 }
+    })
   }
 
   const insertFromFile = async (afterIndex: number) => {
     const files = (await platform.pickFiles()).filter((f) => f.name.toLowerCase().endsWith('.pdf'))
     if (!files.length) return
-    await pageOp(async (bytes) => {
-      let out = bytes
-      let at = afterIndex
-      for (const f of files) {
-        const before = (await pdfjs.getDocument({ data: f.bytes.slice() }).promise).numPages
-        out = await pages.insertPdf(out, f.bytes, at)
-        at += before
-      }
-      return out
-    }, afterIndex + 2)
+    const key = keyAt(afterIndex)
+    for (const f of files) {
+      addPages(async () => {
+        const at = indexOfKey(key) + 1
+        const r = await call((s) => s.engine.call('insertPdf', [at, f.bytes.slice().buffer]))
+        return { pages: r.pages, at, count: r.count }
+      })
+    }
+  }
+
+  const deletePage = (index: number) => {
+    if (pages.length <= 1) return
+    let keys = [keyAt(index)]
+    let token = 0
+    const doIt = async () => {
+      const r = await call((s) => s.engine.call('deletePages', [keys]))
+      token = r.token
+      setDocPages(r.pages)
+    }
+    void perform(doIt, async () => {
+      const restored = await call((s) => s.engine.call('restorePages', [token]))
+      setDocPages(restored)
+      // Restored pages are copies with new keys.
+      keys = [restored[index].key]
+      goToKey(keys[0])
+    })
   }
 
   const extract = async (indices: number[]) => {
     try {
-      const bytes = await pages.extractPages(await currentBytes(), indices)
+      const keys = indices.map(keyAt)
+      const bytes = new Uint8Array(await call((s) => s.engine.call('extract', [keys])))
       const name = `${tab.title} (page${indices.length > 1 ? 's' : ''} ${indices.map((i) => i + 1).join(', ')})`
       const path = await platform.pickSavePath(name, 'pdf')
       if (path) await platform.writeFile(path, bytes)
@@ -353,86 +289,444 @@ export default function PdfEditor({ tab, active }: EditorProps) {
   }
 
   const pageMenu = (index: number): MenuEntry[] => [
-    { label: 'Rotate Right', icon: <RotateCw size={14} />, onSelect: () => void pageOp((b) => pages.rotatePages(b, [index], 90)) },
-    { label: 'Rotate Left', icon: <RotateCcw size={14} />, onSelect: () => void pageOp((b) => pages.rotatePages(b, [index], -90)) },
-    { label: 'Duplicate', icon: <Copy size={14} />, onSelect: () => void pageOp((b) => pages.duplicatePage(b, index), index + 2), separatorBefore: true },
-    { label: 'Insert Blank Page After', icon: <FilePlus2 size={14} />, onSelect: () => void pageOp((b) => pages.insertBlankPage(b, index), index + 2) },
+    { label: 'Rotate Right', icon: <RotateCw size={14} />, onSelect: () => rotatePage(index, 1) },
+    { label: 'Rotate Left', icon: <RotateCcw size={14} />, onSelect: () => rotatePage(index, -1) },
+    { label: 'Duplicate', icon: <Copy size={14} />, onSelect: () => duplicatePage(index), separatorBefore: true },
+    { label: 'Insert Blank Page After', icon: <FilePlus2 size={14} />, onSelect: () => insertBlank(index) },
     { label: 'Insert Pages from File…', icon: <ArrowDownToLine size={14} />, onSelect: () => void insertFromFile(index) },
     { label: 'Extract as PDF…', icon: <FileOutput size={14} />, onSelect: () => void extract([index]), separatorBefore: true },
-    { label: 'Delete Page', icon: <Trash2 size={14} />, danger: true, onSelect: () => void pageOp((b) => pages.deletePages(b, [index])), separatorBefore: true },
+    ...(pages.length > 1 ? [{ label: 'Delete Page', icon: <Trash2 size={14} />, danger: true, onSelect: () => deletePage(index), separatorBefore: true }] : []),
   ]
 
-  // ── Find
-  const find = (query: string, previous = false, again = false) => {
-    findQuery.current = query
-    busRef.current?.dispatch('find', {
-      source: null,
-      type: again ? 'again' : '',
-      query,
-      caseSensitive: false,
-      entireWord: false,
-      highlightAll: true,
-      findPrevious: previous,
-      matchDiacritics: false,
+  // ── Annotations
+
+  /** Resolves once a page has been redrawn, so a preview can stay up until the real thing shows. */
+  const afterRender = (key: number) =>
+    new Promise<void>((resolve) => {
+      const timer = window.setTimeout(done, 1500)
+      function done() {
+        window.clearTimeout(timer)
+        document.removeEventListener('pagerendered', onRendered)
+        resolve()
+      }
+      function onRendered(e: Event) {
+        if ((e as CustomEvent<{ key: number }>).detail.key === key) done()
+      }
+      document.addEventListener('pagerendered', onRendered)
     })
-    if (!query) setMatches(null)
+
+  const createAnnot = (key: number, annot: PdfAnnotationObject, image?: ArrayBuffer, select = false) => {
+    let id = ''
+    let token = 0
+    return perform(
+      async () => {
+        id = await call((s) => s.engine.call('createAnnotation', [key, annot, image ?? null], { priority: Priority.action }))
+        touch(key)
+        if (select) {
+          setTool('select')
+          setSelected({ key, id })
+        }
+      },
+      async () => {
+        token = await call((s) => s.engine.call('removeAnnotation', [key, { ...annot, id }]))
+        touch(key)
+      },
+      async () => {
+        id = await call((s) => s.engine.call('restoreAnnotation', [token]))
+        touch(key)
+      },
+    )
   }
 
+  const actions = useMemo<AnnotationActions>(
+    () => ({
+      select: (sel) => setSelected(sel),
+      update: (index, before, after) => {
+        const key = keyAt(index)
+        const apply = (a: PdfAnnotationObject) => async () => {
+          await call((s) => s.engine.call('updateAnnotation', [key, a]))
+          touch(key)
+        }
+        void perform(apply(after), apply(before))
+      },
+      remove: (index, annot) => {
+        const key = keyAt(index)
+        let token = 0
+        setSelected(null)
+        const remove = async () => {
+          token = await call((s) => s.engine.call('removeAnnotation', [key, annot.raw]))
+          touch(key)
+        }
+        void perform(remove, async () => {
+          await call((s) => s.engine.call('restoreAnnotation', [token]))
+          touch(key)
+        })
+      },
+      setField: (index, annot, value) => {
+        const key = keyAt(index)
+        void run(async () => {
+          await call((s) => s.engine.call('setField', [key, annot.raw, value]))
+          fieldsDirty.current = true
+          touch(key)
+          refreshDirty()
+        })
+      },
+      openLink: (link) => {
+        if (link.url) {
+          if (/^(https?:|mailto:)/i.test(link.url)) void platform.openExternal(link.url)
+        } else if (link.page !== undefined) viewer.current?.goTo(link.page, link.y)
+      },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [perform, run, refreshDirty],
+  )
+
+  const highlightSelection = useCallback(async () => {
+    const s = storeRef.current
+    if (!s) return
+    const ranges = await selectedCharacters(s)
+    if (!ranges.length) return
+    window.getSelection()?.removeAllRanges()
+    for (const r of ranges) {
+      const boxes = await s.engine.call('textBoxes', [r.key, r.start, r.end - r.start + 1])
+      if (!boxes.length) continue
+      void createAnnot(r.key, {
+        type: PdfAnnotationSubtype.HIGHLIGHT,
+        id: '',
+        pageIndex: r.index,
+        rect: toRect(union(boxes)),
+        segmentRects: boxes.map(toRect),
+        strokeColor: highlightColor,
+        color: highlightColor,
+        opacity: 1,
+        blendMode: PdfBlendMode.Multiply,
+      } as PdfAnnotationObject)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightColor])
+
+  // Highlight tool: selecting text highlights it.
+  useEffect(() => {
+    if (tool !== 'highlight' || !active) return
+    const onUp = () => window.setTimeout(() => void highlightSelection(), 0)
+    document.addEventListener('pointerup', onUp)
+    return () => document.removeEventListener('pointerup', onUp)
+  }, [tool, active, highlightSelection])
+
+  // Drawing: strokes collect into one annotation until a pause, another page, or another tool.
+  const inkTimer = useRef(0)
+  const inkRef = useRef(ink)
+  inkRef.current = ink
+  const commitInk = useCallback(() => {
+    window.clearTimeout(inkTimer.current)
+    const session = inkRef.current
+    if (!session || session.committing || !session.strokes.length) return
+    setInk({ ...session, committing: true })
+    const half = inkThickness / 2
+    const points = session.strokes.flat()
+    const box = union(points.map((p) => ({ x: p.x - half, y: p.y - half, w: inkThickness, h: inkThickness })))
+    void createAnnot(session.key, {
+      type: PdfAnnotationSubtype.INK,
+      id: '',
+      pageIndex: indexOfKey(session.key),
+      rect: toRect(box),
+      inkList: session.strokes.map((s) => ({ points: s })),
+      strokeColor: inkColor,
+      color: inkColor,
+      strokeWidth: inkThickness,
+      opacity: 1,
+    } as PdfAnnotationObject).then(async () => {
+      await afterRender(session.key)
+      setInk((cur) => (cur === null || cur.committing ? null : cur))
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inkColor, inkThickness])
+
+  const addStroke = (key: number, stroke: Stroke) => {
+    if (inkRef.current && inkRef.current.key !== key) commitInk()
+    const session = inkRef.current && inkRef.current.key === key && !inkRef.current.committing ? inkRef.current : { key, strokes: [] }
+    const next = { key, strokes: [...session.strokes, stroke] }
+    inkRef.current = next
+    setInk(next)
+    window.clearTimeout(inkTimer.current)
+    inkTimer.current = window.setTimeout(commitInk, INK_IDLE_MS)
+  }
+
+  // Text tool
+  const finishDraft = (key: number, text: string, box: Box) => {
+    if (!text.trim()) {
+      setDraft(null)
+      return
+    }
+    void createAnnot(key, {
+      type: PdfAnnotationSubtype.FREETEXT,
+      id: '',
+      pageIndex: indexOfKey(key),
+      rect: toRect(box),
+      contents: text,
+      fontFamily: PdfStandardFont.Helvetica,
+      fontSize,
+      fontColor: inkColor,
+      textAlign: PdfTextAlignment.Left,
+      verticalAlign: PdfVerticalAlignment.Top,
+      opacity: 1,
+    } as PdfAnnotationObject).then(async () => {
+      await afterRender(key)
+      setDraft((d) => (d?.key === key && d.x === box.x ? null : d))
+    })
+  }
+
+  // Image tool: pick a picture, drop it in the middle of the current page, selected so it can be moved.
+  const placeImage = async () => {
+    const s = storeRef.current
+    const file = (await pickImage())[0]
+    setTool('select')
+    if (!s || !file) return
+    try {
+      const { bytes, width, height } = await imageForPdf(file)
+      const target = s.pages[page]
+      const scale = Math.min(1, (target.width * 0.5) / (width * 0.75), (target.height * 0.5) / (height * 0.75))
+      const w = width * 0.75 * scale
+      const h = height * 0.75 * scale
+      const box = { x: (target.width - w) / 2, y: (target.height - h) / 2, w, h }
+      await createAnnot(target.key, { type: PdfAnnotationSubtype.STAMP, id: '', pageIndex: page, rect: toRect(box) } as PdfAnnotationObject, bytes, true)
+    } catch (err) {
+      await platform.showError(`Couldn’t add that image. ${err instanceof Error ? err.message : ''}`)
+    }
+  }
+
+  const selectTool = (id: ToolId) => {
+    commitInk()
+    ;(document.activeElement as HTMLElement | null)?.blur?.()
+    setSelected(null)
+    if (id === 'image') {
+      setTool('image')
+      void placeImage()
+      return
+    }
+    // Picking Highlight with text already selected highlights it right away.
+    if (id === 'highlight') void highlightSelection()
+    setTool(id)
+  }
+
+  // ── Find
+
+  const findJob = useRef<AbortController | null>(null)
+  const runFind = useCallback(
+    (query: string) => {
+      findJob.current?.abort()
+      const s = storeRef.current
+      if (!query.trim() || !s) {
+        setFind(null)
+        return
+      }
+      const job = new AbortController()
+      findJob.current = job
+      const hits = new Map<number, Box[][]>()
+      setFind({ query, hits, done: false })
+      setFindIndex(-1)
+      const order = s.pages.map((_, i) => (i + page) % s.pages.length)
+      let lastFlush = performance.now()
+      void (async () => {
+        for (const i of order) {
+          const p = s.pages[i]
+          if (!p) break
+          try {
+            const found = await s.engine.call('search', [p.key, query, false], { priority: Priority.search, signal: job.signal })
+            if (found.length) hits.set(p.key, found)
+          } catch (err) {
+            if (isCancelled(err) && job.signal.aborted) return
+          }
+          if (performance.now() - lastFlush > 120) {
+            lastFlush = performance.now()
+            setFind({ query, hits: new Map(hits), done: false })
+          }
+        }
+        if (!job.signal.aborted) setFind({ query, hits: new Map(hits), done: true })
+      })()
+    },
+    [page],
+  )
+
+  /** Matches in document order: [page index, match number on that page]. */
+  const matchList = useMemo(() => {
+    const list: [number, number][] = []
+    if (!find) return list
+    pages.forEach((p, i) => {
+      const h = find.hits.get(p.key)
+      if (h) for (let m = 0; m < h.length; m++) list.push([i, m])
+    })
+    return list
+  }, [find, pages])
+
+  // Jump to the first match at or after the current page as soon as there is one.
+  useEffect(() => {
+    if (findIndex !== -1 || !matchList.length) return
+    const first = Math.max(0, matchList.findIndex(([i]) => i >= page))
+    setFindIndex(first)
+    revealMatch(first)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchList, findIndex])
+
+  const revealMatch = (n: number) => {
+    const m = matchList[n]
+    if (!m || !find) return
+    const boxes = find.hits.get(pages[m[0]].key)?.[m[1]]
+    if (boxes?.length) viewer.current?.reveal(m[0], union(boxes))
+  }
+  const stepMatch = (dir: 1 | -1) => {
+    if (!matchList.length) return
+    const n = (Math.max(0, findIndex) + dir + matchList.length) % matchList.length
+    setFindIndex(n)
+    revealMatch(n)
+  }
+
+  // Page edits move or reshape pages, so search again.
+  const layoutSig = useMemo(() => pages.map((p) => `${p.key}:${p.rotation}`).join(','), [pages])
+  const lastSig = useRef(layoutSig)
+  useEffect(() => {
+    if (lastSig.current === layoutSig) return
+    lastSig.current = layoutSig
+    if (find) runFind(find.query)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutSig])
+
   // ── Shell integration
+  const saveBytes = async () => new Uint8Array(await call((s) => s.engine.call('save', [])))
   useEffect(
     () =>
       registerEditor(tab.id, {
         getBytes: async () => {
-          const bytes = await currentBytes()
+          commitInk()
+          ;(document.activeElement as HTMLElement | null)?.blur?.()
+          await queue.current
+          const bytes = await saveBytes()
+          lastWritten.current = bytes
           return bytes
         },
         markSaved: () => {
-          // The saved file now contains the annotations; reload so pdf.js treats them as part of the document.
-          void currentBytes().then((bytes) => {
-            bytesRef.current = bytes
-            pageOpsDirty.current = false
-            docRef.current?.annotationStorage.resetModified()
-            annotationsDirty.current = false
-            markDirty(tab.id, false)
-          })
+          cleanBytes.current = lastWritten.current
+          history.current.markSaved()
+          fieldsDirty.current = false
+          refreshDirty()
         },
         find: () => setFindOpen(true),
         zoom: (dir) => {
-          const v = viewerRef.current
-          if (!v) return
-          if (dir === 'in') v.increaseScale({ drawingDelay: ZOOM_REDRAW_DELAY })
-          else if (dir === 'out') v.decreaseScale({ drawingDelay: ZOOM_REDRAW_DELAY })
-          else v.currentScaleValue = 'page-actual'
+          if (dir === 'in') viewer.current?.step(1)
+          else if (dir === 'out') viewer.current?.step(-1)
+          else viewer.current?.setZoom(1)
         },
-        print: () => printPdf(currentBytes),
+        print: async () => {
+          const s = storeRef.current
+          if (s) await printPdf(s)
+        },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [tab.id],
   )
 
+  // Undo/redo and deleting the selected annotation from the keyboard.
   useEffect(() => {
-    const v = viewerRef.current
-    if (!active) {
-      // Rendered pages are large bitmaps (tens of MB each on a Retina screen). Let them go when
-      // the tab has been in the background for a while; visible pages redraw on return.
-      const timer = window.setTimeout(() => {
-        const viewer = viewerRef.current
-        if (!viewer?.pdfDocument) return
-        for (let i = 0; i < viewer.pagesCount; i++) viewer.getPageView(i)?.reset()
-        void viewer.pdfDocument.cleanup()
-      }, 30_000)
-      return () => window.clearTimeout(timer)
+    if (!active) return
+    const onKey = (e: KeyboardEvent) => {
+      if (isEditable(e.target)) return
+      const mod = platform.isMac ? e.metaKey : e.ctrlKey
+      const key = e.key.toLowerCase()
+      if (mod && key === 'z') {
+        e.preventDefault()
+        void (e.shiftKey ? redo() : undo())
+      } else if (mod && key === 'y' && !platform.isMac) {
+        e.preventDefault()
+        void redo()
+      } else if (e.key === 'Escape') {
+        if (selected) setSelected(null)
+        else if (tool !== 'select') selectTool('select')
+      }
     }
-    containerRef.current?.focus({ preventScroll: true })
-    if (v?.pdfDocument) {
-      if (pendingFit.current) v.currentScaleValue = pendingFit.current
-      v.update()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, undo, redo, selected, tool])
+
+  // Background tabs give their page drawings back after a while; they redraw when shown.
+  useEffect(() => {
+    if (active) {
+      setAwake(true)
+      return
     }
-    pendingFit.current = null
+    commitInk()
+    const timer = window.setTimeout(() => {
+      setAwake(false)
+      // With nothing unsaved, stop the engine too; it reopens the file when the tab is shown.
+      const s = storeRef.current
+      if (s && store && !history.current.dirty && !fieldsDirty.current) {
+        history.current = new History()
+        refreshDirty()
+        s.engine.suspend(cleanBytes.current ?? tab.bytes ?? new Uint8Array(), passwordRef.current, (r) => s.reopened(r.pages))
+      }
+    }, SLEEP_AFTER_MS)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active])
 
-  const numPages = doc?.numPages ?? 0
+  // Arrow keys and Page Down scroll the pages as soon as the tab is shown.
+  const stageRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (active && store) stageRef.current?.querySelector<HTMLElement>('.pdf-container')?.focus({ preventScroll: true })
+  }, [active, store])
+
+  const onPageChange = useCallback((i: number) => setPage(i), [])
+  const onZoomChange = useCallback((z: number) => setZoom(z), [])
+
+  const renderPage = ({ index, page: p, unit }: PageSlot) => {
+    const s = storeRef.current!
+    const hits = find?.hits.get(p.key)
+    const current = matchList[findIndex]
+    const pendingInk = ink?.key === p.key ? ink.strokes : []
+    return (
+      <>
+        {hits && <SearchLayer boxes={hits} current={current && current[0] === index ? current[1] : -1} />}
+        <TextLayer store={s} index={index} page={p} />
+        <AnnotationLayer
+          store={s}
+          index={index}
+          page={p}
+          rev={s.rev(p.key)}
+          unit={unit}
+          interactive={tool === 'select' || tool === 'highlight'}
+          selectable={tool === 'select'}
+          selectedId={selected?.key === p.key ? selected.id : null}
+          actions={actions}
+        />
+        {tool === 'draw' ? (
+          <DrawLayer unit={unit} color={inkColor} width={inkThickness} strokes={pendingInk} onStroke={(stroke) => addStroke(p.key, stroke)} />
+        ) : (
+          pendingInk.length > 0 && (
+            <div className="tool-layer passive">
+              <InkPreview strokes={pendingInk} color={inkColor} width={inkThickness} />
+            </div>
+          )
+        )}
+        {tool === 'text' && (
+          <TextToolLayer
+            unit={unit}
+            onPlace={(x, y) => {
+              ;(document.activeElement as HTMLElement | null)?.blur?.()
+              setDraft({ key: p.key, x, y })
+            }}
+          />
+        )}
+        {draft?.key === p.key && (
+          <TextDraft key={`${draft.x},${draft.y}`} x={draft.x} y={draft.y} unit={unit} fontSize={fontSize} color={inkColor} onDone={(text, box) => finishDraft(p.key, text, box)} />
+        )}
+      </>
+    )
+  }
+
+  const numPages = pages.length
   const currentTool = TOOLS.find((t) => t.id === tool)!
+  const currentPage = pages[page]
+  const hist = history.current
 
   const left = (
     <>
@@ -446,18 +740,25 @@ export default function PdfEditor({ tab, active }: EditorProps) {
           ]}
         />
       </div>
-      {doc &&
+      {store &&
+        awake &&
         (sideTab === 'pages' ? (
           <Thumbnails
-            doc={doc}
+            store={store}
+            pages={pages}
             current={page}
-            onSelect={(n) => linkRef.current?.goToPage(n)}
+            onSelect={(n) => viewer.current?.goTo(n)}
             onMenu={(index, x, y) => setMenu({ index, x, y })}
-            onMove={(from, to) => void pageOp((b) => pages.movePage(b, from, to), to + 1)}
-            active={active}
+            onMove={movePage}
           />
         ) : (
-          <Outline doc={doc} onNavigate={(dest) => void linkRef.current?.goToDestination(dest)} />
+          <Outline
+            store={store}
+            onNavigate={(item: OutlineItem) => {
+              if (item.page !== undefined) viewer.current?.goTo(item.page, item.y)
+              else if (item.url && /^(https?:|mailto:)/i.test(item.url)) void platform.openExternal(item.url)
+            }}
+          />
         ))}
     </>
   )
@@ -468,7 +769,7 @@ export default function PdfEditor({ tab, active }: EditorProps) {
       <Section title="Annotate">
         <div className="tool-grid">
           {TOOLS.map((t) => (
-            <button key={t.id} type="button" className={`tool-btn ${tool === t.id ? 'on' : ''}`} title={t.hint} onClick={() => selectTool(t.id)} disabled={!doc}>
+            <button key={t.id} type="button" className={`tool-btn ${tool === t.id ? 'on' : ''}`} title={t.hint} onClick={() => selectTool(t.id)} disabled={!store}>
               {t.icon}
               <span>{t.label}</span>
             </button>
@@ -478,17 +779,7 @@ export default function PdfEditor({ tab, active }: EditorProps) {
         {tool === 'highlight' && (
           <div className="swatches">
             {HIGHLIGHT_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                aria-label={`Highlight color ${c}`}
-                className={`swatch ${highlightColor === c ? 'on' : ''}`}
-                style={{ background: c }}
-                onClick={() => {
-                  setHighlightColor(c)
-                  setParam(Param.HIGHLIGHT_COLOR, c)
-                }}
-              />
+              <button key={c} type="button" aria-label={`Highlight color ${c}`} className={`swatch ${highlightColor === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setHighlightColor(c)} />
             ))}
           </div>
         )}
@@ -496,118 +787,90 @@ export default function PdfEditor({ tab, active }: EditorProps) {
           <>
             <div className="swatches">
               {INK_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  aria-label={`Color ${c}`}
-                  className={`swatch ${inkColor === c ? 'on' : ''}`}
-                  style={{ background: c }}
-                  onClick={() => {
-                    setInkColor(c)
-                    setParam(tool === 'draw' ? Param.INK_COLOR : Param.FREETEXT_COLOR, c)
-                  }}
-                />
+                <button key={c} type="button" aria-label={`Color ${c}`} className={`swatch ${inkColor === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setInkColor(c)} />
               ))}
             </div>
             {tool === 'draw' ? (
               <label className="slider-row">
                 <span className="muted">Thickness</span>
-                <input
-                  type="range"
-                  min={1}
-                  max={20}
-                  value={inkThickness}
-                  onChange={(e) => {
-                    setInkThickness(Number(e.currentTarget.value))
-                    setParam(Param.INK_THICKNESS, Number(e.currentTarget.value))
-                  }}
-                />
+                <input type="range" min={1} max={20} value={inkThickness} onChange={(e) => setInkThickness(Number(e.currentTarget.value))} />
                 <span className="value">{inkThickness}</span>
               </label>
             ) : (
               <label className="slider-row">
                 <span className="muted">Size</span>
-                <input
-                  type="range"
-                  min={6}
-                  max={72}
-                  value={fontSize}
-                  onChange={(e) => {
-                    setFontSize(Number(e.currentTarget.value))
-                    setParam(Param.FREETEXT_SIZE, Number(e.currentTarget.value))
-                  }}
-                />
+                <input type="range" min={6} max={72} value={fontSize} onChange={(e) => setFontSize(Number(e.currentTarget.value))} />
                 <span className="value">{fontSize}</span>
               </label>
             )}
           </>
         )}
       </Section>
-      <Section title={numPages ? `Page ${page} of ${numPages}` : 'Page'}>
+      <Section title={numPages ? `Page ${page + 1} of ${numPages}` : 'Page'}>
         <div className="grid-2">
-          <button type="button" className="btn" disabled={!doc || busy} onClick={() => void pageOp((b) => pages.rotatePages(b, [page - 1], -90))}>
+          <button type="button" className="btn" disabled={!store} onClick={() => rotatePage(page, -1)}>
             <RotateCcw size={14} /> Rotate
           </button>
-          <button type="button" className="btn" disabled={!doc || busy} onClick={() => void pageOp((b) => pages.rotatePages(b, [page - 1], 90))}>
+          <button type="button" className="btn" disabled={!store} onClick={() => rotatePage(page, 1)}>
             <RotateCw size={14} /> Rotate
           </button>
-          <button type="button" className="btn" disabled={!doc || busy || page <= 1} onClick={() => void pageOp((b) => pages.movePage(b, page - 1, page - 2), page - 1)}>
+          <button type="button" className="btn" disabled={!store || page <= 0} onClick={() => movePage(page, page - 1)}>
             <ArrowUpToLine size={14} /> Move up
           </button>
-          <button type="button" className="btn" disabled={!doc || busy || page >= numPages} onClick={() => void pageOp((b) => pages.movePage(b, page - 1, page), page + 1)}>
+          <button type="button" className="btn" disabled={!store || page >= numPages - 1} onClick={() => movePage(page, page + 1)}>
             <ArrowDownToLine size={14} /> Move down
           </button>
-          <button type="button" className="btn" disabled={!doc || busy} onClick={() => void pageOp((b) => pages.duplicatePage(b, page - 1), page + 1)}>
+          <button type="button" className="btn" disabled={!store} onClick={() => duplicatePage(page)}>
             <Copy size={14} /> Duplicate
           </button>
-          <button type="button" className="btn danger" disabled={!doc || busy || numPages <= 1} onClick={() => void pageOp((b) => pages.deletePages(b, [page - 1]))}>
+          <button type="button" className="btn danger" disabled={!store || numPages <= 1} onClick={() => deletePage(page)}>
             <Trash2 size={14} /> Delete
           </button>
         </div>
-        <button type="button" className="btn block" disabled={!doc || busy} onClick={() => void insertFromFile(page - 1)}>
+        <button type="button" className="btn block" disabled={!store} onClick={() => void insertFromFile(page)}>
           <FilePlus2 size={14} /> Insert pages from file…
         </button>
-        <button type="button" className="btn block" disabled={!doc || busy} onClick={() => void extract([page - 1])}>
+        <button type="button" className="btn block" disabled={!store} onClick={() => void extract([page])}>
           <FileOutput size={14} /> Extract page as PDF…
         </button>
       </Section>
       <Section title="Document" collapsible>
         <dl className="stats">
-          {info.title && (
+          {meta.title && (
             <>
               <dt>Title</dt>
-              <dd className="ellipsis" title={info.title}>
-                {info.title}
+              <dd className="ellipsis" title={meta.title}>
+                {meta.title}
               </dd>
             </>
           )}
-          {info.author && (
+          {meta.author && (
             <>
               <dt>Author</dt>
-              <dd className="ellipsis">{info.author}</dd>
+              <dd className="ellipsis">{meta.author}</dd>
             </>
           )}
           <dt>Pages</dt>
           <dd>{numPages}</dd>
-          {info.pageSize && (
+          {currentPage && (
             <>
               <dt>Page size</dt>
-              <dd>{info.pageSize}</dd>
+              <dd>{pageSizeName(currentPage.width, currentPage.height)}</dd>
             </>
           )}
           <dt>File size</dt>
-          <dd>{formatBytes(bytesRef.current.byteLength)}</dd>
-          {info.version && (
+          <dd>{formatBytes(tab.bytes?.byteLength ?? 0)}</dd>
+          {meta.version && (
             <>
               <dt>PDF version</dt>
-              <dd>{info.version}</dd>
+              <dd>{meta.version}</dd>
             </>
           )}
-          {info.producer && (
+          {meta.producer && (
             <>
               <dt>Created with</dt>
-              <dd className="ellipsis" title={info.producer}>
-                {info.producer}
+              <dd className="ellipsis" title={meta.producer}>
+                {meta.producer}
               </dd>
             </>
           )}
@@ -618,41 +881,49 @@ export default function PdfEditor({ tab, active }: EditorProps) {
 
   return (
     <Workbench tab={tab} left={left} right={right} leftFooter={numPages ? <span>{numPages === 1 ? '1 page' : `${numPages} pages`}</span> : undefined}>
-      <div className={`pdf-stage tool-${tool}`}>
-        <div ref={containerRef} className="pdf-container" tabIndex={-1}>
-          <div className="pdfViewer" />
-        </div>
+      <div ref={stageRef} className={`pdf-stage tool-${tool}`}>
+        {store && (
+          <Viewer ref={viewer} store={store} pages={pages} awake={awake} onPageChange={onPageChange} onZoomChange={onZoomChange} renderPage={renderPage} />
+        )}
       </div>
+      {!store && !error && !password && <CenterState spinner />}
       {error && (
         <CenterState title="Couldn’t open this PDF">
           <p className="muted">{error}</p>
         </CenterState>
       )}
-      {password && <PasswordPrompt retry={password.retry} onSubmit={password.submit} />}
+      {password && <PasswordPrompt retry={password.retry} onSubmit={(pw) => void openWith(pw)} />}
       <FindBar
         open={findOpen}
         onClose={() => {
           setFindOpen(false)
-          find('')
+          runFind('')
         }}
-        onQuery={(q) => find(q)}
-        onNext={() => find(findQuery.current, false, true)}
-        onPrev={() => find(findQuery.current, true, true)}
-        count={matches?.total ?? null}
-        current={matches ? Math.max(0, matches.current - 1) : null}
+        onQuery={runFind}
+        onNext={() => stepMatch(1)}
+        onPrev={() => stepMatch(-1)}
+        count={find ? (find.done || matchList.length ? matchList.length : null) : null}
+        current={matchList.length ? Math.max(0, findIndex) : null}
         placeholder="Find in PDF"
       />
-      {doc && (
+      {store && (
         <div className="canvas-bar">
+          <IconButton label="Undo (⌘Z)" size="sm" disabled={!hist.canUndo || busy} onClick={() => void undo()}>
+            <Undo2 size={14} />
+          </IconButton>
+          <IconButton label="Redo (⇧⌘Z)" size="sm" disabled={!hist.canRedo || busy} onClick={() => void redo()}>
+            <Redo2 size={14} />
+          </IconButton>
+          <span className="sep" />
           <input
             className="readout"
             aria-label="Page number"
             key={page}
-            defaultValue={page}
+            defaultValue={page + 1}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 const n = Number(e.currentTarget.value)
-                if (n >= 1 && n <= numPages) linkRef.current?.goToPage(n)
+                if (n >= 1 && n <= numPages) viewer.current?.goTo(n - 1)
                 e.currentTarget.blur()
               }
             }}
@@ -661,20 +932,20 @@ export default function PdfEditor({ tab, active }: EditorProps) {
             / {numPages}
           </span>
           <span className="sep" />
-          <IconButton label="Zoom out (⌘−)" size="sm" onClick={() => viewerRef.current?.decreaseScale({ drawingDelay: ZOOM_REDRAW_DELAY })}>
+          <IconButton label="Zoom out (⌘−)" size="sm" onClick={() => viewer.current?.step(-1)}>
             <Minus size={14} />
           </IconButton>
-          <button type="button" className="icon-btn sm readout" title={platform.shortcut('Actual size (⌘0)')} onClick={() => (viewerRef.current!.currentScaleValue = 'page-actual')}>
-            {formatZoom(scale)}
+          <button type="button" className="icon-btn sm readout" title={platform.shortcut('Actual size (⌘0)')} onClick={() => viewer.current?.setZoom(1)}>
+            {formatZoom(zoom)}
           </button>
-          <IconButton label="Zoom in (⌘+)" size="sm" onClick={() => viewerRef.current?.increaseScale({ drawingDelay: ZOOM_REDRAW_DELAY })}>
+          <IconButton label="Zoom in (⌘+)" size="sm" onClick={() => viewer.current?.step(1)}>
             <Plus size={14} />
           </IconButton>
           <span className="sep" />
-          <IconButton label="Fit width" size="sm" onClick={() => (viewerRef.current!.currentScaleValue = 'page-width')}>
+          <IconButton label="Fit width" size="sm" onClick={() => viewer.current?.setZoom('page-width')}>
             <MoveHorizontal size={14} />
           </IconButton>
-          <IconButton label="Fit page" size="sm" onClick={() => (viewerRef.current!.currentScaleValue = 'page-fit')}>
+          <IconButton label="Fit page" size="sm" onClick={() => viewer.current?.setZoom('page-fit')}>
             <Scaling size={14} />
           </IconButton>
         </div>
@@ -708,19 +979,6 @@ function PasswordPrompt({ retry, onSubmit }: { retry: boolean; onSubmit: (pw: st
   )
 }
 
-async function readInfo(doc: PDFDocumentProxy): Promise<DocInfo> {
-  const [meta, first] = await Promise.all([doc.getMetadata().catch(() => null), doc.getPage(1)])
-  const info = (meta?.info ?? {}) as Record<string, unknown>
-  const vp = first.getViewport({ scale: 1, rotation: 0 })
-  return {
-    title: (meta?.metadata?.get('dc:title') as string | undefined) || (info.Title as string | undefined) || undefined,
-    author: (info.Author as string | undefined) || undefined,
-    producer: (info.Creator as string | undefined) || (info.Producer as string | undefined) || undefined,
-    version: info.PDFFormatVersion as string | undefined,
-    pageSize: pageSizeName(vp.width, vp.height),
-  }
-}
-
 function pageSizeName(w: number, h: number) {
   const [a, b] = [Math.min(w, h), Math.max(w, h)]
   const near = (x: number, y: number) => Math.abs(x - y) < 3
@@ -738,31 +996,64 @@ function formatBytes(n: number) {
   return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
 
-/** Render each page to an image in the print root, then open the system print panel. */
-async function printPdf(getBytes: () => Promise<Uint8Array>) {
-  const root = document.getElementById('print-root')!
-  root.innerHTML = ''
-  const doc = await pdfjs.getDocument({ data: (await getBytes()).slice() }).promise
+function pickImage(): Promise<File[]> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/png,image/jpeg,image/gif,image/webp,image/heic,image/svg+xml'
+    input.onchange = () => resolve(Array.from(input.files ?? []))
+    input.oncancel = () => resolve([])
+    input.click()
+  })
+}
+
+/** PNG and JPEG go into the PDF as they are; anything else is converted to PNG. */
+async function imageForPdf(file: File): Promise<{ bytes: ArrayBuffer; width: number; height: number }> {
+  const url = URL.createObjectURL(file)
   try {
-    for (let i = 1; i <= doc.numPages; i++) {
-      const page = await doc.getPage(i)
-      const viewport = page.getViewport({ scale: 2 })
-      const canvas = document.createElement('canvas')
-      canvas.width = viewport.width
-      canvas.height = viewport.height
-      await page.render({ canvas, viewport, annotationMode: pdfjs.AnnotationMode.ENABLE_STORAGE }).promise
-      const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'))
+    const img = new Image()
+    img.src = url
+    await img.decode()
+    const width = img.naturalWidth || 300
+    const height = img.naturalHeight || 300
+    if (file.type === 'image/png' || file.type === 'image/jpeg') return { bytes: await file.arrayBuffer(), width, height }
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
+    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'))
+    canvas.width = canvas.height = 0
+    if (!blob) throw new Error('The image couldn’t be read.')
+    return { bytes: await blob.arrayBuffer(), width, height }
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+/** Draw each page into the print area, one at a time, then open the system print panel. */
+async function printPdf(store: DocStore) {
+  const root = document.getElementById('print-root')!
+  for (const img of root.querySelectorAll('img')) URL.revokeObjectURL(img.src)
+  root.innerHTML = ''
+  const canvas = document.createElement('canvas')
+  try {
+    for (const p of store.pages) {
+      // 150 dpi is plenty for paper and keeps a long document's print job a sensible size.
+      const bitmap = await store.engine.call('render', [p.key, 150 / 72, null], { priority: Priority.action })
+      canvas.width = bitmap.width
+      canvas.height = bitmap.height
+      drawBitmap(canvas, bitmap)
+      const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', 0.92))
       const div = document.createElement('div')
       div.className = 'print-page'
       const img = new Image()
       img.src = blob ? URL.createObjectURL(blob) : canvas.toDataURL()
       div.appendChild(img)
       root.appendChild(div)
-      page.cleanup()
     }
     await Promise.all(Array.from(root.querySelectorAll('img')).map((img) => img.decode().catch(() => {})))
     window.print()
   } finally {
-    void doc.loadingTask.destroy()
+    canvas.width = canvas.height = 0
   }
 }
