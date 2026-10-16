@@ -1,3 +1,4 @@
+mod cloud;
 mod files;
 mod menu;
 
@@ -108,6 +109,8 @@ pub fn run() {
             files::write_file,
             files::path_info,
             files::fetch_bytes,
+            cloud::cloud_folders,
+            cloud::ensure_dir,
             take_pending_opens,
             quit_app,
         ])

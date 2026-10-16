@@ -1,7 +1,9 @@
-import { ArrowDownToLine, Copy, FolderOpen, LayoutGrid, Plus, X } from 'lucide-react'
+import { ArrowDownToLine, Cloud, CloudAlert, CloudCheck, CloudOff, Copy, FolderOpen, LayoutGrid, Plus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { isMac, isTauri, revealInFinder, revealLabel, shortcut } from '../lib/platform'
+import { autosaveBlocker, autosaveFolder, useAutosaveStatus } from '../lib/autosave'
+import { isMac, isTauri, revealInFinder, revealLabel, shortcut, tildify } from '../lib/platform'
 import { useUpdate } from '../lib/updater'
+import { useSettings } from '../state/settings'
 import { HOME_TAB_ID, useWorkspace } from '../state/workspace'
 import { runCommand } from '../App'
 import { KindIcon } from './Workbench'
@@ -142,6 +144,7 @@ export function TitleBar() {
         <Plus size={16} />
       </button>
       <div className="titlebar-spacer" data-tauri-drag-region />
+      <AutosaveChip />
       {updateReady && (
         <button type="button" className="update-btn" title={`Workspace ${updateReady} is ready to install`} onClick={() => void runCommand('install-update')}>
           <ArrowDownToLine size={13} />
@@ -176,5 +179,42 @@ export function TitleBar() {
         />
       )}
     </header>
+  )
+}
+
+/** Where the active tab autosaves to, and how the last autosave went. Opens Settings. */
+function AutosaveChip() {
+  const tabs = useWorkspace((s) => s.tabs)
+  const activeId = useWorkspace((s) => s.activeId)
+  const autosave = useSettings((s) => s.autosave)
+  const status = useAutosaveStatus((s) => s[activeId])
+  const tab = tabs.find((t) => t.id === activeId)
+  if (!tab || !autosave.root) return null
+
+  const blocker = autosaveBlocker(tab, autosave)
+  let icon = <Cloud size={14} />
+  let text = ''
+  let tone = ''
+  let title = tab.path ? `Autosaves to ${tildify(tab.path)}` : `Autosaves to ${tildify(autosaveFolder(autosave)!)} once you start editing`
+  if (blocker) {
+    icon = <CloudOff size={14} />
+    text = 'Not autosaved'
+    title = `${blocker} ${shortcut('Save with ⌘S.')}`
+  } else if (status?.state === 'error') {
+    icon = <CloudAlert size={14} />
+    text = 'Couldn’t autosave'
+    tone = 'error'
+    title = status.message ?? ''
+  } else if (status?.state === 'saving') {
+    text = 'Saving…'
+  } else if (status?.state === 'saved' && !tab.dirty) {
+    icon = <CloudCheck size={14} />
+    text = 'Saved'
+  }
+  return (
+    <button type="button" className={`autosave-chip ${tone}`} title={`${title}\nClick to change autosave settings.`} onClick={() => useSettings.getState().setOpen(true)}>
+      {icon}
+      {text && <span>{text}</span>}
+    </button>
   )
 }

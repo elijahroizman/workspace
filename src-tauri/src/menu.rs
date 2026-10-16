@@ -67,9 +67,13 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         .separator()
         .item(&item(app, "close-tab", "Close Tab", Some("CmdOrCtrl+W"))?)
         .item(&item(app, "reopen-tab", "Reopen Closed Tab", Some("CmdOrCtrl+Shift+T"))?);
-    // Windows apps quit from File → Exit; a Mac app quits from the app menu.
+    // Windows apps keep settings and Exit in the File menu; a Mac app has them in the app menu.
     #[cfg(not(target_os = "macos"))]
-    let file_menu = file_menu.separator().item(&item(app, "quit", "Exit", Some("Alt+F4"))?);
+    let file_menu = file_menu
+        .separator()
+        .item(&item(app, "settings", "Settings…", Some("CmdOrCtrl+,"))?)
+        .separator()
+        .item(&item(app, "quit", "Exit", Some("Alt+F4"))?);
     let file_menu = file_menu.build()?;
 
     let edit_menu = SubmenuBuilder::new(app, "Edit")
@@ -121,6 +125,8 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let menus: Vec<Submenu<R>> = if cfg!(target_os = "macos") {
         let app_menu = SubmenuBuilder::new(app, "Workspace")
             .about(Some(about))
+            .separator()
+            .item(&item(app, "settings", "Settings…", Some("CmdOrCtrl+,"))?)
             .separator()
             .services()
             .separator()

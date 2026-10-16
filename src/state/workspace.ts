@@ -45,6 +45,17 @@ export const registerEditor = (tabId: string, handle: EditorHandle) => {
 }
 export const getEditor = (tabId: string) => handles.get(tabId)
 
+/** Counts edits per tab, so a save can tell whether the document changed while it was writing. */
+const edits = new Map<string, number>()
+
+/** Autosave plugs in here (see lib/autosave.ts); until it does, nothing autosaves. */
+export const autosaveHooks = {
+  /** A tab's document just changed. */
+  edited: (_tabId: string) => {},
+  /** Save a tab now if autosave covers it. Resolves true once its changes are on disk. */
+  flush: async (_tabId: string) => false,
+}
+
 type Theme = 'dark' | 'light'
 
 interface WorkspaceState {
@@ -66,7 +77,11 @@ interface WorkspaceState {
   openDialog(): Promise<void>
   newDocument(kind: DocKind): void
   markDirty(id: string, dirty: boolean): void
-  save(id?: string, opts?: { saveAs?: boolean }): Promise<boolean>
+  /**
+   * Save a tab. `to` saves to that path without asking. `quiet` throws on failure instead of
+   * showing an error (autosave reports failures itself).
+   */
+  save(id?: string, opts?: { saveAs?: boolean; to?: string; quiet?: boolean }): Promise<boolean>
   revert(id?: string): Promise<void>
   closeTab(id?: string): Promise<boolean>
   closeAll(): Promise<boolean>
@@ -230,8 +245,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
 
     markDirty: (id, dirty) => {
       const tab = get().tabs.find((t) => t.id === id)
-      if (!tab || tab.dirty === dirty) return
-      set({ tabs: get().tabs.map((t) => (t.id === id ? { ...t, dirty } : t)) })
+      if (!tab) return
+      if (tab.dirty !== dirty) set({ tabs: get().tabs.map((t) => (t.id === id ? { ...t, dirty } : t)) })
+      if (dirty) {
+        edits.set(id, (edits.get(id) ?? 0) + 1)
+        autosaveHooks.edited(id)
+      }
     },
 
     save: async (id, opts) => {
@@ -239,20 +258,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       if (!tab) return false
       const editor = getEditor(tab.id)
       if (!editor) return false
-      let path = tab.path
+      let path = opts?.to ?? tab.path
       if (!path || opts?.saveAs) {
         path = await platform.pickSavePath(tab.title, tab.kind)
         if (!path) return false
       }
+      const editsBefore = edits.get(tab.id) ?? 0
       try {
         const bytes = await editor.getBytes()
         await platform.writeFile(path, bytes)
         editor.markSaved?.()
         const title = stripExtension(platform.basename(path))
-        set({ tabs: get().tabs.map((t) => (t.id === tab.id ? { ...t, path, title, dirty: false } : t)) })
+        // An edit made while the file was being written isn't in it, so the tab stays unsaved.
+        const dirty = (edits.get(tab.id) ?? 0) !== editsBefore
+        set({ tabs: get().tabs.map((t) => (t.id === tab.id ? { ...t, path, title, dirty } : t)) })
         addRecent(path, tab.kind)
         return true
       } catch (err) {
+        if (opts?.quiet) throw err
         await platform.showError(String(err))
         return false
       }
@@ -282,7 +305,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       if (tabId === HOME_TAB_ID) return true
       const tab = get().tabs.find((t) => t.id === tabId)
       if (!tab) return true
-      if (tab.dirty) {
+      // Autosaved tabs close without asking once their last changes are written.
+      if (tab.dirty && !(await autosaveHooks.flush(tab.id))) {
         set({ activeId: tab.id })
         const choice = await platform.askSaveChanges(tab.title)
         if (choice === 'cancel') return false
@@ -296,7 +320,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         const neighbour = remaining[index] ?? remaining[index - 1]
         nextActive = neighbour?.id ?? HOME_TAB_ID
       }
-      const closedPaths = tab.path ? [...get().closedPaths, tab.path].slice(-20) : get().closedPaths
+      // An untitled document may have been autosaved just now, so look its path up again.
+      const path = get().tabs.find((t) => t.id === tabId)?.path ?? tab.path
+      const closedPaths = path ? [...get().closedPaths, path].slice(-20) : get().closedPaths
+      edits.delete(tabId)
       set({ tabs: remaining, activeId: nextActive, closedPaths })
       return true
     },
