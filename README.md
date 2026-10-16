@@ -52,15 +52,18 @@ It takes about five minutes, most of it compiling. A copy you build yourself doe
 
    The finished app is at `src-tauri/target/release/bundle/macos/Workspace.app`, and a disk image is next to it in `bundle/dmg/`.
 
-3. **Move it to Applications**:
+3. **Move it to Applications.** Remove the previous copy first so the new bundle replaces it:
 
    ```sh
+   rm -rf /Applications/Workspace.app
    cp -R src-tauri/target/release/bundle/macos/Workspace.app /Applications/
    ```
 
 4. **First launch.** You built the app yourself, so it isn't signed by Apple. The first time, **right-click Workspace in Applications → Open → Open**. After that it opens normally. If macOS still refuses, run `xattr -cr /Applications/Workspace.app` once.
 
 5. **Optional: make it the default app** for a file type. In Finder, select any `.pdf` (or `.docx`, `.pptx`, `.md`), press ⌘I, choose **Workspace** under *Open with*, then click **Change All…**. Workspace also appears in every *Open With* menu.
+
+Finder lists every `Workspace.app` it can find. The build left in `src-tauri/target`, a disk image that is still mounted, or an older copy in Downloads shows up beside the installed app with its version after the name, as in "Workspace (0.3.0)" and "Workspace (0.1.0)". Opening the current app removes the other copies from that menu. The files stay where they are.
 
 To update later, pull the new code and repeat steps 2–3.
 
@@ -130,6 +133,7 @@ src/
   editors/{docx,pptx,pdf,markdown}/   one lazily loaded editor per file type
 src-tauri/
   src/lib.rs              app setup, Finder “Open With” handling
+  src/launch_services.rs  one Workspace entry in Finder's Open With menu
   src/files.rs            raw-bytes file reading and atomic saving
   src/menu.rs             the native menu bar
 ```
