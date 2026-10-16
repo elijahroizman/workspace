@@ -320,7 +320,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         const neighbour = remaining[index] ?? remaining[index - 1]
         nextActive = neighbour?.id ?? HOME_TAB_ID
       }
-      // An untitled document may have been autosaved just now, so look its path up again.
+      // Save from the close prompt may have just given an untitled document a path.
       const path = get().tabs.find((t) => t.id === tabId)?.path ?? tab.path
       const closedPaths = path ? [...get().closedPaths, path].slice(-20) : get().closedPaths
       edits.delete(tabId)

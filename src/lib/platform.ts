@@ -110,36 +110,6 @@ export async function pathExists(path: string): Promise<boolean> {
   return info.exists
 }
 
-export type CloudProvider = 'icloud' | 'dropbox' | 'onedrive' | 'gdrive'
-
-export interface CloudFolder {
-  provider: CloudProvider
-  label: string
-  path: string
-}
-
-/** Folders the iCloud, Dropbox, OneDrive and Google Drive apps keep in sync on this computer. */
-export async function cloudFolders(): Promise<CloudFolder[]> {
-  if (!isTauri) return []
-  const { invoke } = await core()
-  return invoke<CloudFolder[]>('cloud_folders')
-}
-
-/** Create a folder and any missing parents. */
-export async function ensureDir(path: string): Promise<void> {
-  if (!isTauri) return
-  const { invoke } = await core()
-  await invoke('ensure_dir', { path })
-}
-
-/** Ask for a folder. Returns null when cancelled (or in a browser, which can't hand out folder paths). */
-export async function pickFolder(): Promise<string | null> {
-  if (!isTauri) return null
-  const { open } = await dialog()
-  const picked = await open({ directory: true, multiple: false })
-  return typeof picked === 'string' ? picked : null
-}
-
 const ALL_EXTENSIONS = Object.values(KINDS).flatMap((k) => k.extensions)
 
 export async function pickFiles(): Promise<OpenedFile[]> {

@@ -1685,17 +1685,6 @@ button {
   -webkit-user-select: text;
 }
 
-.settings-group {
-  margin-bottom: 20px;
-}
-
-.settings-group-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
 .settings-label {
   font-weight: 500;
 }
@@ -1708,124 +1697,9 @@ button {
   text-overflow: ellipsis;
 }
 
-.settings-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 24px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--fg-muted);
-  font-size: 12px;
-}
-
-.settings-link:hover:not(:disabled) {
-  background: var(--hover);
-  color: var(--fg);
-}
-
-.settings-link:disabled {
-  opacity: 0.4;
-}
-
-.provider-list {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.provider-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  min-height: 52px;
-  padding: 8px 14px 8px 12px;
-  border: 0;
-  border-bottom: 1px solid var(--line-soft);
-  background: transparent;
-  text-align: left;
-}
-
-.provider-row:last-child {
-  border-bottom: 0;
-}
-
-.provider-row:hover:not(:disabled) {
-  background: var(--hover);
-}
-
-.provider-row.on {
-  background: var(--accent-soft);
-}
-
-.provider-row:disabled .provider-icon,
-.provider-row:disabled .provider-title {
-  opacity: 0.45;
-}
-
-.provider-icon {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  color: #fff;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.provider-icon.off,
-.provider-icon.folder {
-  background: var(--field);
-  color: var(--fg-muted);
-  font-size: 14px;
-}
-
-.provider-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.provider-title {
-  font-weight: 500;
-}
-
-.provider-detail {
-  color: var(--fg-faint);
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.provider-detail.warn {
-  color: var(--danger);
-}
-
-.radio-dot {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 1.5px solid var(--fg-faint);
-}
-
-.provider-row.on .radio-dot {
-  border: 5px solid var(--accent);
-  background: #fff;
-}
-
-.provider-row:disabled .radio-dot {
-  visibility: hidden;
+.settings-intro + .settings-row {
+  border-top: 0;
+  padding-top: 0;
 }
 
 .settings-fields {
@@ -1868,10 +1742,6 @@ button {
   gap: 4px;
 }
 
-.subfolder-field {
-  width: 160px;
-}
-
 .kind-checks {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -1881,9 +1751,4 @@ button {
 .settings-scroll > .settings-row:first-child {
   border-top: 0;
   padding-top: 0;
-}
-
-/* “Not found… install the app” hints wrap; paths stay on one line. */
-.provider-row:disabled .provider-detail {
-  white-space: normal;
 }

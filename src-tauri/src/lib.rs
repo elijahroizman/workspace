@@ -1,4 +1,3 @@
-mod cloud;
 mod files;
 // Helpers below are called from the macOS launch path. Other targets still
 // compile them so the tests run, and nothing else references them.
@@ -130,8 +129,6 @@ pub fn run() {
             files::write_file,
             files::path_info,
             files::fetch_bytes,
-            cloud::cloud_folders,
-            cloud::ensure_dir,
             take_pending_opens,
             quit_app,
             update::latest_release,

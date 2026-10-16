@@ -1,6 +1,6 @@
-import { Cloud, CloudAlert, CloudCheck, CloudOff, Copy, FolderOpen, LayoutGrid, Plus, X } from 'lucide-react'
+import { Check, CircleAlert, Copy, FolderOpen, LayoutGrid, Plus, Save, SaveOff, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { autosaveBlocker, autosaveFolder, useAutosaveStatus } from '../lib/autosave'
+import { autosaveBlocker, useAutosaveStatus } from '../lib/autosave'
 import { isMac, isTauri, revealInFinder, revealLabel, shortcut, tildify } from '../lib/platform'
 import { useSettings } from '../state/settings'
 import { HOME_TAB_ID, useWorkspace } from '../state/workspace'
@@ -182,26 +182,26 @@ function AutosaveChip() {
   const autosave = useSettings((s) => s.autosave)
   const status = useAutosaveStatus((s) => s[activeId])
   const tab = tabs.find((t) => t.id === activeId)
-  if (!tab || !autosave.root) return null
+  if (!tab) return null
 
   const blocker = autosaveBlocker(tab, autosave)
-  let icon = <Cloud size={14} />
+  let icon = <Save size={14} />
   let text = ''
   let tone = ''
-  let title = tab.path ? `Autosaves to ${tildify(tab.path)}` : `Autosaves to ${tildify(autosaveFolder(autosave)!)} once you start editing`
+  let title = tab.path ? `Autosaves to ${tildify(tab.path)}` : 'This file has not been saved yet.'
   if (blocker) {
-    icon = <CloudOff size={14} />
+    icon = <SaveOff size={14} />
     text = 'Not autosaved'
     title = `${blocker} ${shortcut('Save with ⌘S.')}`
   } else if (status?.state === 'error') {
-    icon = <CloudAlert size={14} />
+    icon = <CircleAlert size={14} />
     text = 'Couldn’t autosave'
     tone = 'error'
     title = status.message ?? ''
   } else if (status?.state === 'saving') {
     text = 'Saving…'
   } else if (status?.state === 'saved' && !tab.dirty) {
-    icon = <CloudCheck size={14} />
+    icon = <Check size={14} />
     text = 'Saved'
   }
   return (

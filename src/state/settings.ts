@@ -1,21 +1,12 @@
 import { create } from 'zustand'
 import type { DocKind } from '../lib/kinds'
-import type { CloudProvider } from '../lib/platform'
 
 export interface AutosaveSettings {
-  /** The synced folder documents go to; null turns autosave off. */
-  root: string | null
-  /** Which app syncs `root`, or 'folder' for one the user picked themselves. */
-  provider: CloudProvider | 'folder' | null
-  /** How the UI names the destination, e.g. “iCloud Drive” or “OneDrive – Contoso”. */
-  label: string
-  /** Folder inside `root` that new documents are saved to. */
-  subfolder: string
+  /** When false, nothing autosaves. Files still save with the Save command. */
+  enabled: boolean
   /** Seconds to wait after the last edit before saving. */
   delay: number
   kinds: Record<DocKind, boolean>
-  /** Also autosave files stored outside `root`, where they are. */
-  everywhere: boolean
 }
 
 export interface Settings {
@@ -24,26 +15,32 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   autosave: {
-    root: null,
-    provider: null,
-    label: '',
-    subfolder: 'Workspace',
+    enabled: true,
     delay: 3,
-    // Saving a PDF rewrites the whole file, so PDFs wait for ⌘S unless you opt in.
+    // Saving a PDF rewrites the whole file, so PDFs wait for the Save command unless you opt in.
     kinds: { docx: true, pptx: true, md: true, txt: true, pdf: false },
-    everywhere: false,
   },
 }
 
 const KEY = 'workspace.settings'
 
+/** Older builds stored one cloud folder. No folder meant autosave was off. */
+interface LegacyAutosave extends Partial<AutosaveSettings> {
+  root?: string | null
+}
+
 function load(): Settings {
   try {
-    const saved = JSON.parse(localStorage.getItem(KEY) || '{}') as Partial<Settings>
-    // Settings added since the last save take their defaults.
-    const autosave = { ...DEFAULT_SETTINGS.autosave, ...saved.autosave }
-    autosave.kinds = { ...DEFAULT_SETTINGS.autosave.kinds, ...saved.autosave?.kinds }
-    return { ...DEFAULT_SETTINGS, ...saved, autosave }
+    const saved = JSON.parse(localStorage.getItem(KEY) || '{}') as { autosave?: LegacyAutosave }
+    const old = saved.autosave
+    const merged: AutosaveSettings = {
+      ...DEFAULT_SETTINGS.autosave,
+      ...old,
+      kinds: { ...DEFAULT_SETTINGS.autosave.kinds, ...old?.kinds },
+    }
+    // A build from before `enabled` stored the choice as whether a folder was picked.
+    if (old && !('enabled' in old) && 'root' in old) merged.enabled = Boolean(old.root)
+    return { autosave: { enabled: merged.enabled, delay: merged.delay, kinds: merged.kinds } }
   } catch {
     return DEFAULT_SETTINGS
   }
