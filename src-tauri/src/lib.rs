@@ -1,4 +1,8 @@
 mod files;
+// Helpers below are called from the macOS launch path. Other targets still
+// compile them so the tests run, and nothing else references them.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod launch_services;
 mod menu;
 
 use std::sync::Mutex;
@@ -92,11 +96,24 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(PendingOpens(Mutex::new(cli_paths)))
-        .setup(|_app| {
+        .setup(|app| {
+            // A second Workspace.app (an old install, a target/ build, a mounted
+            // disk image) shows up in Open With as another version. Unregister
+            // the others in the background. A dev run has no app bundle, so
+            // there is nothing to register.
+            #[cfg(target_os = "macos")]
+            {
+                let bundle_id = app.config().identifier.clone();
+                let _ = std::thread::Builder::new()
+                    .name("launch-services".into())
+                    .spawn(move || launch_services::claim_single_open_with_entry(&bundle_id));
+            }
             #[cfg(windows)]
-            if let Some(window) = _app.get_webview_window("main") {
+            if let Some(window) = app.get_webview_window("main") {
                 disable_browser_shortcuts(&window);
             }
+            #[cfg(not(any(target_os = "macos", windows)))]
+            let _ = app;
             Ok(())
         })
         .menu(menu::build)
