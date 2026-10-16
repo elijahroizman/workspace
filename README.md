@@ -24,7 +24,7 @@ A small, fast Mac and Windows app for the document types most people actually us
 
 Download the latest build from [Releases](https://github.com/elijahroizman/workspace/releases/latest):
 
-- **Mac (Apple silicon):** open `Workspace_…_aarch64.dmg` and drag Workspace to Applications. The app isn't notarized by Apple, so the first launch is blocked: open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to Workspace. If macOS says the app is damaged, run `xattr -cr /Applications/Workspace.app` once in Terminal.
+- **Mac (Apple silicon):** open `Workspace_…_aarch64.dmg` and drag Workspace to Applications.
 - **Windows (x64):** run `Workspace_…_x64-setup.exe`. Windows may say "Windows protected your PC" because the app isn't signed. Click **More info** → **Run anyway**.
 
 After that, updates install themselves.
