@@ -100,15 +100,14 @@ All of these are open source and run locally:
 | Word editing (keeps formatting it doesn't understand when saving) | [docx-editor](https://github.com/eigenpal/docx-editor) + bundled substitutes for Calibri, Cambria, Arial, Times New Roman and Courier New | Apache-2.0, fonts SIL OFL |
 | PowerPoint viewing & editing | [pptx-react-viewer](https://github.com/ChristopherVR/ooxml) | Apache-2.0 |
 | New presentations | [PptxGenJS](https://github.com/gitbrent/PptxGenJS) | MIT |
-| PDF viewing & annotation | [PDF.js](https://github.com/mozilla/pdf.js) | Apache-2.0 |
-| PDF page operations | [pdf-lib](https://github.com/Hopding/pdf-lib) | MIT |
+| PDF viewing, annotation, forms & page operations | [PDFium](https://pdfium.googlesource.com/pdfium/) (Chrome's PDF engine) compiled to WebAssembly by [EmbedPDF](https://github.com/embedpdf/embed-pdf-viewer) | BSD-3-Clause / MIT |
 | Markdown | [markdown-it](https://github.com/markdown-it/markdown-it), [CodeMirror 6](https://codemirror.net), [highlight.js](https://highlightjs.org), [yaml](https://github.com/eemeli/yaml) | MIT / BSD / ISC |
 
 ## What it doesn't do (yet)
 
 - **PowerPoint:** videos are added as their thumbnail with a link, which is how a link to an online video travels between apps. In Workspace's slideshow they play right on the slide; in PowerPoint or Keynote, clicking one opens the video in the browser. The slideshow doesn't play animations or transitions yet.
 - **Word:** no editing of comments or tracked changes. When printing, table borders are left out.
-- **PDF:** form filling works where the PDF supports it. Encrypted PDFs can be viewed and annotated, but their pages can't be rearranged.
+- **PDF:** text, checkbox, radio and list form fields can be filled; buttons, signature fields and form scripts don't do anything. Forms made only with Adobe's XFA show their placeholder page. Chinese, Japanese or Korean text in a font the PDF doesn't include (some older PDFs) may not show.
 - Excel and other formats are intentionally out of scope.
 
 ## Developing

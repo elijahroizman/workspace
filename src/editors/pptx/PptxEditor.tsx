@@ -127,7 +127,7 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
 
   // ── Inserting things
   const insertImage = async () => {
-    const files = await pickImageFiles()
+    const files = await platform.pickImages({ multiple: true })
     for (const file of files) {
       const dataUrl = await readAsDataUrl(file)
       const { width, height } = await imageSize(dataUrl)
@@ -374,18 +374,6 @@ function elementText(e: Element): string {
   if (anyEl.text) return anyEl.text
   if (anyEl.tableData?.rows) return anyEl.tableData.rows.flatMap((r) => r.cells?.map((c) => c.text ?? '') ?? []).join(' ')
   return ''
-}
-
-function pickImageFiles(): Promise<File[]> {
-  return new Promise((resolve) => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'image/png,image/jpeg,image/gif,image/webp,image/svg+xml'
-    input.multiple = true
-    input.onchange = () => resolve(Array.from(input.files ?? []))
-    input.oncancel = () => resolve([])
-    input.click()
-  })
 }
 
 function readAsDataUrl(file: Blob): Promise<string> {
