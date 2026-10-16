@@ -27,7 +27,7 @@ pub fn bundle_app_dir(exe: &Path) -> Option<PathBuf> {
 /// Cargo's output directory when `app` is a bundle produced by `tauri build`.
 pub fn cargo_target_dir(app: &Path) -> Option<PathBuf> {
     let components: Vec<Component> = app.components().collect();
-    let target_at = components.iter().position(|c| c.as_os_str() == "target")?;
+    let target_at = components.iter().rposition(|c| c.as_os_str() == "target")?;
     let rest = &components[target_at + 1..];
     let build_output = rest
         .iter()
@@ -69,38 +69,11 @@ pub fn spotlight_ignore_dir(running_app: &Path, other_app: &Path) -> Option<Path
 }
 
 fn path_identity(path: &Path) -> PathBuf {
-    if let Ok(canonical) = std::fs::canonicalize(path) {
-        return canonical;
-    }
-    let mut out = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                out.pop();
-            }
-            other => out.push(other.as_os_str()),
-        }
-    }
-    out
-}
-
-/// Bundle ids are reverse-DNS. Anything else is refused before it is placed in
-/// an `mdfind` query.
-fn safe_bundle_id(id: &str) -> bool {
-    let mut chars = id.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    first.is_ascii_alphanumeric()
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 #[cfg(target_os = "macos")]
 pub fn claim_single_open_with_entry(bundle_id: &str) {
-    if !safe_bundle_id(bundle_id) {
-        return;
-    }
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
@@ -108,64 +81,29 @@ pub fn claim_single_open_with_entry(bundle_id: &str) {
         return;
     };
 
-    let mut found = application_urls(bundle_id);
-    found.extend(spotlight_copies(bundle_id));
-    for path in registrations_to_drop(&ours, &found) {
-        unregister(&path);
+    for path in registrations_to_drop(&ours, &application_urls(bundle_id)) {
+        lsregister(&["-f", "-u"], &path);
         if let Some(target) = spotlight_ignore_dir(&ours, &path) {
             let _ = std::fs::write(target.join(".metadata_never_index"), b"");
         }
     }
-    register(&ours);
+    lsregister(&["-f"], &ours);
 }
 
+/// `lsregister -f` refreshes a bundle's record. With `-u` it removes the record,
+/// even when the bundle is already gone, which is how an old version stays in the
+/// menu after the file was replaced.
 #[cfg(target_os = "macos")]
-fn lsregister() -> &'static Path {
-    Path::new("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister")
-}
-
-#[cfg(target_os = "macos")]
-fn register(app: &Path) {
-    let _ = std::process::Command::new(lsregister())
-        .arg("-f")
-        .arg(app)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-}
-
-#[cfg(target_os = "macos")]
-fn unregister(app: &Path) {
-    // `-f` removes the record even when the bundle is already gone, which is
-    // how an old version stays in the menu after the file was replaced.
-    let _ = std::process::Command::new(lsregister())
-        .args(["-f", "-u"])
-        .arg(app)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-}
-
-#[cfg(target_os = "macos")]
-fn spotlight_copies(bundle_id: &str) -> Vec<PathBuf> {
-    let query = format!("kMDItemCFBundleIdentifier == \"{bundle_id}\"");
-    let Ok(output) = std::process::Command::new("mdfind")
-        .arg(query)
-        .stdin(std::process::Stdio::null())
-        .output()
-    else {
-        return Vec::new();
-    };
-    if !output.status.success() {
-        return Vec::new();
-    }
-    String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter(|line| !line.is_empty())
-        .map(PathBuf::from)
-        .collect()
+fn lsregister(args: &[&str], app: &Path) {
+    let _ = std::process::Command::new(
+        "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+    )
+    .args(args)
+    .arg(app)
+    .stdin(std::process::Stdio::null())
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::null())
+    .status();
 }
 
 #[cfg(target_os = "macos")]
@@ -319,6 +257,20 @@ mod tests {
             cargo_target_dir(&parts(&["notes", "target", "readme.md"])),
             None
         );
+        // A `target` folder higher up isn't Cargo's output directory.
+        assert_eq!(
+            cargo_target_dir(&parts(&[
+                "target",
+                "code",
+                "src-tauri",
+                "target",
+                "release",
+                "bundle",
+                "macos",
+                "Workspace.app",
+            ])),
+            Some(parts(&["target", "code", "src-tauri", "target"]))
+        );
     }
 
     #[test]
@@ -346,13 +298,5 @@ mod tests {
         assert_eq!(spotlight_ignore_dir(&built, &installed), None);
 
         fs::remove_dir_all(&root).unwrap();
-    }
-
-    #[test]
-    fn bundle_id_is_safe_for_the_spotlight_query() {
-        assert!(safe_bundle_id("com.eliroizman.workspace"));
-        assert!(!safe_bundle_id(""));
-        assert!(!safe_bundle_id(".workspace"));
-        assert!(!safe_bundle_id("com.eli\";touch /tmp/x"));
     }
 }
