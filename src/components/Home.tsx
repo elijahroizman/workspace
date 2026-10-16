@@ -34,10 +34,10 @@ export function Home() {
             <p className="muted">Open, edit and create Word, PowerPoint, PDF, Markdown and text files.</p>
           </div>
           <div className="home-header-actions">
-            <IconButton label={theme === 'dark' ? 'Light appearance (⇧⌘L)' : 'Dark appearance (⇧⌘L)'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+            <IconButton label={shortcut(theme === 'dark' ? 'Light appearance (⇧⌘L)' : 'Dark appearance (⇧⌘L)')} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </IconButton>
-            <IconButton label="Settings (⌘,)" onClick={() => useSettings.getState().setOpen(true)}>
+            <IconButton label={shortcut('Settings (⌘,)')} onClick={() => useSettings.getState().setOpen(true)}>
               <Settings size={16} />
             </IconButton>
           </div>

@@ -28,7 +28,7 @@ fn detect() -> Vec<CloudFolder> {
     let Some(home) = home_dir() else { return Vec::new() };
     let mut found = Vec::new();
     find_icloud(&home, &mut found);
-    find_dropbox(&home, &mut found);
+    find_dropbox(&home, &dropbox_configs(&home), &mut found);
     find_cloud_storage(&home, &mut found);
     find_onedrive(&home, &mut found);
     find_google_drive(&home, &mut found);
@@ -62,13 +62,17 @@ fn find_icloud(home: &Path, found: &mut Vec<CloudFolder>) {
 }
 
 /// Dropbox writes where its folders are to info.json, which survives moving the folder.
-fn find_dropbox(home: &Path, found: &mut Vec<CloudFolder>) {
+fn dropbox_configs(home: &Path) -> Vec<PathBuf> {
     let mut configs = vec![home.join(".dropbox/info.json")];
     for var in ["APPDATA", "LOCALAPPDATA"] {
         if let Some(dir) = std::env::var_os(var) {
             configs.push(PathBuf::from(dir).join("Dropbox").join("info.json"));
         }
     }
+    configs
+}
+
+fn find_dropbox(home: &Path, configs: &[PathBuf], found: &mut Vec<CloudFolder>) {
     for config in configs {
         let Ok(text) = fs::read_to_string(&config) else { continue };
         for (account, path) in dropbox_accounts(&text) {
@@ -224,8 +228,9 @@ mod tests {
 
         let mut found = Vec::new();
         find_cloud_storage(&home, &mut found);
-        find_dropbox(&home, &mut found);
-        find_dropbox(&home, &mut found);
+        // No info.json, so the test doesn't pick up this machine's own Dropbox.
+        find_dropbox(&home, &[], &mut found);
+        find_dropbox(&home, &[], &mut found);
         let found = dedupe(found);
         let providers: Vec<_> = found.iter().map(|f| (f.provider, f.label.as_str())).collect();
         assert_eq!(
