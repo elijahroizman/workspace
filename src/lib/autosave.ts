@@ -1,10 +1,8 @@
-// Autosave: a few seconds after you stop editing, the document is saved. New documents go to a
-// folder inside iCloud Drive, Dropbox, OneDrive or Google Drive, and that provider's own app
-// uploads them, so nothing here signs in or talks to a server.
+// Autosave: a few seconds after you stop editing, a file that already has a location is saved
+// there. A document that has never been saved is left alone until you save it yourself.
 
 import { create } from 'zustand'
 import { KINDS } from './kinds'
-import * as platform from './platform'
 import type { AutosaveSettings } from '../state/settings'
 import { useSettings } from '../state/settings'
 import type { DocTab } from '../state/workspace'
@@ -29,28 +27,12 @@ const setStatus = (tabId: string, status: AutosaveStatus | null) =>
     return next
   })
 
-/** The folder new documents are saved to, or null when autosave is off. */
-export function autosaveFolder(s: AutosaveSettings = useSettings.getState().autosave): string | null {
-  if (!s.root) return null
-  const sub = s.subfolder.trim()
-  return sub ? platform.joinPath(s.root, sub) : s.root
-}
-
-function isInside(path: string, folder: string) {
-  const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '')
-  const p = norm(path)
-  const f = norm(folder)
-  // Windows and macOS file systems ignore case.
-  return p.toLowerCase().startsWith(f.toLowerCase() + '/')
-}
-
 /** Why a tab isn't autosaved, or null if it is. */
 export function autosaveBlocker(tab: DocTab, s: AutosaveSettings = useSettings.getState().autosave): string | null {
-  if (!s.root) return 'Autosave is off.'
+  if (!s.enabled) return 'Autosave is off.'
   if (!s.kinds[tab.kind]) return `Autosave is off for ${KINDS[tab.kind].short.toLowerCase()} files.`
-  if (!tab.path) return null
+  if (!tab.path) return 'Save this file once. After that, changes autosave.'
   if (tab.path.startsWith('browser:')) return 'Only files saved on this computer can autosave.'
-  if (!s.everywhere && !isInside(tab.path, s.root)) return `This file is outside ${s.label}.`
   // Two tabs writing the same file would overwrite each other's changes.
   if (useWorkspace.getState().tabs.some((t) => t.id !== tab.id && t.path === tab.path)) return 'This file is open in another tab too.'
   return null
@@ -84,13 +66,13 @@ async function run(tabId: string): Promise<boolean> {
   const tab = useWorkspace.getState().tabs.find((t) => t.id === tabId)
   if (!tab) return true
   if (!tab.dirty) return true
-  if (autosaveBlocker(tab) || !getEditor(tabId)) return false
+  if (autosaveBlocker(tab) || !tab.path || !getEditor(tabId)) return false
+  const path = tab.path
   const job = (async () => {
     // Let running.set below happen before anything else.
     await Promise.resolve()
     try {
       setStatus(tabId, { state: 'saving' })
-      const path = tab.path ?? (await newDocumentPath(tab))
       if (!(await useWorkspace.getState().save(tabId, { to: path, quiet: true }))) throw new Error('The document is still loading.')
       setStatus(tabId, { state: 'saved' })
       return true
@@ -106,24 +88,6 @@ async function run(tabId: string): Promise<boolean> {
   const after = useWorkspace.getState().tabs.find((t) => t.id === tabId)
   if (after?.dirty) schedule(tabId)
   return !after?.dirty
-}
-
-/** “Untitled Document.docx”, or “Untitled Document 2.docx” if that's taken. */
-async function newDocumentPath(tab: DocTab): Promise<string> {
-  const folder = autosaveFolder()
-  if (!folder) throw new Error('Autosave is off.')
-  const { root, label } = useSettings.getState().autosave
-  // Don't quietly recreate a sync folder whose app has been removed or moved.
-  if (!(await platform.pathExists(root!))) throw new Error(`Couldn't find ${label} at ${root}. Is its app still installed?`)
-  await platform.ensureDir(folder)
-  const ext = KINDS[tab.kind].extensions[0]
-  // Characters Windows or macOS won't put in a file name.
-  const base = tab.title.replace(/[\\/:*?"<>|]/g, '-').trim() || KINDS[tab.kind].untitled
-  const taken = new Set(useWorkspace.getState().tabs.map((t) => t.path))
-  for (let n = 1; ; n++) {
-    const path = platform.joinPath(folder, `${n === 1 ? base : `${base} ${n}`}.${ext}`)
-    if (!taken.has(path) && !(await platform.pathExists(path))) return path
-  }
 }
 
 /** Wire autosave into the workspace. Returns a function that stops it. */

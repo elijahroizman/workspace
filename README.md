@@ -16,7 +16,7 @@ A small, fast Mac and Windows app for the document types most people actually us
   | Text | None: just the text | None |
 
 - **Fast.** Built on [Tauri](https://tauri.app), so it uses the web view built into the system (WebKit on macOS, WebView2 on Windows) instead of bundling a browser. The app is small and launches quickly. Each editor engine loads only when you first open that kind of file.
-- **Autosave to your cloud drive.** In **Settings** (⌘,), pick iCloud Drive, Dropbox, OneDrive or Google Drive, and changes save a few seconds after you stop editing. New documents go to a `Workspace` folder there, and the drive's own app uploads them. Workspace finds the folder those apps keep on your computer, so there's nothing to sign in to. Files from other folders are saved only with ⌘S unless you turn on **Also autosave files stored elsewhere**.
+- **Autosave.** A file you have already saved is written back to that same place a few seconds after you stop editing. That place can be any folder, including one that iCloud Drive, Dropbox, OneDrive or another sync app already watches. The sync app uploads the file. Workspace does not sign in to anything. A new document is not saved until you use Save. In **Settings** (⌘,) you can turn autosave off, change the delay, or leave PDFs on manual save, because saving a PDF rewrites the whole file.
 - **Works offline, no accounts.** Every document engine runs locally on your computer.
 - **Keeps itself up to date.** New versions download in the background and install when you quit. To install one straight away, click **Restart to Update** in the tab bar.
 

@@ -1,21 +1,12 @@
 import { create } from 'zustand'
 import type { DocKind } from '../lib/kinds'
-import type { CloudProvider } from '../lib/platform'
 
 export interface AutosaveSettings {
-  /** The synced folder documents go to; null turns autosave off. */
-  root: string | null
-  /** Which app syncs `root`, or 'folder' for one the user picked themselves. */
-  provider: CloudProvider | 'folder' | null
-  /** How the UI names the destination, e.g. “iCloud Drive” or “OneDrive – Contoso”. */
-  label: string
-  /** Folder inside `root` that new documents are saved to. */
-  subfolder: string
+  /** When false, nothing autosaves. Files still save with the Save command. */
+  enabled: boolean
   /** Seconds to wait after the last edit before saving. */
   delay: number
   kinds: Record<DocKind, boolean>
-  /** Also autosave files stored outside `root`, where they are. */
-  everywhere: boolean
 }
 
 export interface Settings {
@@ -24,26 +15,40 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   autosave: {
-    root: null,
-    provider: null,
-    label: '',
-    subfolder: 'Workspace',
+    enabled: true,
     delay: 3,
-    // Saving a PDF rewrites the whole file, so PDFs wait for ⌘S unless you opt in.
+    // Saving a PDF rewrites the whole file, so PDFs wait for the Save command unless you opt in.
     kinds: { docx: true, pptx: true, md: true, txt: true, pdf: false },
-    everywhere: false,
   },
 }
 
 const KEY = 'workspace.settings'
 
+/** The delays Settings offers. Anything else in storage is ignored. */
+const DELAYS = [1, 3, 10, 30]
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function load(): Settings {
   try {
-    const saved = JSON.parse(localStorage.getItem(KEY) || '{}') as Partial<Settings>
-    // Settings added since the last save take their defaults.
-    const autosave = { ...DEFAULT_SETTINGS.autosave, ...saved.autosave }
-    autosave.kinds = { ...DEFAULT_SETTINGS.autosave.kinds, ...saved.autosave?.kinds }
-    return { ...DEFAULT_SETTINGS, ...saved, autosave }
+    const parsed: unknown = JSON.parse(localStorage.getItem(KEY) || '{}')
+    if (!isRecord(parsed) || !isRecord(parsed.autosave)) return DEFAULT_SETTINGS
+    const old = parsed.autosave
+    const defaults = DEFAULT_SETTINGS.autosave
+    const kinds = { ...defaults.kinds }
+    if (isRecord(old.kinds)) {
+      for (const kind of Object.keys(kinds) as DocKind[]) {
+        if (typeof old.kinds[kind] === 'boolean') kinds[kind] = old.kinds[kind]
+      }
+    }
+    const delay = typeof old.delay === 'number' && DELAYS.includes(old.delay) ? old.delay : defaults.delay
+    // A build from before `enabled` stored the choice as whether a folder was picked.
+    let enabled = defaults.enabled
+    if (typeof old.enabled === 'boolean') enabled = old.enabled
+    else if ('root' in old) enabled = typeof old.root === 'string' && old.root.length > 0
+    return { autosave: { enabled, delay, kinds } }
   } catch {
     return DEFAULT_SETTINGS
   }
