@@ -13,9 +13,10 @@ import { usePinchZoom } from '../../lib/pinch'
 import * as platform from '../../lib/platform'
 import { registerEditor, useWorkspace } from '../../state/workspace'
 import { blankPresentation } from './blank'
-import { Inspector } from './Inspector'
+import { Inspector, tableLooks } from './Inspector'
 import { PresentMode } from './PresentMode'
 import { SlidePreview, SlideStrip } from './SlideStrip'
+import { newTable } from './table'
 import type { Deck, Element, Slide, Toolbar } from './types'
 import { parseVideoLink, videoPoster } from './video'
 import './pptx.css'
@@ -140,6 +141,12 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
         ...size,
       } as unknown as Element)
     }
+  }
+
+  const insertTable = (rows: number, cols: number) => {
+    const table = newTable(rows, cols, cv.canvasSize, tableLooks(deck)[0], tb.themeFonts?.body)
+    const id = handle.current?.addElement({ ...table, id: crypto.randomUUID() } as Element)
+    if (id) requestAnimationFrame(() => handle.current?.selectElements([id]))
   }
 
   const insertVideo = async (raw: string) => {
@@ -289,6 +296,7 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
           <Inspector
             deck={deck}
             onInsertImage={() => void insertImage()}
+            onInsertTable={insertTable}
             onInsertVideo={insertVideo}
             onNewSlide={newSlideMenu}
             onPresent={(fromStart) => setPresenting(fromStart ? 0 : activeIndex)}

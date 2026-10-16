@@ -1,0 +1,95 @@
+:root[data-theme='dark'] {
+  --txt-paper: #141414;
+}
+
+:root[data-theme='light'] {
+  --txt-paper: #ffffff;
+}
+
+.txt-editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  background: var(--txt-paper);
+}
+
+.txt-editor .cm-editor {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  font-size: 14.5px;
+  background: transparent;
+  color: var(--fg);
+}
+
+.txt-editor .cm-editor.cm-focused {
+  outline: none;
+}
+
+.txt-editor .cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.65;
+  padding: 40px 0 120px;
+}
+
+.txt-editor .cm-content {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 0 40px;
+  caret-color: var(--accent);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.txt-editor .cm-cursor {
+  border-left: 2px solid var(--accent);
+}
+
+.txt-editor .cm-activeLine {
+  background: transparent;
+}
+
+.txt-editor .cm-selectionBackground,
+.txt-editor .cm-focused .cm-selectionBackground,
+.txt-editor .cm-content ::selection {
+  background: var(--accent-soft) !important;
+}
+
+.txt-editor .cm-placeholder {
+  color: var(--fg-faint);
+}
+
+.txt-editor .cm-panels {
+  background: var(--raised);
+  color: var(--fg);
+  border-color: var(--line) !important;
+}
+
+.txt-editor .cm-panels input,
+.txt-editor .cm-panels button {
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--fg);
+  padding: 2px 6px;
+}
+
+.txt-editor .cm-searchMatch {
+  background: rgba(255, 196, 0, 0.3);
+}
+
+.txt-editor .cm-searchMatch-selected {
+  background: rgba(255, 140, 0, 0.55);
+}
+
+@media print {
+  .txt-print {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 10.5pt;
+    line-height: 1.5;
+    color: #000;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}

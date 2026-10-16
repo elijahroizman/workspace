@@ -33,13 +33,14 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let about = AboutMetadataBuilder::new()
         .name(Some("Workspace"))
         .version(Some(env!("CARGO_PKG_VERSION")))
-        .comments(Some("Word, PowerPoint, PDF and Markdown in one tabbed window."))
+        .comments(Some("Word, PowerPoint, PDF, Markdown and text files in one tabbed window."))
         .build();
 
     let new_menu = SubmenuBuilder::new(app, "New")
         .item(&item(app, "new-docx", "Document", Some("CmdOrCtrl+N"))?)
         .item(&item(app, "new-pptx", "Presentation", Some("CmdOrCtrl+Shift+N"))?)
         .item(&item(app, "new-md", "Markdown Note", Some("CmdOrCtrl+Alt+N"))?)
+        .item(&item(app, "new-txt", "Text File", None)?)
         .build()?;
 
     let reveal_label = if cfg!(target_os = "macos") {

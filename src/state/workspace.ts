@@ -98,16 +98,21 @@ function load<T>(key: string, fallback: T): T {
 }
 
 const defaultPanels = {
-  left: { docx: true, pptx: true, pdf: true, md: true } as Record<DocKind, boolean>,
+  left: { docx: true, pptx: true, pdf: true, md: true, txt: false } as Record<DocKind, boolean>,
   // Markdown is mostly for reading, so its inspector starts hidden.
-  right: { docx: true, pptx: true, pdf: true, md: false } as Record<DocKind, boolean>,
+  right: { docx: true, pptx: true, pdf: true, md: false, txt: false } as Record<DocKind, boolean>,
 }
 
-const initialPanels = load(STORAGE.panels, defaultPanels)
+const savedPanels = load<Partial<typeof defaultPanels>>(STORAGE.panels, {})
+// Kinds added since the panels were last saved take their defaults.
+const initialPanels = {
+  left: { ...defaultPanels.left, ...savedPanels.left },
+  right: { ...defaultPanels.right, ...savedPanels.right },
+}
 const systemTheme: Theme =
   typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
 
-const untitledCounters: Record<DocKind, number> = { docx: 0, pptx: 0, pdf: 0, md: 0 }
+const untitledCounters: Record<DocKind, number> = { docx: 0, pptx: 0, pdf: 0, md: 0, txt: 0 }
 const newId = () => Math.random().toString(36).slice(2, 10)
 
 export const useWorkspace = create<WorkspaceState>((set, get) => {
@@ -177,7 +182,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         }
         const kind = kindFromPath(path)
         if (!kind) {
-          failures.push(`“${platform.basename(path)}” isn't a file type Workspace opens (Word, PowerPoint, PDF or Markdown).`)
+          failures.push(`“${platform.basename(path)}” isn't a file type Workspace opens (Word, PowerPoint, PDF, Markdown or plain text).`)
           continue
         }
         if (opened.some((t) => t.path === path)) continue

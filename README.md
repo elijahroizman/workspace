@@ -2,17 +2,18 @@
 
 # Workspace
 
-A small, fast Mac and Windows app for the four document types most people actually use: **Word (.docx), PowerPoint (.pptx), PDF and Markdown**. Everything opens as a tab in one window, and each file type gets its own sidebar and inspector.
+A small, fast Mac and Windows app for the document types most people actually use: **Word (.docx), PowerPoint (.pptx), PDF, Markdown and plain text (.txt)**. Everything opens as a tab in one window, and each kind of document gets its own sidebar and inspector.
 
 - **Tabs across the top.** Open as many files as you like and switch with ⌘1–⌘9 or ⇧⌘[ / ⇧⌘]. Drag tabs to reorder them, and right-click a tab to duplicate it (⇧⌘D), for example to keep a textbook's questions and answers open side by side. Open tabs come back the next time you launch.
 - **Sidebars that fit the document.**
 
   | Type | Left sidebar | Inspector (right) |
   | --- | --- | --- |
-  | Word | Heading outline | Style, font, size, bold/italic/…, color, highlight, alignment, lists, line spacing, insert table/image/link/page break/contents, page size & margins |
-  | PowerPoint | Slide thumbnails (drag to reorder, right-click for more) | Insert text boxes, shapes, tables, images, video links and slides; font, size, bold/italic/…, color, alignment and lists; fill and line; position, size, rotation, flip and layer order; links; align several objects; slide layout; Present |
+  | Word | Heading outline, page and word count | Style, font, size, bold/italic/…, color, highlight, alignment, lists, line spacing, insert table/image/link/page break/contents; table rows, columns, shading and borders; page size (A4 for new documents) & margins |
+  | PowerPoint | Slide thumbnails (drag to reorder, right-click for more) | Insert text boxes, shapes, tables, images, video links and slides; font, size, bold/italic/…, color, alignment and lists; table styles, rows and columns; fill and line; position, size, rotation, flip and layer order; links; align several objects; slide layout; Present |
   | PDF | Page thumbnails (drag to reorder) or the PDF's outline | Highlight, add text, draw/sign, place images; rotate/move/duplicate/delete/insert/extract pages; document info |
-  | Markdown | Heading outline | Hidden by default: Markdown is mostly for reading. Read / Split / Write modes (⌘E to switch) and word count. Front matter, such as an Agent Skill's name and description, shows as a table |
+  | Markdown | Heading outline | Hidden by default: Markdown is mostly for reading. Save a copy or print. Read / Split / Write switch at the bottom (⌘E). Front matter, such as an Agent Skill's name and description, shows as a table |
+  | Text | None: just the text | None |
 
 - **Fast.** Built on [Tauri](https://tauri.app), so it uses the web view built into the system (WebKit on macOS, WebView2 on Windows) instead of bundling a browser. The app is small and launches quickly. Each editor engine loads only when you first open that kind of file.
 - **Works offline, no accounts.** Every document engine runs locally on your computer.

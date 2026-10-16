@@ -18,6 +18,7 @@ export interface EditorProps {
 // which keeps launch fast.
 const EDITORS: Record<DocKind, React.LazyExoticComponent<ComponentType<EditorProps>>> = {
   md: lazy(() => import('./editors/markdown/MarkdownEditor')),
+  txt: lazy(() => import('./editors/text/TextEditor')),
   pdf: lazy(() => import('./editors/pdf/PdfEditor')),
   docx: lazy(() => import('./editors/docx/DocxEditor')),
   pptx: lazy(() => import('./editors/pptx/PptxEditor')),
@@ -82,6 +83,9 @@ export async function runCommand(id: string) {
       break
     case 'new-md':
       ws.newDocument('md')
+      break
+    case 'new-txt':
+      ws.newDocument('txt')
       break
     case 'open':
       await ws.openDialog()

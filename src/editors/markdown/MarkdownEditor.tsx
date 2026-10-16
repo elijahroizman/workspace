@@ -15,7 +15,7 @@ import { kindFromPath } from '../../lib/kinds'
 import * as platform from '../../lib/platform'
 import { getEditor, registerEditor, useWorkspace } from '../../state/workspace'
 import type { Heading } from './render'
-import { renderMarkdown, stats } from './render'
+import { renderMarkdown } from './render'
 import './markdown.css'
 
 type Mode = 'preview' | 'split' | 'source'
@@ -245,7 +245,6 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
     [tab.id, mode],
   )
 
-  const s = useMemo(() => stats(text), [text])
   const headings = rendered.headings
 
   const outline =
@@ -272,22 +271,6 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
   const inspector = (
     <>
       <InspectorHeader kind="md">Markdown</InspectorHeader>
-      <Section title="View">
-        <ModeSwitch mode={mode} setMode={setMode} labels />
-        <p className="faint hint">{platform.shortcut('⌘E')} switches between Read, Split and Write.</p>
-      </Section>
-      <Section title="Document">
-        <dl className="stats">
-          <dt>Words</dt>
-          <dd>{s.words.toLocaleString()}</dd>
-          <dt>Characters</dt>
-          <dd>{s.characters.toLocaleString()}</dd>
-          <dt>Lines</dt>
-          <dd>{s.lines.toLocaleString()}</dd>
-          <dt>Headings</dt>
-          <dd>{headings.length}</dd>
-        </dl>
-      </Section>
       <Section title="Export">
         <button type="button" className="btn block" onClick={() => void useWorkspace.getState().save(tab.id, { saveAs: true })}>
           Save a copy…
@@ -300,7 +283,7 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
   )
 
   return (
-    <Workbench tab={tab} left={outline} leftFooter={<span>{s.words === 1 ? '1 word' : `${s.words.toLocaleString()} words`}</span>} right={inspector}>
+    <Workbench tab={tab} left={outline} right={inspector}>
       <div className={`md-split mode-${mode}`}>
         <div className="md-source" ref={sourceHost} />
         <div className="md-preview" ref={previewRef} onClick={onPreviewClick}>
@@ -323,15 +306,15 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
   )
 }
 
-function ModeSwitch({ mode, setMode, labels }: { mode: Mode; setMode: (m: Mode) => void; labels?: boolean }) {
+function ModeSwitch({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
   return (
     <Segmented
       value={mode}
       onChange={setMode}
       options={[
-        { value: 'preview', icon: <BookOpen size={14} />, label: labels ? 'Read' : undefined, title: 'Read (⌥⌘1)' },
-        { value: 'split', icon: <Columns2 size={14} />, label: labels ? 'Split' : undefined, title: 'Edit with preview (⌥⌘2)' },
-        { value: 'source', icon: <SquarePen size={14} />, label: labels ? 'Write' : undefined, title: 'Edit source (⌥⌘3)' },
+        { value: 'preview', icon: <BookOpen size={14} />, title: 'Read (⌥⌘1)' },
+        { value: 'split', icon: <Columns2 size={14} />, title: 'Edit with preview (⌥⌘2)' },
+        { value: 'source', icon: <SquarePen size={14} />, title: 'Edit source (⌥⌘3)' },
       ]}
     />
   )

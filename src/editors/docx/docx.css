@@ -22,46 +22,9 @@
   height: 18px;
 }
 
-.table-grid-wrap {
-  padding: 8px;
-  border-radius: var(--radius);
-  background: var(--field);
-  display: flex;
-  justify-content: center;
-}
-
 .highlight-swatches {
   flex-wrap: nowrap;
   gap: 5px;
-}
-
-/* The packaged table picker, re-skinned for the inspector. */
-.table-grid-wrap {
-  --doc-border: var(--line);
-  --doc-surface: var(--raised);
-  --doc-primary: var(--accent);
-  --doc-text-muted: var(--fg-muted);
-}
-
-.table-grid-wrap .docx-menubar__grid {
-  padding: 0;
-}
-
-.table-grid-wrap .docx-menubar__grid-cell {
-  width: 20px;
-  height: 20px;
-  border-radius: 3px;
-  border-color: var(--line);
-  background: var(--raised);
-}
-
-.table-grid-wrap .docx-menubar__grid-cell[data-filled] {
-  border-color: var(--accent);
-  background: var(--accent);
-}
-
-.table-grid-wrap .docx-menubar__grid-caption {
-  color: var(--fg-muted);
 }
 
 /* The image trigger carries the editor's own toolbar class; ours wins. */
@@ -84,6 +47,11 @@
 .insert-grid .tool-btn.docx-toolbar__button:hover {
   color: var(--fg);
   background: var(--field-hover);
+}
+
+/* The engine paints a page break as a form feed, which WebKit draws as a "?" box. */
+.docx-break-mark {
+  visibility: hidden;
 }
 
 @media print {

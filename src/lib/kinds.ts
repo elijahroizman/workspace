@@ -1,4 +1,4 @@
-export type DocKind = 'docx' | 'pptx' | 'pdf' | 'md'
+export type DocKind = 'docx' | 'pptx' | 'pdf' | 'md' | 'txt'
 
 export interface KindInfo {
   label: string
@@ -37,6 +37,13 @@ export const KINDS: Record<DocKind, KindInfo> = {
     extensions: ['md', 'markdown'],
     color: 'var(--kind-md)',
     untitled: 'Untitled Note',
+  },
+  txt: {
+    label: 'Plain Text',
+    short: 'Text',
+    extensions: ['txt'],
+    color: 'var(--kind-txt)',
+    untitled: 'Untitled Text',
   },
 }
 

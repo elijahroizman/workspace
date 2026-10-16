@@ -170,6 +170,7 @@ export function TitleBar() {
             { label: 'New Document', icon: <KindIcon kind="docx" />, shortcut: '⌘N', onSelect: () => newDocument('docx') },
             { label: 'New Presentation', icon: <KindIcon kind="pptx" />, shortcut: '⇧⌘N', onSelect: () => newDocument('pptx') },
             { label: 'New Markdown Note', icon: <KindIcon kind="md" />, shortcut: '⌥⌘N', onSelect: () => newDocument('md') },
+            { label: 'New Text File', icon: <KindIcon kind="txt" />, onSelect: () => newDocument('txt') },
             { label: 'Open…', icon: <FolderOpen size={14} />, shortcut: '⌘O', onSelect: () => void openDialog(), separatorBefore: true },
           ]}
         />
