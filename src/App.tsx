@@ -5,7 +5,9 @@ import { TitleBar } from './components/TitleBar'
 import { CenterState } from './components/ui'
 import type { DocKind } from './lib/kinds'
 import * as platform from './lib/platform'
+import { flushAutosave, startAutosave } from './lib/autosave'
 import { installUpdate, startUpdateChecks } from './lib/updater'
+import { useSettings } from './state/settings'
 import type { DocTab } from './state/workspace'
 import { getEditor, HOME_TAB_ID, persistSession, restoreSession, useWorkspace } from './state/workspace'
 
@@ -23,6 +25,8 @@ const EDITORS: Record<DocKind, React.LazyExoticComponent<ComponentType<EditorPro
   docx: lazy(() => import('./editors/docx/DocxEditor')),
   pptx: lazy(() => import('./editors/pptx/PptxEditor')),
 }
+
+const SettingsPanel = lazy(() => import('./components/Settings'))
 
 class EditorBoundary extends Component<{ name: string; children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null }
@@ -149,6 +153,9 @@ export async function runCommand(id: string) {
     case 'toggle-fullscreen':
       await platform.toggleFullscreen()
       break
+    case 'settings':
+      useSettings.getState().setOpen(true)
+      break
     case 'toggle-theme':
       ws.setTheme(ws.theme === 'dark' ? 'light' : 'dark')
       break
@@ -178,6 +185,8 @@ export async function runCommand(id: string) {
 async function confirmDiscardAll(): Promise<boolean> {
   persistSession()
   sessionFrozen = true
+  // Autosaved tabs just save; only the rest need asking about.
+  await flushAutosave()
   for (const tab of useWorkspace.getState().tabs.filter((t) => t.dirty)) {
     useWorkspace.getState().activate(tab.id)
     const choice = await platform.askSaveChanges(tab.title)
@@ -212,6 +221,7 @@ const SHORTCUTS: Record<string, string> = {
   '-': 'zoom-out',
   '0': 'zoom-reset',
   'shift+l': 'toggle-theme',
+  ',': 'settings',
   e: 'view-cycle',
   'alt+1': 'view-read',
   'alt+2': 'view-split',
@@ -226,7 +236,7 @@ const WINDOWS_SHORTCUTS: Record<string, string> = {
   'shift+Tab': 'prev-tab',
 }
 
-const CODE_KEYS: Record<string, string> = { Equal: '=', NumpadAdd: '=', Minus: '-', NumpadSubtract: '-', Backslash: '\\', BracketRight: ']', BracketLeft: '[' }
+const CODE_KEYS: Record<string, string> = { Comma: ',', Equal: '=', NumpadAdd: '=', Minus: '-', NumpadSubtract: '-', Backslash: '\\', BracketRight: ']', BracketLeft: '[' }
 
 /**
  * The key part of a shortcut. Letters follow the keyboard layout. When the key types something
@@ -254,6 +264,7 @@ export default function App() {
   const activeId = useWorkspace((s) => s.activeId)
   const theme = useWorkspace((s) => s.theme)
   const dropHover = useWorkspace((s) => s.dropHover)
+  const settingsOpen = useSettings((s) => s.open)
   const started = useRef(false)
 
   useEffect(() => {
@@ -290,8 +301,10 @@ export default function App() {
       }),
     )
     const stopUpdateChecks = startUpdateChecks()
+    const stopAutosave = startAutosave()
     return () => {
       stopUpdateChecks()
+      stopAutosave()
       unlisteners.forEach((u) => void u.then((fn) => fn()))
     }
   }, [])
@@ -372,6 +385,11 @@ export default function App() {
           <EditorSlot key={tab.id} tab={tab} active={tab.id === activeId} />
         ))}
       </div>
+      {settingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsPanel />
+        </Suspense>
+      )}
       {dropHover && (
         <div className="drop-overlay">
           <div className="pill">Drop to open</div>

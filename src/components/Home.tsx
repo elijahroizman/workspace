@@ -1,8 +1,9 @@
-import { FolderOpen, MoreHorizontal, Moon, Sun } from 'lucide-react'
+import { FolderOpen, MoreHorizontal, Moon, Settings, Sun } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { DocKind } from '../lib/kinds'
 import { KINDS } from '../lib/kinds'
-import { basename, dirname, revealInFinder, revealLabel, isTauri, shortcut } from '../lib/platform'
+import { basename, dirname, revealInFinder, revealLabel, isTauri, shortcut, tildify } from '../lib/platform'
+import { useSettings } from '../state/settings'
 import type { RecentFile } from '../state/workspace'
 import { useWorkspace } from '../state/workspace'
 import { DocBadge, KindIcon } from './Workbench'
@@ -32,9 +33,14 @@ export function Home() {
             <h1>Workspace</h1>
             <p className="muted">Open, edit and create Word, PowerPoint, PDF, Markdown and text files.</p>
           </div>
-          <IconButton label={theme === 'dark' ? 'Light appearance (⇧⌘L)' : 'Dark appearance (⇧⌘L)'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-          </IconButton>
+          <div className="home-header-actions">
+            <IconButton label={shortcut(theme === 'dark' ? 'Light appearance (⇧⌘L)' : 'Dark appearance (⇧⌘L)')} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            </IconButton>
+            <IconButton label={shortcut('Settings (⌘,)')} onClick={() => useSettings.getState().setOpen(true)}>
+              <Settings size={16} />
+            </IconButton>
+          </div>
         </header>
 
         <div className="home-actions">
@@ -132,8 +138,7 @@ export function Home() {
 }
 
 function prettyDir(path: string) {
-  const dir = dirname(path)
-  return dir.replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~')
+  return tildify(dirname(path))
 }
 
 function relativeTime(ts: number) {

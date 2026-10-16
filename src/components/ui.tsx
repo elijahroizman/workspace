@@ -374,6 +374,23 @@ export function TableSizePicker({ onPick, max = { rows: 20, cols: 10 } }: { onPi
   )
 }
 
+/** An on/off switch, for settings. */
+export function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (checked: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={`switch ${checked ? 'on' : ''}`}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="switch-knob" />
+    </button>
+  )
+}
+
 export function Spinner({ size = 18 }: { size?: number }) {
   return (
     <svg className="spin" width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
