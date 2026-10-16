@@ -24,23 +24,31 @@ export const DEFAULT_SETTINGS: Settings = {
 
 const KEY = 'workspace.settings'
 
-/** Older builds stored one cloud folder. No folder meant autosave was off. */
-interface LegacyAutosave extends Partial<AutosaveSettings> {
-  root?: string | null
+/** The delays Settings offers. Anything else in storage is ignored. */
+const DELAYS = [1, 3, 10, 30]
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function load(): Settings {
   try {
-    const saved = JSON.parse(localStorage.getItem(KEY) || '{}') as { autosave?: LegacyAutosave }
-    const old = saved.autosave
-    const merged: AutosaveSettings = {
-      ...DEFAULT_SETTINGS.autosave,
-      ...old,
-      kinds: { ...DEFAULT_SETTINGS.autosave.kinds, ...old?.kinds },
+    const parsed: unknown = JSON.parse(localStorage.getItem(KEY) || '{}')
+    if (!isRecord(parsed) || !isRecord(parsed.autosave)) return DEFAULT_SETTINGS
+    const old = parsed.autosave
+    const defaults = DEFAULT_SETTINGS.autosave
+    const kinds = { ...defaults.kinds }
+    if (isRecord(old.kinds)) {
+      for (const kind of Object.keys(kinds) as DocKind[]) {
+        if (typeof old.kinds[kind] === 'boolean') kinds[kind] = old.kinds[kind]
+      }
     }
+    const delay = typeof old.delay === 'number' && DELAYS.includes(old.delay) ? old.delay : defaults.delay
     // A build from before `enabled` stored the choice as whether a folder was picked.
-    if (old && !('enabled' in old) && 'root' in old) merged.enabled = Boolean(old.root)
-    return { autosave: { enabled: merged.enabled, delay: merged.delay, kinds: merged.kinds } }
+    let enabled = defaults.enabled
+    if (typeof old.enabled === 'boolean') enabled = old.enabled
+    else if ('root' in old) enabled = typeof old.root === 'string' && old.root.length > 0
+    return { autosave: { enabled, delay, kinds } }
   } catch {
     return DEFAULT_SETTINGS
   }
