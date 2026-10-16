@@ -6,7 +6,7 @@ import { CenterState } from './components/ui'
 import type { DocKind } from './lib/kinds'
 import * as platform from './lib/platform'
 import { flushAutosave, startAutosave } from './lib/autosave'
-import { installUpdate, startUpdateChecks } from './lib/updater'
+import { installUpdate, openUpdatePanel, startUpdateChecks } from './lib/updater'
 import { useSettings } from './state/settings'
 import type { DocTab } from './state/workspace'
 import { getEditor, HOME_TAB_ID, persistSession, restoreSession, useWorkspace } from './state/workspace'
@@ -170,6 +170,9 @@ export async function runCommand(id: string) {
         await installUpdate({ restart: false })
         await platform.quitApp()
       }
+      break
+    case 'check-updates':
+      openUpdatePanel()
       break
     case 'install-update':
       if (await confirmDiscardAll()) {

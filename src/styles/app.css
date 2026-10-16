@@ -294,17 +294,151 @@ button {
   align-items: center;
   gap: 6px;
   height: 24px;
-  padding: 0 10px;
+  margin-right: 2px;
+  padding: 0 8px;
+  border: 0;
   border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: transparent;
+  color: var(--fg-muted);
   font-size: 12px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .update-btn:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.update-btn.ready {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.update-btn.ready:hover {
   background: var(--accent);
   color: var(--accent-fg);
+}
+
+.update-panel {
+  position: fixed;
+  z-index: 101;
+  display: flex;
+  flex-direction: column;
+  width: min(380px, calc(100vw - 16px));
+  border-radius: 12px;
+  background: var(--raised);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+
+.update-panel-head {
+  flex: none;
+  padding: 14px 16px 10px;
+}
+
+.update-panel-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.update-panel-head p {
+  margin: 3px 0 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.update-notes {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 16px 12px;
+  color: var(--fg-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.update-notes-empty {
+  margin: 8px 0;
+  color: var(--fg-faint);
+}
+
+.update-notes :is(h1, h2, h3, h4) {
+  margin: 12px 0 4px;
+  color: var(--fg);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.update-notes :is(p, ul, ol) {
+  margin: 6px 0;
+}
+
+.update-notes ul,
+.update-notes ol {
+  padding-left: 18px;
+}
+
+.update-notes a {
+  color: var(--accent);
+}
+
+.update-notes code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.update-notes pre {
+  overflow: auto;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--field);
+}
+
+.update-panel-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.update-link {
+  margin-right: auto;
+  border: 0;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.update-link:hover {
+  color: var(--fg);
+}
+
+.update-go {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.update-go:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.update-go:disabled {
+  opacity: 0.55;
 }
 
 .autosave-chip {

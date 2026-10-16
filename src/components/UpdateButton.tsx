@@ -1,0 +1,192 @@
+import { Rocket } from 'lucide-react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { isMac, openExternal } from '../lib/platform'
+import { checkForUpdates, closeUpdatePanel, toggleUpdatePanel, updatesInstallable, useUpdate, type UpdatePhase } from '../lib/updater'
+import { runCommand } from '../App'
+import { Spinner } from './ui'
+
+function buttonLabel(phase: UpdatePhase): string {
+  switch (phase) {
+    case 'checking':
+      return 'Checking…'
+    case 'downloading':
+      return 'Downloading…'
+    case 'installing':
+      return 'Updating…'
+    case 'ready':
+      return 'Update'
+    default:
+      return 'Check for updates'
+  }
+}
+
+function heading(phase: UpdatePhase, version: string | null): string {
+  if (phase === 'error' && !version) return "Couldn't check for updates"
+  if (phase === 'checking' && !version) return 'Checking for updates'
+  if (phase === 'current' && updatesInstallable) return "You're up to date"
+  return version ? `Workspace ${version}` : 'Updates'
+}
+
+function detail(phase: UpdatePhase, error: string | null, publishedAt: string | null): string {
+  const date = formatDate(publishedAt)
+  if (phase === 'error') return error ?? "Couldn't check for updates."
+  if (phase === 'checking') return 'Looking at the latest GitHub release'
+  if (phase === 'downloading') return 'Downloading the update'
+  if (phase === 'installing') return isMac ? 'Workspace will quit and reopen' : 'The installer will restart Workspace'
+  if (phase === 'ready') return date ? `Ready to install · ${date}` : 'Ready to install'
+  if (!updatesInstallable) return date ? `Latest GitHub release · ${date}` : 'Latest GitHub release'
+  return date ? `This is the newest release · ${date}` : 'This is the newest release'
+}
+
+function formatDate(iso: string | null): string | null {
+  if (!iso) return null
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+async function renderNotes(markdown: string): Promise<string> {
+  const [{ default: MarkdownIt }, { default: DOMPurify }] = await Promise.all([import('markdown-it'), import('dompurify')])
+  const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
+  return DOMPurify.sanitize(md.render(markdown))
+}
+
+export function UpdateButton() {
+  const phase = useUpdate((s) => s.phase)
+  const open = useUpdate((s) => s.open)
+  const version = useUpdate((s) => s.version)
+  const notes = useUpdate((s) => s.notes)
+  const url = useUpdate((s) => s.url)
+  const publishedAt = useUpdate((s) => s.publishedAt)
+  const error = useUpdate((s) => s.error)
+  const button = useRef<HTMLButtonElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState({ x: 0, y: 0, maxHeight: 420 })
+  const [html, setHtml] = useState('')
+
+  const busy = phase === 'checking' || phase === 'downloading' || phase === 'installing'
+  const label = buttonLabel(phase)
+
+  useEffect(() => {
+    if (!notes.trim()) {
+      setHtml('')
+      return
+    }
+    let cancel = false
+    void renderNotes(notes).then((rendered) => {
+      if (!cancel) setHtml(rendered)
+    })
+    return () => {
+      cancel = true
+    }
+  }, [notes])
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const place = () => {
+      const rect = button.current?.getBoundingClientRect()
+      const el = panel.current
+      if (!rect || !el) return
+      const width = el.offsetWidth
+      const y = rect.bottom + 8
+      setPos({
+        x: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
+        y,
+        maxHeight: Math.max(240, window.innerHeight - y - 8),
+      })
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [open, html, phase])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeUpdatePanel()
+    }
+    // A press anywhere else closes the panel. The button toggles it itself.
+    const onDown = (e: PointerEvent) => {
+      const target = e.target as Node
+      if (!panel.current?.contains(target) && !button.current?.contains(target)) closeUpdatePanel()
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('pointerdown', onDown, true)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('pointerdown', onDown, true)
+    }
+  }, [open])
+
+  const primary = () => {
+    if (phase === 'ready') {
+      void runCommand('install-update')
+      return
+    }
+    void checkForUpdates()
+  }
+
+  const action = phase === 'error' ? 'Try again' : busy || phase === 'ready' ? label : 'Check again'
+
+  return (
+    <>
+      <button
+        ref={button}
+        type="button"
+        className={`update-btn ${phase === 'ready' ? 'ready' : ''}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title={phase === 'ready' && version ? `Workspace ${version} is ready to install` : 'Check for updates'}
+        onClick={() => toggleUpdatePanel()}
+      >
+        {busy ? <Spinner size={13} /> : <Rocket size={13} />}
+        {label}
+      </button>
+      {open &&
+        createPortal(
+          <div
+            ref={panel}
+            className="update-panel"
+            role="dialog"
+            aria-labelledby="update-title"
+            style={{ left: pos.x, top: pos.y, maxHeight: pos.maxHeight }}
+          >
+            <header className="update-panel-head">
+              <h2 id="update-title">{heading(phase, version)}</h2>
+              <p>{detail(phase, error, publishedAt)}</p>
+            </header>
+            <div
+              className="update-notes"
+              onClick={(e) => {
+                const link = (e.target as HTMLElement).closest('a')
+                const href = link?.getAttribute('href')
+                if (!link || !href || href.startsWith('#')) return
+                e.preventDefault()
+                void openExternal(href)
+              }}
+            >
+              {phase === 'checking' && !html ? (
+                <p className="update-notes-empty">Fetching the release notes…</p>
+              ) : html ? (
+                <div dangerouslySetInnerHTML={{ __html: html }} />
+              ) : (
+                <p className="update-notes-empty">{error ? 'The release notes couldn’t be loaded.' : 'This release has no notes.'}</p>
+              )}
+            </div>
+            <footer className="update-panel-foot">
+              {url && (
+                <button type="button" className="update-link" onClick={() => void openExternal(url)}>
+                  View on GitHub
+                </button>
+              )}
+              <button type="button" className="update-go" disabled={busy} onClick={primary}>
+                {action}
+              </button>
+            </footer>
+          </div>,
+          document.body,
+        )}
+    </>
+  )
+}

@@ -1,18 +1,16 @@
-import { ArrowDownToLine, Cloud, CloudAlert, CloudCheck, CloudOff, Copy, FolderOpen, LayoutGrid, Plus, X } from 'lucide-react'
+import { Cloud, CloudAlert, CloudCheck, CloudOff, Copy, FolderOpen, LayoutGrid, Plus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { autosaveBlocker, autosaveFolder, useAutosaveStatus } from '../lib/autosave'
 import { isMac, isTauri, revealInFinder, revealLabel, shortcut, tildify } from '../lib/platform'
-import { useUpdate } from '../lib/updater'
 import { useSettings } from '../state/settings'
 import { HOME_TAB_ID, useWorkspace } from '../state/workspace'
-import { runCommand } from '../App'
+import { UpdateButton } from './UpdateButton'
 import { KindIcon } from './Workbench'
 import { PopoverMenu } from './ui'
 
 export function TitleBar() {
   const tabs = useWorkspace((s) => s.tabs)
   const activeId = useWorkspace((s) => s.activeId)
-  const updateReady = useUpdate((s) => s.ready)
   const { activate, closeTab, moveTab, newDocument, openDialog, duplicateTab, closeOthers } = useWorkspace.getState()
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; id: string } | null>(null)
@@ -145,12 +143,7 @@ export function TitleBar() {
       </button>
       <div className="titlebar-spacer" data-tauri-drag-region />
       <AutosaveChip />
-      {updateReady && (
-        <button type="button" className="update-btn" title={`Workspace ${updateReady} is ready to install`} onClick={() => void runCommand('install-update')}>
-          <ArrowDownToLine size={13} />
-          Restart to Update
-        </button>
-      )}
+      <UpdateButton />
       {tabMenu && (
         <PopoverMenu
           anchor={tabMenu}
