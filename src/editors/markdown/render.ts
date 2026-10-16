@@ -87,14 +87,14 @@ function renderValue(value: unknown, depth = 0): string {
   return escapeHtml(String(value)).replace(/\n/g, '<br>')
 }
 
-/** Front matter as a properties table; Agent Skills (name + description) get a titled card. */
+/** Front matter as a properties table; Agent Skills (name + description) lead with a Skill row. */
 function renderFrontmatter(data: Record<string, unknown>): string {
   const isSkill = typeof data.name === 'string' && typeof data.description === 'string'
-  const entries = Object.entries(data).filter(([k]) => !(isSkill && k === 'name'))
-  const title = isSkill
-    ? `<div class="fm-title"><span class="fm-kind">Skill</span><span class="fm-name">${escapeHtml(String(data.name))}</span></div>`
-    : `<div class="fm-title"><span class="fm-kind">Properties</span></div>`
-  const rows = entries.map(([k, v]) => `<tr><th>${escapeHtml(humanize(k))}</th><td>${renderValue(v)}</td></tr>`).join('')
+  const entries = isSkill
+    ? [['Skill', data.name] as const, ...Object.entries(data).filter(([k]) => k !== 'name').map(([k, v]) => [humanize(k), v] as const)]
+    : Object.entries(data).map(([k, v]) => [humanize(k), v] as const)
+  const title = isSkill ? '' : `<div class="fm-title"><span class="fm-kind">Properties</span></div>`
+  const rows = entries.map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${renderValue(v)}</td></tr>`).join('')
   return `<section class="frontmatter" data-line="0">${title}<table><tbody>${rows}</tbody></table></section>`
 }
 

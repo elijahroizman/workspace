@@ -308,12 +308,6 @@
   color: var(--fg-faint);
 }
 
-.md-body .fm-name {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 1.05em;
-}
-
 .md-body .frontmatter table {
   display: table;
   width: 100%;
