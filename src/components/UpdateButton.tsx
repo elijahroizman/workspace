@@ -106,8 +106,17 @@ export function UpdateButton() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') closeUpdatePanel()
     }
+    // A press anywhere else closes the panel. The button toggles it itself.
+    const onDown = (e: PointerEvent) => {
+      const target = e.target as Node
+      if (!panel.current?.contains(target) && !button.current?.contains(target)) closeUpdatePanel()
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('pointerdown', onDown, true)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('pointerdown', onDown, true)
+    }
   }, [open])
 
   const primary = () => {
@@ -115,15 +124,10 @@ export function UpdateButton() {
       void runCommand('install-update')
       return
     }
-    void checkForUpdates({ force: true })
+    void checkForUpdates()
   }
 
-  let action = 'Check again'
-  if (phase === 'ready') action = 'Update'
-  else if (phase === 'checking') action = 'Checking…'
-  else if (phase === 'downloading') action = 'Downloading…'
-  else if (phase === 'installing') action = 'Updating…'
-  else if (phase === 'error') action = 'Try again'
+  const action = phase === 'error' ? 'Try again' : busy || phase === 'ready' ? label : 'Check again'
 
   return (
     <>
@@ -141,70 +145,46 @@ export function UpdateButton() {
       </button>
       {open &&
         createPortal(
-          <>
+          <div
+            ref={panel}
+            className="update-panel"
+            role="dialog"
+            aria-labelledby="update-title"
+            style={{ left: pos.x, top: pos.y, maxHeight: pos.maxHeight }}
+          >
+            <header className="update-panel-head">
+              <h2 id="update-title">{heading(phase, version)}</h2>
+              <p>{detail(phase, error, publishedAt)}</p>
+            </header>
             <div
-              className="menu-backdrop"
-              onMouseDown={(e) => {
-                const rect = button.current?.getBoundingClientRect()
-                const overButton =
-                  !!rect && e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom
-                closeUpdatePanel()
-                if (!overButton) return
-                // This press started on the backdrop, which sits over the button.
-                // Once the backdrop is gone the click lands on the button and would
-                // open the panel again. Swallow that one click, and only that one.
-                const swallowClick = (ev: MouseEvent) => {
-                  ev.preventDefault()
-                  ev.stopPropagation()
-                }
-                const onUp = () => {
-                  window.addEventListener('click', swallowClick, { capture: true, once: true })
-                  window.setTimeout(() => window.removeEventListener('click', swallowClick, true), 0)
-                }
-                window.addEventListener('mouseup', onUp, { capture: true, once: true })
+              className="update-notes"
+              onClick={(e) => {
+                const link = (e.target as HTMLElement).closest('a')
+                const href = link?.getAttribute('href')
+                if (!link || !href || href.startsWith('#')) return
+                e.preventDefault()
+                void openExternal(href)
               }}
-            />
-            <div
-              ref={panel}
-              className="update-panel"
-              role="dialog"
-              aria-labelledby="update-title"
-              style={{ left: pos.x, top: pos.y, maxHeight: pos.maxHeight }}
             >
-              <header className="update-panel-head">
-                <h2 id="update-title">{heading(phase, version)}</h2>
-                <p>{detail(phase, error, publishedAt)}</p>
-              </header>
-              <div
-                className="update-notes"
-                onClick={(e) => {
-                  const link = (e.target as HTMLElement).closest('a')
-                  const href = link?.getAttribute('href')
-                  if (!link || !href || href.startsWith('#')) return
-                  e.preventDefault()
-                  void openExternal(href)
-                }}
-              >
-                {phase === 'checking' && !html ? (
-                  <p className="update-notes-empty">Fetching the release notes…</p>
-                ) : html ? (
-                  <div dangerouslySetInnerHTML={{ __html: html }} />
-                ) : (
-                  <p className="update-notes-empty">{error ? 'The release notes couldn’t be loaded.' : 'This release has no notes.'}</p>
-                )}
-              </div>
-              <footer className="update-panel-foot">
-                {url && (
-                  <button type="button" className="update-link" onClick={() => void openExternal(url)}>
-                    View on GitHub
-                  </button>
-                )}
-                <button type="button" className="update-go" disabled={busy} onClick={primary}>
-                  {action}
-                </button>
-              </footer>
+              {phase === 'checking' && !html ? (
+                <p className="update-notes-empty">Fetching the release notes…</p>
+              ) : html ? (
+                <div dangerouslySetInnerHTML={{ __html: html }} />
+              ) : (
+                <p className="update-notes-empty">{error ? 'The release notes couldn’t be loaded.' : 'This release has no notes.'}</p>
+              )}
             </div>
-          </>,
+            <footer className="update-panel-foot">
+              {url && (
+                <button type="button" className="update-link" onClick={() => void openExternal(url)}>
+                  View on GitHub
+                </button>
+              )}
+              <button type="button" className="update-go" disabled={busy} onClick={primary}>
+                {action}
+              </button>
+            </footer>
+          </div>,
           document.body,
         )}
     </>

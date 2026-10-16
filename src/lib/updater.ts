@@ -81,38 +81,23 @@ function remember(release: ReleaseNotes | null, update: Update | null) {
   }
 }
 
-/**
- * Look for a newer version and, in a release build, download it.
- * `force` drops a download already waiting so the check runs again.
- */
-export async function checkForUpdates({ force = false }: { force?: boolean } = {}): Promise<void> {
-  if (checking) return
-  if (downloaded && !force) return
+async function findUpdate(): Promise<Update | null> {
+  if (!updatesInstallable) return null
+  const { check } = await import('@tauri-apps/plugin-updater')
+  return check()
+}
+
+/** Read the latest release notes and, in a release build, download a newer version. */
+export async function checkForUpdates(): Promise<void> {
+  if (checking || downloaded) return
   checking = true
-  if (force && downloaded) {
-    const old = downloaded
-    downloaded = null
-    void old.close()
-  }
   useUpdate.setState({ phase: 'checking', error: null })
   try {
-    const releasePromise = fetchRelease().then(
-      (release) => ({ release, error: null as string | null }),
-      () => ({ release: null, error: "Couldn't reach GitHub. Check your connection and try again." }),
-    )
-    const updatePromise = (async () => {
-      if (!updatesInstallable) return { update: null as Update | null, error: null as string | null }
-      try {
-        const { check } = await import('@tauri-apps/plugin-updater')
-        return { update: await check(), error: null }
-      } catch (err) {
-        console.warn('Update check failed', err)
-        return { update: null, error: "Couldn't check for an update." }
-      }
-    })()
-
-    const [{ release, error: releaseError }, { update, error: updateError }] = await Promise.all([releasePromise, updatePromise])
-    const info = remember(release, update)
+    const [release, found] = await Promise.allSettled([fetchRelease(), findUpdate()])
+    if (found.status === 'rejected') console.warn('Update check failed', found.reason)
+    const update = found.status === 'fulfilled' ? found.value : null
+    const info = remember(release.status === 'fulfilled' ? release.value : null, update)
+    const releaseError = release.status === 'rejected' ? "Couldn't reach GitHub. Check your connection and try again." : null
 
     if (update) {
       useUpdate.setState({ phase: 'downloading', ...info, error: null })
@@ -127,12 +112,10 @@ export async function checkForUpdates({ force = false }: { force?: boolean } = {
       }
       return
     }
-
-    if (updateError && !release) {
-      useUpdate.setState({ phase: 'error', ...info, error: updateError })
-      return
-    }
-    useUpdate.setState({ phase: 'current', ...info, error: releaseError })
+    // Notes that didn't load only matter on their own when there's no updater to ask.
+    const error = found.status === 'rejected' ? "Couldn't check for an update." : updatesInstallable ? null : releaseError
+    if (error) useUpdate.setState({ phase: 'error', ...info, error })
+    else useUpdate.setState({ phase: 'current', ...info, error: releaseError })
   } finally {
     checking = false
   }
@@ -141,7 +124,7 @@ export async function checkForUpdates({ force = false }: { force?: boolean } = {
 export function openUpdatePanel(): void {
   useUpdate.setState({ open: true })
   const { phase } = useUpdate.getState()
-  if (phase === 'idle' || phase === 'error' || phase === 'current') void checkForUpdates({ force: phase !== 'idle' })
+  if (phase === 'idle' || phase === 'error' || phase === 'current') void checkForUpdates()
 }
 
 export function toggleUpdatePanel(): void {
