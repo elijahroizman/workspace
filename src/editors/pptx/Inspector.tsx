@@ -43,10 +43,12 @@ import {
   Video,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { InspectorHeader } from '../../components/Workbench'
 import type { MenuEntry } from '../../components/ui'
-import { ColorField, IconButton, NumberField, PopoverMenu, Section, Segmented, SelectField, normalizeHex } from '../../components/ui'
+import { ColorField, IconButton, NumberField, PopoverMenu, Section, Segmented, SelectField, TableSizePicker, normalizeHex } from '../../components/ui'
+import type { TableData, TableElement, TableLook } from './table'
+import { TABLE_LOOKS, applyLook, currentLook, fitRowsTo, isTable, resizeColumns, resizeRows, rowsHeight, styleAllCells, themeLook } from './table'
 import type { Deck, Element, ShapeKind, TextStyle } from './types'
 import { hasText, linkOf, shapeStyleOf } from './types'
 
@@ -67,12 +69,14 @@ const SWATCHES = ['FFFFFF', '000000', '6B6B70', '4F8CFF', 'FF8A3D', 'F2555A', '3
 export function Inspector({
   deck,
   onInsertImage,
+  onInsertTable,
   onInsertVideo,
   onNewSlide,
   onPresent,
 }: {
   deck: Deck
   onInsertImage: () => void
+  onInsertTable: (rows: number, cols: number) => void
   onInsertVideo: (url: string) => Promise<boolean>
   onNewSlide: (anchor: { x: number; y: number }) => void
   onPresent: (fromStart: boolean) => void
@@ -80,6 +84,7 @@ export function Inspector({
   const { tb, handle, slides, activeIndex } = deck
   const [shapeMenu, setShapeMenu] = useState<{ x: number; y: number } | null>(null)
   const [videoOpen, setVideoOpen] = useState(false)
+  const [tableOpen, setTableOpen] = useState(false)
   const el = tb.selectedElement
   const count = tb.selectedCount
   const slide = slides[activeIndex]
@@ -101,7 +106,7 @@ export function Inspector({
               setShapeMenu({ x: r.left, y: r.bottom + 4 })
             }}
           />
-          <ToolButton icon={<Table size={15} />} label="Table" onClick={tb.onAddTable} />
+          <ToolButton icon={<Table size={15} />} label="Table" active={tableOpen} onClick={() => setTableOpen(!tableOpen)} />
           <ToolButton icon={<ImageIcon size={15} />} label="Image" onClick={onInsertImage} />
           <ToolButton icon={<Video size={15} />} label="Video" active={videoOpen} onClick={() => setVideoOpen(!videoOpen)} />
           <ToolButton
@@ -113,6 +118,15 @@ export function Inspector({
             }}
           />
         </div>
+        {tableOpen && (
+          <TableSizePicker
+            max={{ rows: 12, cols: 10 }}
+            onPick={(rows, cols) => {
+              setTableOpen(false)
+              onInsertTable(rows, cols)
+            }}
+          />
+        )}
         {videoOpen && (
           <UrlField
             placeholder="Paste a YouTube or Vimeo link"
@@ -128,6 +142,7 @@ export function Inspector({
         <MultiSelection deck={deck} count={count} />
       ) : el ? (
         <>
+          {isTable(el) && <TableSection deck={deck} el={el} />}
           {hasText(el) && <TextSection deck={deck} el={el} />}
           {(el.type === 'shape' || el.type === 'text' || el.type === 'connector') && <FillSection deck={deck} el={el} />}
           <ArrangeSection deck={deck} el={el} update={update} />
@@ -241,6 +256,104 @@ function UrlField({ placeholder, submitLabel, initial = '', onSubmit, onClear }:
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+/** Looks offered for tables: the deck's own accent first, when it has one. */
+export function tableLooks(deck: Deck): TableLook[] {
+  const theme = themeLook(deck.tb.templateScheme?.accent1)
+  return theme ? [theme, ...TABLE_LOOKS] : TABLE_LOOKS
+}
+
+function TableSection({ deck, el }: { deck: Deck; el: TableElement }) {
+  const { handle, tb } = deck
+  const data = el.tableData
+  const looks = tableLooks(deck)
+
+  // Dragging the frame taller or shorter stretches the rows to fill it, as in PowerPoint.
+  const last = useRef<{ id: string; height: number } | null>(null)
+  useEffect(() => {
+    const prev = last.current
+    last.current = { id: el.id, height: el.height }
+    if (!data || !prev || prev.id !== el.id || prev.height === el.height) return
+    if (Math.abs(rowsHeight(data) - el.height) > 1) handle.current?.updateElement(el.id, { tableData: fitRowsTo(data, el.height) } as Partial<Element>)
+  }, [el.id, el.height, data, handle])
+
+  if (!data) return null
+  const look = currentLook(data, looks)
+  const header = data.firstRowHeader !== false
+  const banded = data.bandedRows !== false
+  const first = data.rows[0]?.cells[0]?.style
+  const fonts = Array.from(new Set([tb.themeFonts?.body, tb.themeFonts?.heading, ...FONTS].filter(Boolean) as string[]))
+
+  const commit = (next: TableData) => {
+    const height = rowsHeight(next)
+    handle.current?.updateElement(el.id, { tableData: next, ...(height ? { height } : {}) } as Partial<Element>)
+    last.current = { id: el.id, height: height || el.height }
+  }
+  const restyle = (next: TableData) => (look ? applyLook(next, look, { header: next.firstRowHeader !== false, banded: next.bandedRows !== false }) : next)
+
+  return (
+    <Section title={`Table · ${data.rows.length} × ${data.columnWidths.length}`}>
+      <div className="table-looks">
+        {looks.map((l) => (
+          <button
+            key={l.id}
+            type="button"
+            title={l.label}
+            aria-label={`${l.label} table style`}
+            className={`table-look ${look?.id === l.id ? 'on' : ''}`}
+            onClick={() => commit(applyLook(data, l, { header, banded }))}
+          >
+            <span style={{ background: l.header, borderBottom: l.open ? `1.5px solid ${l.text}` : undefined }} />
+            <span style={{ background: l.band, boxShadow: `inset 0 -1px ${l.line}` }} />
+            <span style={{ background: l.body, boxShadow: `inset 0 -1px ${l.line}` }} />
+            <span style={{ background: l.band }} />
+          </button>
+        ))}
+      </div>
+      <div className="grid-2">
+        <button type="button" className={`btn ${header ? 'active-chip' : ''}`} onClick={() => commit(restyle({ ...data, firstRowHeader: !header }))}>
+          Header row
+        </button>
+        <button type="button" className={`btn ${banded ? 'active-chip' : ''}`} onClick={() => commit(restyle({ ...data, bandedRows: !banded }))}>
+          Banded rows
+        </button>
+      </div>
+      <div className="grid-2">
+        <Stepper label="Rows" value={data.rows.length} min={1} max={50} onChange={(n) => commit(restyle(resizeRows(data, n)))} />
+        <Stepper label="Columns" value={data.columnWidths.length} min={1} max={20} onChange={(n) => commit(restyle(resizeColumns(data, n)))} />
+      </div>
+      <div className="docx-font-row">
+        <SelectField value={first?.fontFamily ?? null} placeholder="Theme font" options={fonts.map((f) => ({ value: f, label: f }))} onChange={(f) => commit(styleAllCells(data, { fontFamily: f }))} />
+        <NumberField label={<span className="faint">pt</span>} value={first?.fontSize ?? null} precision={1} min={4} max={200} onCommit={(v) => commit(styleAllCells(data, { fontSize: v }))} />
+      </div>
+      <Segmented
+        value={first?.align === 'center' || first?.align === 'right' ? first.align : 'left'}
+        onChange={(a) => commit(styleAllCells(data, { align: a }))}
+        options={[
+          { value: 'left', icon: <AlignLeft size={15} />, title: 'Align left' },
+          { value: 'center', icon: <AlignCenter size={15} />, title: 'Center' },
+          { value: 'right', icon: <AlignRight size={15} />, title: 'Align right' },
+        ]}
+      />
+      <p className="faint hint">Double-click a cell to type in it. Drag the frame to resize the table.</p>
+    </Section>
+  )
+}
+
+function Stepper({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (n: number) => void }) {
+  return (
+    <div className="stepper">
+      <span className="field-label">{label}</span>
+      <IconButton label={`Fewer ${label.toLowerCase()}`} size="sm" disabled={value <= min} onClick={() => onChange(value - 1)}>
+        <Minus size={13} />
+      </IconButton>
+      <span className="stepper-value">{value}</span>
+      <IconButton label={`More ${label.toLowerCase()}`} size="sm" disabled={value >= max} onClick={() => onChange(value + 1)}>
+        <Plus size={13} />
+      </IconButton>
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { FileCode2, FileText, FileType2, PanelLeft, PanelRight, Presentation, Search, X, ChevronUp, ChevronDown } from 'lucide-react'
+import { FileCode2, FileText, FileType2, NotepadText, PanelLeft, PanelRight, Presentation, Search, X, ChevronUp, ChevronDown } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type { DocKind } from '../lib/kinds'
@@ -18,6 +18,8 @@ export function KindIcon({ kind, size = 14 }: { kind: DocKind; size?: number }) 
       return <FileType2 {...props} />
     case 'md':
       return <FileCode2 {...props} />
+    case 'txt':
+      return <NotepadText {...props} />
   }
 }
 

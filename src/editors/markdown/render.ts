@@ -123,18 +123,3 @@ export function renderMarkdown(source: string): { html: string; headings: Headin
   })
   return { html, headings, frontmatter }
 }
-
-export function stats(source: string) {
-  const text = splitFrontmatter(source).body
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/`[^`]*`/g, ' ')
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/[#>*_~`-]/g, ' ')
-  const words = text.split(/\s+/).filter(Boolean).length
-  return {
-    words,
-    characters: source.length,
-    lines: source.split('\n').length,
-  }
-}

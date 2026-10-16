@@ -1,3 +1,4 @@
+import { blankDocumentBytes, chromeProbeForSlot, commandForSlot, commandForSlotValue } from '@docx-editor.dev/core/editor'
 import '@docx-editor.dev/core/styles/editor.css'
 import { packagedFonts } from '@docx-editor.dev/fonts'
 import type { Editor } from '@docx-editor.dev/react'
@@ -8,10 +9,12 @@ import {
   useDocumentSearch,
   useDocxEditor,
   useEditorCommand,
+  useEditorEvent,
   useEditorState,
   useEditorValueCommand,
   useFontFamily,
   useFonts,
+  useHyperlinkPopup,
   usePageSetup,
   useParagraphStyle,
   useZoom,
@@ -21,6 +24,10 @@ import {
   AlignJustify,
   AlignLeft,
   AlignRight,
+  ArrowDownToLine,
+  ArrowLeftToLine,
+  ArrowRightToLine,
+  ArrowUpToLine,
   Bold,
   FileStack,
   Image as ImageIcon,
@@ -39,25 +46,46 @@ import {
   Subscript,
   Superscript,
   Table,
+  Trash2,
   Underline,
   Undo2,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { use, useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorProps } from '../../App'
 import { FindBar, InspectorHeader, Workbench, formatZoom } from '../../components/Workbench'
-import { ColorField, IconButton, NumberField, Section, Segmented, SelectField } from '../../components/ui'
+import { ColorField, IconButton, NumberField, Section, Segmented, SelectField, TableSizePicker } from '../../components/ui'
 import { usePinchZoom } from '../../lib/pinch'
 import { shortcut } from '../../lib/platform'
 import { registerEditor, useWorkspace } from '../../state/workspace'
 import './docx.css'
 
+type EditorCommand = Parameters<Editor['exec']>[0]
+
+// The packaged shell mounts the link popover itself; this composed editor has to ask for it.
+const POPUPS = { hyperlink: () => <LinkPopover /> }
+
 // One font resolver for every Word tab, so each face is fetched and parsed once.
 const FONTS = packagedFonts()
 
+// New documents start on A4 paper. The engine's blank template is US Letter.
+let blankA4: Promise<Uint8Array> | null = null
+function blankA4Document() {
+  blankA4 ??= (async () => {
+    const { default: JSZip } = await import('jszip')
+    const zip = await JSZip.loadAsync(blankDocumentBytes())
+    const xml = await zip.file('word/document.xml')!.async('string')
+    zip.file('word/document.xml', xml.replace(/<w:pgSz\b[^>]*\/>/, '<w:pgSz w:w="11906" w:h="16838"/>'))
+    return zip.generateAsync({ type: 'uint8array' })
+  })()
+  return blankA4
+}
+
 export default function DocxTab({ tab, active }: EditorProps) {
   const fonts = useFonts(FONTS)
-  const document = useMemo(() => tab.bytes ?? ('blank' as const), [tab.bytes])
+  const blank = tab.bytes ? null : use(blankA4Document())
+  // A copy per tab, so two new documents never share bytes.
+  const document = useMemo(() => tab.bytes ?? blank!.slice(), [tab.bytes, blank])
   const savedRevision = useRef<number | null>(null)
   const markDirty = useWorkspace((s) => s.markDirty)
 
@@ -66,6 +94,7 @@ export default function DocxTab({ tab, active }: EditorProps) {
       document={document}
       fonts={fonts}
       mode="edit"
+      popups={POPUPS}
       author="Workspace"
       onReady={(editor) => {
         savedRevision.current = editor.getDocumentHandle().revision
@@ -131,14 +160,20 @@ function DocxWorkbench({ tab, active, savedRevision }: EditorProps & { savedRevi
 
   // The engine turns spellcheck off on its editable pages; turn it back on (macOS draws the
   // red underlines and offers corrections on right-click, which the engine applies).
+  // It also paints a page break as a form-feed character, which WebKit draws as a "?" box; hide those.
   useEffect(() => {
     const stage = stageRef.current
     if (!stage) return
     const enable = () => stage.querySelectorAll<HTMLElement>('.docx-pages[contenteditable]').forEach((el) => el.spellcheck || (el.spellcheck = true))
     enable()
-    // Typing mutates the pages constantly; check at most once per frame.
+    hideBreakMarks(stage)
+    // Typing mutates the pages constantly; check spellcheck at most once per frame.
     let queued = false
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === 'attributes') hideBreakMark(record.target)
+        else record.addedNodes.forEach(hideBreakMarks)
+      }
       if (queued) return
       queued = true
       requestAnimationFrame(() => {
@@ -146,12 +181,15 @@ function DocxWorkbench({ tab, active, savedRevision }: EditorProps & { savedRevi
         enable()
       })
     })
-    observer.observe(stage, { childList: true, subtree: true, attributes: true, attributeFilter: ['spellcheck'] })
+    observer.observe(stage, { childList: true, subtree: true, attributes: true, attributeFilter: ['spellcheck', 'class'] })
     return () => observer.disconnect()
   }, [editor])
 
+  const words = useWordCount(editor as Editor | null)
+  const footer = [page && (page.total === 1 ? '1 page' : `${page.total} pages`), words != null && (words === 1 ? '1 word' : `${words.toLocaleString()} words`)].filter(Boolean).join(' · ')
+
   return (
-    <Workbench tab={tab} left={<Outline />} leftFooter={page ? <span>{page.total === 1 ? '1 page' : `${page.total} pages`}</span> : undefined} right={<Inspector tab={tab} />}>
+    <Workbench tab={tab} left={<Outline />} leftFooter={footer ? <span>{footer}</span> : undefined} right={<Inspector tab={tab} />}>
       <div className="docx-stage" ref={stageRef}>
         <DocxEditor.Viewport className="docx-viewport">
           <DocxEditor.Content />
@@ -208,6 +246,50 @@ function UndoRedo() {
       </IconButton>
     </>
   )
+}
+
+/** Hide the run the engine paints for a page break: a lone form feed, which WebKit draws as a "?" box. */
+function hideBreakMark(node: Node) {
+  const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement)
+  if (el?.classList?.contains('layout-run-text') && el.textContent === '\f' && !el.classList.contains('docx-break-mark')) el.classList.add('docx-break-mark')
+}
+
+function hideBreakMarks(node: Node) {
+  hideBreakMark(node)
+  if (node instanceof HTMLElement) node.querySelectorAll('.layout-run-text').forEach(hideBreakMark)
+}
+
+/** Words in the document body, recounted shortly after each edit. */
+function useWordCount(editor: Editor | null) {
+  const [words, setWords] = useState<number | null>(null)
+  const timer = useRef(0)
+  const recount = () => {
+    window.clearTimeout(timer.current)
+    timer.current = window.setTimeout(() => {
+      if (!editor) return
+      try {
+        let n = 0
+        for (const p of editor.query({ type: 'paragraphs' })) n += countWords(p.text)
+        setWords(n)
+      } catch {
+        // Still loading.
+      }
+    }, 400)
+  }
+  useEditorEvent('change', recount)
+  useEffect(() => {
+    recount()
+    return () => window.clearTimeout(timer.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor])
+  return words
+}
+
+const WORD = /[\p{L}\p{N}]/u
+function countWords(text: string) {
+  let n = 0
+  for (const token of text.split(/\s+/)) if (WORD.test(token)) n++
+  return n
 }
 
 function Outline() {
@@ -269,7 +351,7 @@ function Inspector({ tab }: { tab: EditorProps['tab'] }) {
   const alignJustify = useEditorCommand('alignment.justify')
   const pageBreak = useEditorCommand('insert.pageBreak')
   const toc = useEditorCommand('insert.toc')
-  const link = useEditorCommand('text.link')
+  const editor = useDocxEditor()
   const [tableOpen, setTableOpen] = useState(false)
 
   const alignment = alignCenter.isActive ? 'center' : alignRight.isActive ? 'right' : alignJustify.isActive ? 'justify' : alignLeft.isActive ? 'left' : null
@@ -391,10 +473,7 @@ function Inspector({ tab }: { tab: EditorProps['tab'] }) {
             <ImageIcon size={15} />
             <span>Image</span>
           </ImageInsertTrigger>
-          <button type="button" className="tool-btn" disabled={!link.isEnabled} onMouseDown={(e) => e.preventDefault()} onClick={() => link.execute()}>
-            <Link size={15} />
-            <span>Link</span>
-          </button>
+          <LinkButton />
           <button type="button" className="tool-btn" disabled={!pageBreak.isEnabled} onMouseDown={(e) => e.preventDefault()} onClick={() => pageBreak.execute()}>
             <FileStack size={15} />
             <span>Break</span>
@@ -405,11 +484,17 @@ function Inspector({ tab }: { tab: EditorProps['tab'] }) {
           </button>
         </div>
         {tableOpen && (
-          <div className="table-grid-wrap" onClick={(e) => (e.target as HTMLElement).closest('button') && setTableOpen(false)}>
-            <DocxEditor.Menu.TableGrid slot="table.insert" />
-          </div>
+          <TableSizePicker
+            onPick={(rows, cols) => {
+              setTableOpen(false)
+              editor?.exec({ type: 'insertTable', rows, cols } as EditorCommand)
+              editor?.focus()
+            }}
+          />
         )}
       </Section>
+
+      <TableSection />
 
       <PageSection />
       <Section title="File" collapsible defaultOpen={false}>
@@ -418,6 +503,174 @@ function Inspector({ tab }: { tab: EditorProps['tab'] }) {
         </p>
       </Section>
     </>
+  )
+}
+
+/** Opens the engine's link popover for the selection, like ⌘K. */
+function LinkButton() {
+  const editor = useDocxEditor()
+  const { openAtCaret } = useHyperlinkPopup()
+  // Re-check whenever the selection moves.
+  useEditorState((s) => s.selection)
+  const probe = chromeProbeForSlot('text.link')
+  const enabled = !!editor && !!probe && editor.can(probe).ok
+  return (
+    <button
+      type="button"
+      className="tool-btn"
+      disabled={!enabled}
+      title={enabled ? shortcut('Link (⌘K)') : 'Select some text to link'}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={openAtCaret}
+    >
+      <Link size={15} />
+      <span>Link</span>
+    </button>
+  )
+}
+
+/**
+ * The engine's link popover, with two fixes. It refuses addresses typed without a scheme
+ * ("example.com"), so Apply adds https:// (or mailto:) first. And it writes the link without
+ * Word's Hyperlink style, so the text would look plain; Apply also makes it blue and underlined.
+ */
+function LinkPopover() {
+  const editor = useDocxEditor()
+  const { state, setUrl, commitEdit } = useHyperlinkPopup()
+  const textColor = useEditorValueCommand('text.color')
+  const [applyRequest, setApplyRequest] = useState(0)
+  // Closed from its own buttons or keys: put the caret back in the document.
+  const refocus = useRef(false)
+  useEffect(() => {
+    if (!applyRequest || !editor) return
+    const before = textColor.value
+    // Style first: once the link is in, the selection has collapsed to its end.
+    const group = editor.beginHistoryGroup()
+    const styled = styleAsLink(editor, group)
+    group.end()
+    if (commitEdit()) {
+      // Text typed straight after the link should not carry on blue and underlined.
+      if (styled) endLinkStyle(editor, before)
+    } else if (styled) {
+      editor.exec({ type: 'undo' })
+    }
+    // Runs once per Apply, after the completed address has reached the popover's state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyRequest])
+  useEffect(() => {
+    if (state.mode !== 'closed' || !refocus.current) return
+    refocus.current = false
+    editor?.focus()
+  }, [state.mode, editor])
+  const apply = (e: React.SyntheticEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    refocus.current = true
+    const url = state.url.trim()
+    if (url && !url.startsWith('#') && !/^[a-z][a-z0-9+.-]*:/i.test(url)) setUrl(/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(url) ? `mailto:${url}` : `https://${url}`)
+    setApplyRequest((n) => n + 1)
+  }
+  return (
+    <div
+      style={{ display: 'contents' }}
+      onClickCapture={(e) => {
+        const target = e.target as HTMLElement
+        if (target.closest('.docx-hyperlink-popup__apply')) apply(e)
+        else if (target.closest('button')) refocus.current = true
+      }}
+      onKeyDownCapture={(e) => {
+        if (e.key === 'Enter' && state.mode === 'editing') apply(e)
+        else if (e.key === 'Escape') refocus.current = true
+      }}
+    >
+      <DocxEditor.HyperLink />
+    </div>
+  )
+}
+
+const LINK_COLOR = '0563C1'
+
+/** Color and underline the selected text, as Word's Hyperlink style would. Answers whether it did. */
+function styleAsLink(editor: Editor, historyGroup: ReturnType<Editor['beginHistoryGroup']>) {
+  if (!editor.query({ type: 'selectedText' })) return false
+  const color = commandForSlotValue('text.color', LINK_COLOR)
+  const underline = commandForSlot('text.underline')
+  if (color) editor.exec(color, { historyGroup })
+  if (underline && !editor.isActive(underline)) editor.exec(underline, { historyGroup })
+  return true
+}
+
+/** At the caret after a new link, go back to the text's own color and no underline. */
+function endLinkStyle(editor: Editor, color: unknown) {
+  const restore = commandForSlotValue('text.color', typeof color === 'string' && color ? color : 'auto')
+  const underline = commandForSlot('text.underline')
+  if (restore) editor.exec(restore)
+  if (underline && editor.isActive(underline)) editor.exec(underline)
+}
+
+const BLACK_BORDER = { style: 'single', size: 4, color: { kind: 'hex', value: '000000' } } as const
+
+const CELL_FILLS = ['FFFFFF', 'F2F2F2', 'D9D9D9', 'DCE6F2', 'DFF0D8', 'FCF3CF', 'F8D7DA', '1F2937']
+
+/** Shown while the caret is in a table: add and remove rows and columns, shading and borders. */
+function TableSection() {
+  const editor = useDocxEditor()
+  const table = useEditorState((s) => s.table)
+  if (!editor || !table) return null
+  const can = (command: EditorCommand) => editor.can(command).ok
+  const run = (command: EditorCommand) => {
+    editor.exec(command)
+    editor.focus()
+  }
+  const button = (command: EditorCommand, label: string, icon: ReactNode) => (
+    <IconButton label={label} disabled={!can(command)} onMouseDown={(e) => e.preventDefault()} onClick={() => run(command)}>
+      {icon}
+    </IconButton>
+  )
+  return (
+    <Section title={`Table · ${table.rows} × ${table.columns}`}>
+      <span className="field-caption">Rows</span>
+      <div className="toggle-row">
+        {button({ type: 'insertRow', where: 'above' }, 'Insert row above', <ArrowUpToLine size={15} />)}
+        {button({ type: 'insertRow', where: 'below' }, 'Insert row below', <ArrowDownToLine size={15} />)}
+        {button({ type: 'deleteRow' }, 'Delete row', <Minus size={15} />)}
+      </div>
+      <span className="field-caption">Columns</span>
+      <div className="toggle-row">
+        {button({ type: 'insertColumn', where: 'left' }, 'Insert column left', <ArrowLeftToLine size={15} />)}
+        {button({ type: 'insertColumn', where: 'right' }, 'Insert column right', <ArrowRightToLine size={15} />)}
+        {button({ type: 'deleteColumn' }, 'Delete column', <Minus size={15} />)}
+      </div>
+      <span className="field-caption">Shading and borders (selected cells)</span>
+      <div className="swatches">
+        {CELL_FILLS.map((c) => (
+          <button
+            key={c}
+            type="button"
+            aria-label={`Shade #${c}`}
+            className="swatch"
+            style={{ background: `#${c}` }}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => run({ type: 'setCellFill', color: c === 'FFFFFF' ? null : { kind: 'hex', value: c } })}
+          />
+        ))}
+      </div>
+      <div className="grid-3">
+        <button type="button" className="btn" onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'setTableBorders', scope: 'all', spec: BLACK_BORDER })}>
+          All
+        </button>
+        <button type="button" className="btn" onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'setTableBorders', scope: 'outside', spec: BLACK_BORDER })}>
+          Outside
+        </button>
+        <button type="button" className="btn" onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'setTableBorders', scope: 'none', target: 'all' })}>
+          None
+        </button>
+      </div>
+      <button type="button" className="btn danger block" disabled={!can({ type: 'deleteTable' })} onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'deleteTable' })}>
+        <Trash2 size={14} /> Delete table
+      </button>
+      <p className="faint hint">Drag a column edge in the table to resize it.</p>
+    </Section>
   )
 }
 

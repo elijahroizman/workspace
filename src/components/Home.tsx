@@ -12,6 +12,7 @@ const CREATE: { kind: DocKind; title: string; hint: string; shortcut: string }[]
   { kind: 'docx', title: 'New document', hint: 'Word (.docx)', shortcut: '⌘N' },
   { kind: 'pptx', title: 'New presentation', hint: 'PowerPoint (.pptx)', shortcut: '⇧⌘N' },
   { kind: 'md', title: 'New note', hint: 'Markdown (.md)', shortcut: '⌥⌘N' },
+  { kind: 'txt', title: 'New text file', hint: 'Plain text (.txt)', shortcut: '' },
 ]
 
 export function Home() {
@@ -29,7 +30,7 @@ export function Home() {
         <header className="home-header">
           <div>
             <h1>Workspace</h1>
-            <p className="muted">Open, edit and create Word, PowerPoint, PDF and Markdown files.</p>
+            <p className="muted">Open, edit and create Word, PowerPoint, PDF, Markdown and text files.</p>
           </div>
           <IconButton label={theme === 'dark' ? 'Light appearance (⇧⌘L)' : 'Dark appearance (⇧⌘L)'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
@@ -54,7 +55,7 @@ export function Home() {
                 <strong>{c.title}</strong>
                 <span className="muted">{c.hint}</span>
               </span>
-              <span className="kbd">{shortcut(c.shortcut)}</span>
+              {c.shortcut && <span className="kbd">{shortcut(c.shortcut)}</span>}
             </button>
           ))}
         </div>
@@ -63,7 +64,7 @@ export function Home() {
           <div className="home-recents-header">
             <h2>Recent</h2>
             <div className="home-filter" role="tablist">
-              {(['all', 'docx', 'pptx', 'pdf', 'md'] as const).map((k) => (
+              {(['all', 'docx', 'pptx', 'pdf', 'md', 'txt'] as const).map((k) => (
                 <button key={k} type="button" role="tab" aria-selected={filter === k} className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>
                   {k === 'all' ? 'All' : KINDS[k].short}
                 </button>

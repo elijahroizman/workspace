@@ -168,3 +168,55 @@
     height: 100vh;
   }
 }
+
+/* Table looks in the inspector: a tiny four-row preview of each. */
+.table-looks {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.table-look {
+  display: flex;
+  flex-direction: column;
+  height: 40px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--field);
+  overflow: hidden;
+}
+
+.table-look span {
+  flex: 1;
+  border-radius: 1px;
+}
+
+.table-look:hover {
+  border-color: var(--fg-faint);
+}
+
+.table-look.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 30px;
+  padding: 0 2px 0 8px;
+  border-radius: var(--radius-sm);
+  background: var(--field);
+}
+
+.stepper .field-label {
+  flex: 1;
+}
+
+.stepper-value {
+  min-width: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}

@@ -339,6 +339,41 @@ export function PopoverMenu({
   )
 }
 
+/**
+ * Insert-table size picker. The grid grows as the pointer nears its edge, up to `max`,
+ * so a big table is one sweep away without a huge empty grid up front.
+ */
+export function TableSizePicker({ onPick, max = { rows: 20, cols: 10 } }: { onPick: (rows: number, cols: number) => void; max?: { rows: number; cols: number } }) {
+  const [hover, setHover] = useState({ rows: 0, cols: 0 })
+  const rows = Math.min(max.rows, Math.max(6, hover.rows + 1))
+  const cols = Math.min(max.cols, Math.max(6, hover.cols + 1))
+  return (
+    <div className="table-picker" onMouseLeave={() => setHover({ rows: 0, cols: 0 })}>
+      <div className="table-picker-grid" style={{ gridTemplateColumns: `repeat(${cols}, 18px)` }}>
+        {Array.from({ length: rows * cols }, (_, i) => {
+          const r = Math.floor(i / cols) + 1
+          const c = (i % cols) + 1
+          return (
+            <button
+              key={`${r}-${c}`}
+              type="button"
+              aria-label={`${r} by ${c}`}
+              className={r <= hover.rows && c <= hover.cols ? 'on' : ''}
+              onMouseEnter={() => setHover({ rows: r, cols: c })}
+              onFocus={() => setHover({ rows: r, cols: c })}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => onPick(r, c)}
+            />
+          )
+        })}
+      </div>
+      <span className="table-picker-caption">
+        {hover.rows ? `${hover.rows} ${hover.rows === 1 ? 'row' : 'rows'} × ${hover.cols} ${hover.cols === 1 ? 'column' : 'columns'}` : 'Choose a size'}
+      </span>
+    </div>
+  )
+}
+
 export function Spinner({ size = 18 }: { size?: number }) {
   return (
     <svg className="spin" width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>

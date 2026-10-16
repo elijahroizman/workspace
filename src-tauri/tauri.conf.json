@@ -52,7 +52,7 @@
       "dmg"
     ],
     "category": "Productivity",
-    "shortDescription": "Word, PowerPoint, PDF and Markdown in one tabbed window",
+    "shortDescription": "Word, PowerPoint, PDF, Markdown and text files in one tabbed window",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -97,6 +97,15 @@
         "role": "Editor",
         "rank": "Alternate",
         "mimeType": "text/markdown"
+      },
+      {
+        "ext": [
+          "txt"
+        ],
+        "name": "Plain Text Document",
+        "role": "Editor",
+        "rank": "Alternate",
+        "mimeType": "text/plain"
       }
     ],
     "macOS": {
