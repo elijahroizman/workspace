@@ -1173,14 +1173,18 @@ button {
   text-align: left;
 }
 
-.menu-item:hover {
+.menu-item:not(:disabled):hover {
   background: var(--accent);
   color: #fff;
 }
 
-.menu-item:hover .kbd,
-.menu-item:hover svg {
+.menu-item:not(:disabled):hover .kbd,
+.menu-item:not(:disabled):hover svg {
   color: #fff;
+}
+
+.menu-item:disabled {
+  opacity: 0.4;
 }
 
 .menu-item .label {
@@ -1751,4 +1755,91 @@ button {
 .settings-scroll > .settings-row:first-child {
   border-top: 0;
   padding-top: 0;
+}
+
+/* Settings › Keyboard Shortcuts */
+.shortcut-tools {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.shortcut-search {
+  flex: 1;
+}
+
+.shortcut-group h4 {
+  margin: 18px 0 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.shortcut-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.shortcut-note {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.shortcut-keys {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  min-width: 96px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.shortcut-keys:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--field);
+}
+
+.shortcut-keys:disabled {
+  opacity: 0.55;
+}
+
+.shortcut-keys.none {
+  color: var(--fg-faint);
+}
+
+.shortcut-keys.recording {
+  justify-content: center;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.shortcut-keys kbd {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--field);
+  box-shadow: inset 0 -1px 0 var(--line);
+  font: inherit;
+  line-height: 20px;
+  text-align: center;
 }

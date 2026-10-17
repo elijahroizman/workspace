@@ -26,7 +26,9 @@ import {
   List,
   ListOrdered,
   Minus,
+  MoveDown,
   MoveRight,
+  MoveUp,
   Play,
   Plus,
   RectangleHorizontal,
@@ -40,16 +42,24 @@ import {
   Triangle,
   Type,
   Underline,
+  Ungroup,
   Video,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { InspectorHeader } from '../../components/Workbench'
 import type { MenuEntry } from '../../components/ui'
+import * as platform from '../../lib/platform'
+import { withKeys } from '../../state/shortcuts'
 import { ColorField, IconButton, NumberField, PopoverMenu, Section, Segmented, SelectField, TableSizePicker, normalizeHex } from '../../components/ui'
+import type { Restack } from './arrange'
+import { mapPicked, pickedText, styleShape, styleText, withElements } from './arrange'
+import { SlidePreview } from './SlideStrip'
+import { SlideSwap } from './SlideSwap'
 import type { TableData, TableElement, TableLook } from './table'
 import { TABLE_LOOKS, applyLook, currentLook, fitRowsTo, isTable, resizeColumns, resizeRows, rowsHeight, styleAllCells, themeLook } from './table'
-import type { Deck, Element, ShapeKind, TextStyle } from './types'
+import { DIRECTIONS, TRANSITIONS, changeTransition } from './transitions'
+import type { Deck, Element, ShapeKind, ShapeStyle, Slide, TextStyle, Transition } from './types'
 import { hasText, linkOf, shapeStyleOf } from './types'
 
 const SHAPES: { kind: ShapeKind; label: string; icon: ReactNode }[] = [
@@ -73,6 +83,9 @@ export function Inspector({
   onInsertVideo,
   onNewSlide,
   onPresent,
+  onDeleteSlides,
+  onArrange,
+  canArrange,
 }: {
   deck: Deck
   onInsertImage: () => void
@@ -80,8 +93,11 @@ export function Inspector({
   onInsertVideo: (url: string) => Promise<boolean>
   onNewSlide: (anchor: { x: number; y: number }) => void
   onPresent: (fromStart: boolean) => void
+  onDeleteSlides: (indexes: readonly number[]) => void
+  onArrange: (how: Restack) => void
+  canArrange: (how: Restack) => boolean
 }) {
-  const { tb, handle, slides, activeIndex } = deck
+  const { tb, handle, slides, activeIndex, selectedSlides } = deck
   const [shapeMenu, setShapeMenu] = useState<{ x: number; y: number } | null>(null)
   const [videoOpen, setVideoOpen] = useState(false)
   const [tableOpen, setTableOpen] = useState(false)
@@ -139,17 +155,37 @@ export function Inspector({
       </Section>
 
       {count > 1 ? (
-        <MultiSelection deck={deck} count={count} />
+        <MultiSelection deck={deck} count={count} onArrange={onArrange} canArrange={canArrange} />
       ) : el ? (
         <>
           {isTable(el) && <TableSection deck={deck} el={el} />}
+          {el.type === 'group' && <GroupTextSection deck={deck} />}
           {hasText(el) && <TextSection deck={deck} el={el} />}
           {(el.type === 'shape' || el.type === 'text' || el.type === 'connector') && <FillSection deck={deck} el={el} />}
-          <ArrangeSection deck={deck} el={el} update={update} />
+          <ArrangeSection deck={deck} el={el} update={update} onArrange={onArrange} canArrange={canArrange} />
           <LinkSection el={el} update={update} />
+        </>
+      ) : selectedSlides.length > 1 ? (
+        <>
+          <Section title={`${selectedSlides.length} slides`}>
+            <div className="grid-2">
+              <button type="button" className="btn" onClick={() => handle.current?.duplicateSlides([...selectedSlides])}>
+                <Copy size={14} /> Duplicate
+              </button>
+              <button type="button" className="btn danger" disabled={selectedSlides.length >= slides.length} onClick={() => onDeleteSlides(selectedSlides)}>
+                <Trash2 size={14} /> Delete
+              </button>
+            </div>
+            <button type="button" className="btn block" onClick={() => handle.current?.toggleHideSlides([...selectedSlides])}>
+              <EyeOff size={14} /> Hide or show in slideshow
+            </button>
+            <p className="faint hint">Shift-click picks a run of slides; {platform.isMac ? '⌘' : 'Ctrl'}-click adds or removes one.</p>
+          </Section>
+          <TransitionSection deck={deck} indexes={selectedSlides} />
         </>
       ) : (
         slide && (
+          <>
           <Section title={`Slide ${activeIndex + 1} of ${slides.length}`}>
             {tb.layoutOptions.length > 1 && tb.onApplyLayout && (
               <SelectField
@@ -176,8 +212,10 @@ export function Inspector({
             <button type="button" className="btn block" onClick={() => tb.onToggleHideSlide?.()}>
               <EyeOff size={14} /> {slide.hidden ? 'Show slide in slideshow' : 'Hide slide in slideshow'}
             </button>
-            <p className="faint hint">Drag on the slide to select several objects. Double-click text to edit it.</p>
+            <p className="faint hint">Drag across the slide or shift-click to select several objects. Double-click text to edit it.</p>
           </Section>
+          <TransitionSection deck={deck} indexes={[activeIndex]} />
+          </>
         )
       )}
 
@@ -371,13 +409,13 @@ function TextSection({ deck, el }: { deck: Deck; el: Element & { textStyle?: Tex
         <NumberField label={<span className="faint">pt</span>} value={style.fontSize ?? null} precision={1} min={1} max={400} onCommit={(v) => set({ fontSize: v })} />
       </div>
       <div className="toggle-row">
-        <IconButton label="Bold (⌘B)" active={!!style.bold} onMouseDown={(e) => e.preventDefault()} onClick={() => set({ bold: !style.bold })}>
+        <IconButton label={withKeys('Bold', 'text.bold')} active={!!style.bold} onMouseDown={(e) => e.preventDefault()} onClick={() => set({ bold: !style.bold })}>
           <Bold size={15} />
         </IconButton>
-        <IconButton label="Italic (⌘I)" active={!!style.italic} onMouseDown={(e) => e.preventDefault()} onClick={() => set({ italic: !style.italic })}>
+        <IconButton label={withKeys('Italic', 'text.italic')} active={!!style.italic} onMouseDown={(e) => e.preventDefault()} onClick={() => set({ italic: !style.italic })}>
           <Italic size={15} />
         </IconButton>
-        <IconButton label="Underline (⌘U)" active={!!style.underline} onMouseDown={(e) => e.preventDefault()} onClick={() => set({ underline: !style.underline })}>
+        <IconButton label={withKeys('Underline', 'text.underline')} active={!!style.underline} onMouseDown={(e) => e.preventDefault()} onClick={() => set({ underline: !style.underline })}>
           <Underline size={15} />
         </IconButton>
         <IconButton label="Strikethrough" active={!!style.strikethrough} onMouseDown={(e) => e.preventDefault()} onClick={() => set({ strikethrough: !style.strikethrough })}>
@@ -428,7 +466,19 @@ function FillSection({ deck, el }: { deck: Deck; el: Element }) {
   )
 }
 
-function ArrangeSection({ deck, el, update }: { deck: Deck; el: Element; update: (patch: Partial<Element>) => void }) {
+function ArrangeSection({
+  deck,
+  el,
+  update,
+  onArrange,
+  canArrange,
+}: {
+  deck: Deck
+  el: Element
+  update: (patch: Partial<Element>) => void
+  onArrange: (how: Restack) => void
+  canArrange: (how: Restack) => boolean
+}) {
   const { tb } = deck
   const kind = el.type === 'text' ? 'Text box' : el.type === 'image' || el.type === 'picture' ? 'Image' : el.type[0].toUpperCase() + el.type.slice(1)
   return (
@@ -448,21 +498,41 @@ function ArrangeSection({ deck, el, update }: { deck: Deck; el: Element; update:
           </IconButton>
         </div>
       </div>
-      <div className="toggle-row">
-        <IconButton label="Bring to front" onClick={() => tb.onMoveLayerToEdge('front')}>
-          <BringToFront size={15} />
-        </IconButton>
-        <IconButton label="Send to back" onClick={() => tb.onMoveLayerToEdge('back')}>
-          <SendToBack size={15} />
-        </IconButton>
-        <IconButton label="Duplicate (⌘D)" onClick={tb.onDuplicate}>
-          <Copy size={15} />
-        </IconButton>
-        <IconButton label="Delete (⌫)" onClick={tb.onDelete}>
-          <Trash2 size={15} />
-        </IconButton>
+      <LayerButtons onArrange={onArrange} canArrange={canArrange} />
+      {el.type === 'group' && (
+        <button type="button" className="btn block" onClick={tb.onUngroupElement} title={platform.shortcut(withKeys('Ungroup', 'pptx.ungroup'))}>
+          <Ungroup size={14} /> Ungroup
+        </button>
+      )}
+      <div className="grid-2">
+        <button type="button" className="btn" onClick={tb.onDuplicate} title={platform.shortcut(withKeys('Duplicate', 'pptx.duplicate'))}>
+          <Copy size={14} /> Duplicate
+        </button>
+        <button type="button" className="btn danger" onClick={tb.onDelete}>
+          <Trash2 size={14} /> Delete
+        </button>
       </div>
     </Section>
+  )
+}
+
+/** Stacking order for the selected objects, as PowerPoint's Arrange menu. */
+function LayerButtons({ onArrange, canArrange }: { onArrange: (how: Restack) => void; canArrange: (how: Restack) => boolean }) {
+  const layer = (how: Restack, short: string, label: string, icon: ReactNode) => (
+    <button type="button" className="btn layer-btn" disabled={!canArrange(how)} title={platform.shortcut(withKeys(label, `pptx.${how}`))} aria-label={label} onClick={() => onArrange(how)}>
+      {icon} {short}
+    </button>
+  )
+  return (
+    <>
+      <span className="field-caption">Arrange</span>
+      <div className="grid-2">
+        {layer('front', 'To front', 'Bring to front', <BringToFront size={14} />)}
+        {layer('back', 'To back', 'Send to back', <SendToBack size={14} />)}
+        {layer('forward', 'Forward', 'Bring forward', <MoveUp size={14} />)}
+        {layer('backward', 'Backward', 'Send backward', <MoveDown size={14} />)}
+      </div>
+    </>
   )
 }
 
@@ -486,10 +556,19 @@ function LinkSection({ el, update }: { el: Element; update: (patch: Partial<Elem
   )
 }
 
-function MultiSelection({ deck, count }: { deck: Deck; count: number }) {
+function MultiSelection({ deck, count, onArrange, canArrange }: { deck: Deck; count: number; onArrange: (how: Restack) => void; canArrange: (how: Restack) => boolean }) {
   const { tb } = deck
   return (
+    <>
     <Section title={`${count} objects`}>
+      <div className="grid-2">
+        <button type="button" className="btn" disabled={!tb.selectionGroupable} onClick={tb.onGroupElements} title={platform.shortcut(withKeys('Group', 'pptx.group'))}>
+          <Group size={14} /> Group
+        </button>
+        <button type="button" className="btn danger" onClick={tb.onDelete}>
+          <Trash2 size={14} /> Delete
+        </button>
+      </div>
       <div className="toggle-row">
         <IconButton label="Align left" onClick={() => tb.onAlignElements('left')}>
           <AlignStartVertical size={15} />
@@ -517,20 +596,148 @@ function MultiSelection({ deck, count }: { deck: Deck; count: number }) {
         <button type="button" className="btn" disabled={!tb.canDistribute} onClick={() => tb.onDistributeElements('vertical')}>
           Space down
         </button>
-        <button type="button" className="btn" disabled={!tb.selectionGroupable} onClick={tb.onGroupElements}>
-          <Group size={14} /> Group
-        </button>
-        <button type="button" className="btn danger" onClick={tb.onDelete}>
-          <Trash2 size={14} /> Delete
+      </div>
+      <LayerButtons onArrange={onArrange} canArrange={canArrange} />
+    </Section>
+    <GroupTextSection deck={deck} />
+    <GroupFillSection deck={deck} />
+    </>
+  )
+}
+
+/** Text styling for every selected object that holds text, all at once (one undo step). */
+function GroupTextSection({ deck }: { deck: Deck }) {
+  const { tb, handle, slides, activeIndex, selectedIds } = deck
+  const ids = new Set(selectedIds)
+  const texts = pickedText(slides[activeIndex]?.elements ?? [], ids)
+  if (!texts.length) return null
+  // Show a value only when every box agrees on it.
+  const shared = <K extends keyof TextStyle>(key: K) => {
+    const first = texts[0].textStyle?.[key]
+    return texts.every((t) => t.textStyle?.[key] === first) ? first : undefined
+  }
+  const set = (patch: TextStyle) => handle.current?.editSlides(withElements(activeIndex, (els) => mapPicked(els, ids, (el) => styleText(el, patch))))
+  const fonts = Array.from(new Set([tb.themeFonts?.body, tb.themeFonts?.heading, ...(tb.embeddedFontFamilies ?? []), ...FONTS].filter(Boolean) as string[]))
+  const all = (key: 'bold' | 'italic' | 'underline' | 'strikethrough') => texts.every((t) => !!t.textStyle?.[key])
+  const color = normalizeHex(shared('color') as string | undefined)
+  const align = shared('align')
+  return (
+    <Section title={texts.length === 1 ? 'Text' : `Text · ${texts.length} boxes`}>
+      <div className="docx-font-row">
+        <SelectField value={(shared('fontFamily') as string | undefined) ?? null} placeholder="Mixed fonts" options={fonts.map((f) => ({ value: f, label: f }))} onChange={(f) => set({ fontFamily: f })} />
+        <NumberField label={<span className="faint">pt</span>} value={(shared('fontSize') as number | undefined) ?? null} precision={1} min={1} max={400} onCommit={(v) => set({ fontSize: v })} />
+      </div>
+      <div className="toggle-row">
+        <IconButton label={withKeys('Bold', 'text.bold')} active={all('bold')} onClick={() => set({ bold: !all('bold') })}>
+          <Bold size={15} />
+        </IconButton>
+        <IconButton label={withKeys('Italic', 'text.italic')} active={all('italic')} onClick={() => set({ italic: !all('italic') })}>
+          <Italic size={15} />
+        </IconButton>
+        <IconButton label={withKeys('Underline', 'text.underline')} active={all('underline')} onClick={() => set({ underline: !all('underline') })}>
+          <Underline size={15} />
+        </IconButton>
+        <IconButton label="Strikethrough" active={all('strikethrough')} onClick={() => set({ strikethrough: !all('strikethrough') })}>
+          <Strikethrough size={15} />
+        </IconButton>
+      </div>
+      <Segmented
+        value={align === 'center' || align === 'right' || align === 'justify' || align === 'left' ? align : null}
+        onChange={(a) => set({ align: a })}
+        options={[
+          { value: 'left', icon: <AlignLeft size={15} />, title: 'Align left' },
+          { value: 'center', icon: <AlignCenter size={15} />, title: 'Center' },
+          { value: 'right', icon: <AlignRight size={15} />, title: 'Align right' },
+          { value: 'justify', icon: <AlignJustify size={15} />, title: 'Justify' },
+        ]}
+      />
+      <ColorField value={color} label="Text color" onChange={(hex) => set({ color: `#${hex}` })} />
+      <Swatches value={color} onPick={(hex) => set({ color: `#${hex}` })} />
+    </Section>
+  )
+}
+
+function GroupFillSection({ deck }: { deck: Deck }) {
+  const { handle, slides, activeIndex, selectedIds } = deck
+  const ids = new Set(selectedIds)
+  const shapes = (slides[activeIndex]?.elements ?? []).filter((e) => ids.has(e.id) && (e.type === 'shape' || e.type === 'text'))
+  if (!shapes.length) return null
+  const set = (patch: Partial<ShapeStyle>) => handle.current?.editSlides(withElements(activeIndex, (els) => mapPicked(els, ids, (el) => styleShape(el, patch))))
+  const fills = shapes.map((e) => shapeStyleOf(e))
+  const first = normalizeHex(fills[0]?.fillMode === 'none' ? undefined : fills[0]?.fillColor)
+  const value = fills.every((f) => normalizeHex(f?.fillMode === 'none' ? undefined : f?.fillColor) === first) ? first : null
+  return (
+    <Section title="Fill">
+      <div className="docx-color-row">
+        <ColorField value={value} label="Fill" onChange={(hex) => set({ fillMode: 'solid', fillColor: `#${hex}` })} />
+        <button type="button" className="btn" onClick={() => set({ fillMode: 'none' })}>
+          None
         </button>
       </div>
+      <Swatches value={value} onPick={(hex) => set({ fillMode: 'solid', fillColor: `#${hex}` })} />
+    </Section>
+  )
+}
+
+/** Transition into the picked slides, with a preview played from the slide before. */
+function TransitionSection({ deck, indexes }: { deck: Deck; indexes: readonly number[] }) {
+  const { handle, slides, cv, templateFor } = deck
+  const [run, setRun] = useState(0)
+  const first = slides[indexes[0]]
+  if (!first) return null
+  const current = first.transition
+  const type = indexes.every((i) => (slides[i]?.transition?.type ?? 'none') === (current?.type ?? 'none')) ? (current?.type ?? 'none') : null
+  const option = TRANSITIONS.find((t) => t.value === type)
+  const set = (change: (t: Transition | undefined) => Transition | undefined, targets: readonly number[] = indexes) => {
+    handle.current?.editSlides((all) => all.map((s, i) => (targets.includes(i) ? { ...s, transition: change(s.transition) } : s)))
+    setRun((r) => r + 1)
+  }
+  const options = TRANSITIONS.map((t) => ({ value: t.value as string, label: t.label }))
+  if (type && !option) options.push({ value: type, label: type })
+  const before = slides[indexes[0] - 1] as Slide | undefined
+  const width = 244
+  const playing = type && type !== 'none' && type !== 'cut'
+  return (
+    <Section title="Transition">
+      <SelectField value={type} placeholder="Mixed" options={options} onChange={(v) => set((t) => changeTransition(t, v as Transition['type']))} />
+      {playing && (
+        <>
+          <div className="grid-2">
+            {option?.directions ? (
+              <SelectField value={current?.direction ?? 'l'} options={DIRECTIONS} onChange={(d) => set((t) => t && { ...t, direction: d })} />
+            ) : (
+              <span />
+            )}
+            <NumberField
+              label={<span className="faint">sec</span>}
+              value={(current?.durationMs ?? 700) / 1000}
+              precision={2}
+              step={0.1}
+              min={0.1}
+              max={10}
+              onCommit={(v) => set((t) => t && { ...t, durationMs: Math.round(v * 1000) })}
+            />
+          </div>
+          <button type="button" className="transition-preview" style={{ height: (width * cv.canvasSize.height) / cv.canvasSize.width }} title="Play the transition" onClick={() => setRun((r) => r + 1)}>
+            <SlideSwap
+              run={run}
+              transition={current}
+              outgoing={before ? <SlidePreview slide={before} templateElements={templateFor(before)} canvasSize={cv.canvasSize} width={width} lazy={false} /> : <div className="transition-blank" />}
+              incoming={<SlidePreview slide={first} templateElements={templateFor(first)} canvasSize={cv.canvasSize} width={width} lazy={false} />}
+            />
+          </button>
+        </>
+      )}
+      <button type="button" className="btn block" disabled={slides.length < 2} onClick={() => set(() => current, slides.map((_, i) => i))}>
+        Use on every slide
+      </button>
     </Section>
   )
 }
 
 function Swatches({ value, onPick }: { value: string | null; onPick: (hex: string) => void }) {
   return (
-    <div className="swatches">
+    <div className="swatches one-line">
       {SWATCHES.map((c) => (
         <button
           key={c}

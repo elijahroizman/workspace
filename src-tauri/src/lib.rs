@@ -133,6 +133,7 @@ pub fn run() {
             quit_app,
             update::latest_release,
             update::relaunch_in_place,
+            menu::set_menu_shortcuts,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Workspace");
