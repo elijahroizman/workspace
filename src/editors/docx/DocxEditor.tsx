@@ -30,6 +30,7 @@ import {
   ArrowRightToLine,
   ArrowUpToLine,
   Bold,
+  Crop,
   FileStack,
   Hash,
   Image as ImageIcon,
@@ -56,13 +57,15 @@ import {
 import type { ReactNode } from 'react'
 import { use, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { EditorProps } from '../../App'
+import type { Rect } from '../../components/CropOverlay'
+import { CropOverlay, rectOf } from '../../components/CropOverlay'
 import { FindBar, InspectorHeader, Workbench, formatZoom } from '../../components/Workbench'
 import { ColorField, IconButton, NumberField, Section, Segmented, SelectField, TableSizePicker } from '../../components/ui'
 import { usePinchZoom } from '../../lib/pinch'
-import { shortcut } from '../../lib/platform'
+import { isMac, openExternal, shortcut } from '../../lib/platform'
 import { withKeys } from '../../state/shortcuts'
 import { registerEditor, useWorkspace } from '../../state/workspace'
-import { CommentStore, CommentsSection } from './Comments'
+import { CommentPeek, CommentStore, CommentsSection } from './Comments'
 import './docx.css'
 
 type EditorCommand = Parameters<Editor['exec']>[0]
@@ -240,6 +243,36 @@ function DocxWorkbench({
     return () => observer.disconnect()
   }, [editor])
 
+  useLinks(stageRef, editorRef)
+
+  // Cropping the selected picture, on the page.
+  const [crop, setCrop] = useState<PictureCrop | null>(null)
+  const startCrop = () => {
+    const next = pictureCrop(editorRef.current, stageRef.current)
+    if (next) setCrop(next)
+  }
+  const endCrop = (frame?: Rect, image?: Rect) => {
+    const ed = editorRef.current
+    setCrop(null)
+    if (crop && ed && frame && image) applyCrop(ed, crop, frame, image)
+    ed?.focus()
+  }
+
+  // Resting the pointer on commented text shows the comment.
+  const [peek, setPeek] = useState<{ id: string; at: { left: number; top: number; bottom: number } } | null>(null)
+  const peekTimer = useRef(0)
+  const hover = (e: React.MouseEvent) => {
+    const ed = editorRef.current
+    window.clearTimeout(peekTimer.current)
+    if (!ed || !comments.threads.length || e.buttons) return setPeek(null)
+    const hit = comments.hitAt(ed, e.clientX, e.clientY)
+    if (!hit) return setPeek(null)
+    if (peek?.id === hit.id) return
+    const at = { left: hit.rect.left, top: hit.rect.top, bottom: hit.rect.top + hit.rect.height }
+    peekTimer.current = window.setTimeout(() => setPeek({ id: hit.id, at }), peek ? 0 : 350)
+  }
+  useEffect(() => () => window.clearTimeout(peekTimer.current), [])
+
   const words = useWordCount(editor as Editor | null)
   const footer = [page && (page.total === 1 ? '1 page' : `${page.total} pages`), words != null && (words === 1 ? '1 word' : `${words.toLocaleString()} words`)].filter(Boolean).join(' · ')
 
@@ -248,11 +281,18 @@ function DocxWorkbench({
       tab={tab}
       left={<Outline />}
       leftFooter={footer ? <span>{footer}</span> : undefined}
-      right={<Inspector tab={tab} comments={comments} onHeaderFooter={(position) => openHeaderFooter(editorRef.current, stageRef.current, position)} />}
+      right={
+        <Inspector tab={tab} comments={comments} onHeaderFooter={(position) => openHeaderFooter(editorRef.current, stageRef.current, position)} onCrop={startCrop} />
+      }
     >
       <div
-        className="docx-stage"
+        className={`docx-stage ${crop ? 'cropping' : ''}`}
         ref={stageRef}
+        onMouseMove={hover}
+        onMouseLeave={() => {
+          window.clearTimeout(peekTimer.current)
+          setPeek(null)
+        }}
         onClick={(e) => {
           // Clicking commented text shows its thread.
           const ed = editorRef.current
@@ -265,6 +305,8 @@ function DocxWorkbench({
           <DocxEditor.Content />
         </DocxEditor.Viewport>
       </div>
+      {peek && <CommentPeek store={comments} id={peek.id} at={peek.at} />}
+      {crop && <CropOverlay src={crop.src} frame={crop.frame} image={crop.image} onDone={endCrop} onCancel={() => endCrop()} />}
       <FindBar
         open={findOpen}
         onClose={() => {
@@ -451,7 +493,17 @@ const HIGHLIGHTS: { value: string; color: string }[] = [
   { value: 'red', color: '#ff4d4d' },
 ]
 
-function Inspector({ tab, comments, onHeaderFooter }: { tab: EditorProps['tab']; comments: CommentStore; onHeaderFooter: (position: 'header' | 'footer') => void }) {
+function Inspector({
+  tab,
+  comments,
+  onHeaderFooter,
+  onCrop,
+}: {
+  tab: EditorProps['tab']
+  comments: CommentStore
+  onHeaderFooter: (position: 'header' | 'footer') => void
+  onCrop: () => void
+}) {
   const style = useParagraphStyle()
   const family = useFontFamily()
   const size = useEditorValueCommand('font.size')
@@ -628,7 +680,7 @@ function Inspector({ tab, comments, onHeaderFooter }: { tab: EditorProps['tab'];
 
       {headerFooter?.editing && <HeaderFooterSection position={headerFooter.editing} />}
 
-      <ImageSection />
+      <ImageSection onCrop={onCrop} />
 
       <CommentsSection store={comments} editor={editor as Editor | null} canAdd={hasSelection} />
 
@@ -738,7 +790,12 @@ function LinkPopover() {
       onClickCapture={(e) => {
         const target = e.target as HTMLElement
         if (target.closest('.docx-hyperlink-popup__apply')) apply(e)
-        else if (target.closest('button')) refocus.current = true
+        else if (target.closest('.docx-hyperlink-popup__url') && state.url) {
+          // Open it in the browser ourselves, not through the engine's window.open.
+          e.preventDefault()
+          e.stopPropagation()
+          void openExternal(state.url)
+        } else if (target.closest('button')) refocus.current = true
       }}
       onKeyDownCapture={(e) => {
         if (e.key === 'Enter' && state.mode === 'editing') apply(e)
@@ -825,8 +882,8 @@ function HeaderFooterSection({ position }: { position: 'header' | 'footer' }) {
 
 const EMU_PER_INCH = 914400
 
-/** Shown while an image is selected: its size, which dragging a corner of the image also sets. */
-function ImageSection() {
+/** Shown while an image is selected: its size, which dragging a corner of the image also sets, and cropping. */
+function ImageSection({ onCrop }: { onCrop: () => void }) {
   const editor = useDocxEditor()
   const image = useEditorState((s) => s.image)
   if (!editor || !image) return null
@@ -862,13 +919,23 @@ function ImageSection() {
           disabled={!image.canResize}
           onCommit={(h) => resize(h * EMU_PER_INCH / ratio, h * EMU_PER_INCH)}
         />
+        <button
+          type="button"
+          className="btn"
+          disabled={!image.canCrop || !!image.rotationDegrees}
+          title={image.rotationDegrees ? 'A rotated picture can’t be cropped here' : 'Crop'}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onCrop}
+        >
+          <Crop size={14} /> Crop
+        </button>
         <button type="button" className="btn" disabled={!image.canResize} onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'setImageProperties', resetToNaturalSize: true })}>
           Original size
         </button>
-        <button type="button" className="btn danger" onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'deleteImage' })}>
-          <Trash2 size={14} /> Delete
-        </button>
       </div>
+      <button type="button" className="btn danger block" onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'deleteImage' })}>
+        <Trash2 size={14} /> Delete
+      </button>
       <p className="faint hint">Drag a corner of the image to resize it.</p>
     </Section>
   )
@@ -994,6 +1061,144 @@ function PageSection() {
       </div>
     </Section>
   )
+}
+
+/** The selected picture on screen: the part that shows, the whole of it, and what it was cropped to. */
+interface PictureCrop {
+  id: string
+  src: string
+  frame: Rect
+  image: Rect
+  crop: { left: number; top: number; right: number; bottom: number }
+  /** EMUs per screen pixel at the current zoom, across and down. */
+  scale: { x: number; y: number }
+}
+
+function pictureCrop(editor: Editor | null, stage: HTMLElement | null): PictureCrop | null {
+  const picture = editor?.getSelectedImage()
+  const box = stage?.querySelector('.docx-image-selection-overlay__frame')?.getBoundingClientRect()
+  if (!picture?.canCrop || picture.rotationDegrees || !box?.width || !box.height) return null
+  const frame = rectOf(box)
+  // The picture's own element is the one whose visible part is the selection frame.
+  const near = (r: DOMRect) => Math.abs(r.x - frame.x) < 2 && Math.abs(r.y - frame.y) < 2 && Math.abs(r.width - frame.width) < 2 && Math.abs(r.height - frame.height) < 2
+  const view = Array.from(stage!.querySelectorAll('.docx-drawing-crop-viewport')).find((v) => near(v.getBoundingClientRect()))
+  const src = view?.querySelector('img')?.src
+  if (!src) return null
+  const { left, top, right, bottom } = picture.crop
+  const width = frame.width / Math.max(0.01, 1 - (left + right) / 100)
+  const height = frame.height / Math.max(0.01, 1 - (top + bottom) / 100)
+  const image = { x: frame.x - (left / 100) * width, y: frame.y - (top / 100) * height, width, height }
+  return { id: picture.id, src, frame, image, crop: picture.crop, scale: { x: picture.widthEmu / frame.width, y: picture.heightEmu / frame.height } }
+}
+
+/** Crop the picture to `frame`, a part of `image` (both on screen), in one undoable step. */
+function applyCrop(editor: Editor, start: PictureCrop, frame: Rect, image: Rect) {
+  const percent = (n: number) => Math.round(Math.min(100, Math.max(0, n * 100)) * 100) / 100
+  const crop = {
+    left: percent((frame.x - image.x) / image.width),
+    top: percent((frame.y - image.y) / image.height),
+    right: percent((image.x + image.width - frame.x - frame.width) / image.width),
+    bottom: percent((image.y + image.height - frame.y - frame.height) / image.height),
+  }
+  const sides = ['left', 'top', 'right', 'bottom'] as const
+  if (sides.every((side) => Math.abs(crop[side] - start.crop[side]) < 0.01)) return
+  editor.exec({
+    type: 'setImageProperties',
+    drawingNodeId: start.id,
+    crop,
+    widthEmu: Math.round(frame.width * start.scale.x),
+    heightEmu: Math.round(frame.height * start.scale.y),
+  })
+}
+
+/**
+ * Links in the document. ⌘-click (Ctrl-click on Windows) opens one in the browser, as in Word,
+ * and the pointer turns into a hand while the key is down. Typing at the end of a link that ends
+ * its paragraph would carry on in the link's color, underline and font without being part of it;
+ * the new text takes the style of the words before the link instead.
+ */
+function useLinks(stageRef: React.RefObject<HTMLDivElement | null>, editorRef: React.RefObject<Editor | null>) {
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    const modifier = (e: KeyboardEvent | MouseEvent) => (isMac ? e.metaKey : e.ctrlKey)
+    const linkAt = (target: EventTarget | null) => (target instanceof Element ? target.closest<HTMLAnchorElement>('a.docx-hyperlink[data-docx-link-kind="external"]') : null)
+    const onPress = (e: MouseEvent) => {
+      const link = linkAt(e.target)
+      if (!link || e.button !== 0 || !modifier(e)) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.type === 'click') void openExternal(link.href)
+    }
+    const onOver = (e: MouseEvent) => {
+      const link = linkAt(e.target)
+      if (link && !link.title) link.title = `${link.getAttribute('href')}\n${isMac ? '⌘-click' : 'Ctrl+click'} to open`
+    }
+    const onKey = (e: KeyboardEvent) => stage.classList.toggle('follow-links', modifier(e))
+    const onBlur = () => stage.classList.remove('follow-links')
+    const onInput = (e: InputEvent) => {
+      const editor = editorRef.current
+      if (editor && (e.inputType === 'insertText' || e.inputType === 'insertCompositionText')) leaveLinkStyle(editor, stage)
+    }
+    const presses = ['pointerdown', 'mousedown', 'click'] as const
+    for (const type of presses) stage.addEventListener(type, onPress, true)
+    stage.addEventListener('mouseover', onOver)
+    stage.addEventListener('beforeinput', onInput, true)
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('keyup', onKey)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      for (const type of presses) stage.removeEventListener(type, onPress, true)
+      stage.removeEventListener('mouseover', onOver)
+      stage.removeEventListener('beforeinput', onInput, true)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keyup', onKey)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [stageRef, editorRef])
+}
+
+/** How a run of text is drawn, read from the page. */
+function runStyle(run: HTMLElement) {
+  const s = run.style
+  const rgb = s.color.match(/\d+/g)
+  return {
+    color: rgb ? rgb.slice(0, 3).map((n) => Number(n).toString(16).padStart(2, '0')).join('').toUpperCase() : 'auto',
+    underline: s.textDecorationLine.includes('underline'),
+    // The engine puts its embedded copy of a font first, then the font's own name.
+    font: s.fontFamily.split(',').map((f) => f.trim().replace(/^["']|["']$/g, '')).find((f) => f && !f.startsWith('docx-embedded-')) ?? null,
+    // Half-points, the engine's unit: 96 px per inch, 72 pt per inch.
+    size: s.fontSize ? Math.round(parseFloat(s.fontSize) * 1.5) : null,
+    bold: s.fontWeight === 'bold' || Number(s.fontWeight) >= 600,
+    italic: s.fontStyle === 'italic',
+  }
+}
+
+/** Before typing at the end of a link that ends its paragraph, switch to the style of the text in front of the link. */
+function leaveLinkStyle(editor: Editor, stage: HTMLElement) {
+  const selection = window.getSelection()
+  const node = selection?.isCollapsed ? selection.anchorNode : null
+  const run = (node?.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element | null))?.closest<HTMLElement>('.layout-run-text')
+  const link = run?.closest('a.docx-hyperlink')
+  if (!node || !run || !link || selection!.anchorOffset < (node.textContent?.length ?? 0)) return
+  const paragraph = run.dataset.paragraphId ?? ''
+  const runs = Array.from(stage.querySelectorAll<HTMLElement>(`.layout-run-text[data-paragraph-id="${CSS.escape(paragraph)}"]`))
+  const linkRuns = Array.from(link.querySelectorAll<HTMLElement>('.layout-run-text'))
+  const end = Number(run.dataset.end)
+  // Only the link's last characters, with nothing after them in the paragraph.
+  if (run !== linkRuns[linkRuns.length - 1] || runs.some((r) => Number(r.dataset.start) >= end && r.textContent)) return
+  const start = Number(linkRuns[0]?.dataset.start)
+  const before = runs.filter((r) => !r.closest('a.docx-hyperlink') && Number(r.dataset.end) <= start && r.textContent?.trim()).pop()
+  const have = runStyle(run)
+  const want = before ? runStyle(before) : { ...have, color: 'auto', underline: false }
+  const exec = (command: EditorCommand | null) => command && editor.exec(command)
+  if (want.color !== have.color) exec(commandForSlotValue('text.color', want.color))
+  if (want.font && want.font !== have.font) exec(commandForSlotValue('font.family', want.font))
+  if (want.size && want.size !== have.size) exec(commandForSlotValue('font.size', want.size))
+  for (const [slot, on] of [['text.underline', want.underline], ['text.bold', want.bold], ['text.italic', want.italic]] as const) {
+    const command = commandForSlot(slot)
+    if (command && editor.isActive(command) !== on) editor.exec(command)
+  }
 }
 
 /** Clone the laid-out pages into the print root at their true size, then open the print panel. */

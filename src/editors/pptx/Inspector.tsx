@@ -15,6 +15,7 @@ import {
   BringToFront,
   Circle,
   Copy,
+  Crop,
   Diamond,
   EyeOff,
   FlipHorizontal2,
@@ -86,6 +87,7 @@ export function Inspector({
   onDeleteSlides,
   onArrange,
   canArrange,
+  onCrop,
 }: {
   deck: Deck
   onInsertImage: () => void
@@ -96,6 +98,8 @@ export function Inspector({
   onDeleteSlides: (indexes: readonly number[]) => void
   onArrange: (how: Restack) => void
   canArrange: (how: Restack) => boolean
+  /** Crop the selected picture; null when it can't be cropped. */
+  onCrop: (() => void) | null
 }) {
   const { tb, handle, slides, activeIndex, selectedSlides } = deck
   const [shapeMenu, setShapeMenu] = useState<{ x: number; y: number } | null>(null)
@@ -162,7 +166,7 @@ export function Inspector({
           {el.type === 'group' && <GroupTextSection deck={deck} />}
           {hasText(el) && <TextSection deck={deck} el={el} />}
           {(el.type === 'shape' || el.type === 'text' || el.type === 'connector') && <FillSection deck={deck} el={el} />}
-          <ArrangeSection deck={deck} el={el} update={update} onArrange={onArrange} canArrange={canArrange} />
+          <ArrangeSection deck={deck} el={el} update={update} onArrange={onArrange} canArrange={canArrange} onCrop={onCrop} />
           <LinkSection el={el} update={update} />
         </>
       ) : selectedSlides.length > 1 ? (
@@ -172,7 +176,7 @@ export function Inspector({
               <button type="button" className="btn" onClick={() => handle.current?.duplicateSlides([...selectedSlides])}>
                 <Copy size={14} /> Duplicate
               </button>
-              <button type="button" className="btn danger" disabled={selectedSlides.length >= slides.length} onClick={() => onDeleteSlides(selectedSlides)}>
+              <button type="button" className="btn danger" onClick={() => onDeleteSlides(selectedSlides)}>
                 <Trash2 size={14} /> Delete
               </button>
             </div>
@@ -199,7 +203,7 @@ export function Inspector({
               <button type="button" className="btn" onClick={() => handle.current?.duplicateSlides([activeIndex])}>
                 <Copy size={14} /> Duplicate
               </button>
-              <button type="button" className="btn danger" disabled={slides.length <= 1} onClick={() => handle.current?.deleteSlides([activeIndex])}>
+              <button type="button" className="btn danger" onClick={() => onDeleteSlides([activeIndex])}>
                 <Trash2 size={14} /> Delete
               </button>
               <button type="button" className="btn" disabled={activeIndex === 0} onClick={() => handle.current?.moveSlide(activeIndex, activeIndex - 1)}>
@@ -472,12 +476,14 @@ function ArrangeSection({
   update,
   onArrange,
   canArrange,
+  onCrop,
 }: {
   deck: Deck
   el: Element
   update: (patch: Partial<Element>) => void
   onArrange: (how: Restack) => void
   canArrange: (how: Restack) => boolean
+  onCrop: (() => void) | null
 }) {
   const { tb } = deck
   const kind = el.type === 'text' ? 'Text box' : el.type === 'image' || el.type === 'picture' ? 'Image' : el.type[0].toUpperCase() + el.type.slice(1)
@@ -498,6 +504,11 @@ function ArrangeSection({
           </IconButton>
         </div>
       </div>
+      {(el.type === 'image' || el.type === 'picture') && (
+        <button type="button" className="btn block" disabled={!onCrop} title={onCrop ? 'Crop' : 'A rotated or flipped picture can’t be cropped here'} onClick={() => onCrop?.()}>
+          <Crop size={14} /> Crop
+        </button>
+      )}
       <LayerButtons onArrange={onArrange} canArrange={canArrange} />
       {el.type === 'group' && (
         <button type="button" className="btn block" onClick={tb.onUngroupElement} title={platform.shortcut(withKeys('Ungroup', 'pptx.ungroup'))}>

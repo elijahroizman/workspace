@@ -129,7 +129,6 @@ const initialPanels = {
 const systemTheme: Theme =
   typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
 
-const untitledCounters: Record<DocKind, number> = { docx: 0, pptx: 0, pdf: 0, md: 0, txt: 0 }
 const newId = () => Math.random().toString(36).slice(2, 10)
 
 export const useWorkspace = create<WorkspaceState>((set, get) => {
@@ -240,7 +239,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     },
 
     newDocument: (kind) => {
-      const n = ++untitledCounters[kind]
+      // The first free name among the open tabs, so closing or saving an untitled one frees its number.
+      const taken = new Set(get().tabs.filter((t) => t.kind === kind).map((t) => t.title))
+      let n = 1
+      while (taken.has(n === 1 ? KINDS[kind].untitled : `${KINDS[kind].untitled} ${n}`)) n++
       const title = n === 1 ? KINDS[kind].untitled : `${KINDS[kind].untitled} ${n}`
       addTab({ id: newId(), kind, title, path: null, bytes: null, loadId: 0, dirty: false })
     },

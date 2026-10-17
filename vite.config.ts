@@ -29,8 +29,43 @@ function pptxEditSlides(): Plugin {
   }
 }
 
+/**
+ * The Word engine won't crop a picture that keeps its proportions (`noChangeAspect`), which Word
+ * sets on nearly every picture it inserts. Word itself crops them; the lock is about resizing.
+ * The engine checks in two places: what the selected picture allows, and the edit itself. This
+ * drops the aspect lock from both, and fails the build if an engine update moves either check.
+ */
+function docxCropLocked(): Plugin {
+  const checks = [
+    ['canCrop:e.picture!==null&&!t.resize&&!t.changeAspect&&!e.hidden', 'canCrop:e.picture!==null&&!t.resize&&!e.hidden'],
+    ['t==="cropDrawing"&&(n.resize||n.changeAspect)', 't==="cropDrawing"&&n.resize'],
+  ]
+  const patched = new Set<string>()
+  let building = false
+  return {
+    name: 'workspace:docx-crop-locked',
+    configResolved(config) {
+      building = config.command === 'build'
+    },
+    transform(code, id) {
+      if (!/@docx-editor\.dev[\\/]core[\\/]dist[\\/]chunk-/.test(id)) return null
+      let out = code
+      for (const [check, relaxed] of checks) {
+        if (!out.includes(check)) continue
+        out = out.replace(check, relaxed)
+        patched.add(check)
+      }
+      return out === code ? null : { code: out, map: null }
+    },
+    generateBundle() {
+      // A dev pre-bundle without the engine patches nothing; a build must patch both.
+      if ((building || patched.size) && patched.size < checks.length) this.error('@docx-editor.dev/core changed: update docxCropLocked in vite.config.ts')
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), pptxEditSlides()],
+  plugins: [react(), pptxEditSlides(), docxCropLocked()],
   clearScreen: false,
   server: {
     port: 1420,
@@ -39,8 +74,8 @@ export default defineConfig({
     hmr: host ? { protocol: 'ws', host, port: 1421 } : undefined,
     watch: { ignored: ['**/src-tauri/**'] },
   },
-  // The dev server pre-bundles the engine, so it needs the patch there too.
-  optimizeDeps: { rolldownOptions: { plugins: [pptxEditSlides()] } },
+  // The dev server pre-bundles the engines, so they need the patches there too.
+  optimizeDeps: { rolldownOptions: { plugins: [pptxEditSlides(), docxCropLocked()] } },
   envPrefix: ['VITE_', 'TAURI_ENV_*'],
   build: {
     // Safari 15 ships with macOS 12, the oldest version we support.

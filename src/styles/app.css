@@ -1843,3 +1843,139 @@ button {
   line-height: 20px;
   text-align: center;
 }
+
+/* ───────────────────────── Crop ───────────────────────── */
+
+/* Cropping a picture, in documents and presentations (components/CropOverlay.tsx). */
+.crop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  pointer-events: none;
+}
+
+.crop-overlay > * {
+  pointer-events: auto;
+}
+
+.crop-image {
+  position: fixed;
+  overflow: hidden;
+  cursor: move;
+  touch-action: none;
+}
+
+.crop-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* The part that stays; everything around it is dimmed. */
+.crop-window {
+  position: absolute;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.crop-frame {
+  position: fixed;
+  outline: 1.5px solid var(--accent);
+  cursor: move;
+  touch-action: none;
+}
+
+.crop-handle {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border: 0 solid var(--accent);
+  filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.95));
+}
+
+/* A larger target than the bar itself. */
+.crop-handle::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
+.crop-handle.nw {
+  left: -4px;
+  top: -4px;
+  border-width: 4px 0 0 4px;
+  cursor: nwse-resize;
+}
+
+.crop-handle.ne {
+  right: -4px;
+  top: -4px;
+  border-width: 4px 4px 0 0;
+  cursor: nesw-resize;
+}
+
+.crop-handle.se {
+  right: -4px;
+  bottom: -4px;
+  border-width: 0 4px 4px 0;
+  cursor: nwse-resize;
+}
+
+.crop-handle.sw {
+  left: -4px;
+  bottom: -4px;
+  border-width: 0 0 4px 4px;
+  cursor: nesw-resize;
+}
+
+.crop-handle.n,
+.crop-handle.s {
+  left: calc(50% - 11px);
+  width: 22px;
+  height: 0;
+  border-top-width: 4px;
+  cursor: ns-resize;
+}
+
+.crop-handle.n {
+  top: -4px;
+}
+
+.crop-handle.s {
+  bottom: -4px;
+}
+
+.crop-handle.e,
+.crop-handle.w {
+  top: calc(50% - 11px);
+  width: 0;
+  height: 22px;
+  border-left-width: 4px;
+  cursor: ew-resize;
+}
+
+.crop-handle.w {
+  left: -4px;
+}
+
+.crop-handle.e {
+  right: -4px;
+}
+
+.crop-bar {
+  position: fixed;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  transform: translateX(-50%);
+  border-radius: 10px;
+  background: var(--raised);
+  box-shadow: var(--shadow-pop);
+}
+
+.crop-bar .btn {
+  height: 28px;
+}

@@ -4,6 +4,21 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* Selection handles look like the ones in documents: round, white, ringed in the app's blue. */
+  --pptx-selection-outline-color: var(--accent);
+  --pptx-selection-handle-fill: #fff;
+  --pptx-selection-handle-border-color: var(--accent);
+  --pptx-selection-rotate-fill: var(--accent);
+  --pptx-selection-corner-size: 10px;
+  --pptx-selection-corner-radius: 50%;
+  --pptx-selection-edge-length: 10px;
+  --pptx-selection-edge-thickness: 10px;
+  --pptx-selection-edge-radius: 50%;
+}
+
+/* While cropping, the crop overlay draws the picture and its handles. */
+.deck-stage.cropping [data-pptx-selection-handle-host] {
+  visibility: hidden;
 }
 
 /* The engine's canvas area: match our canvas colour instead of its own grey. */
