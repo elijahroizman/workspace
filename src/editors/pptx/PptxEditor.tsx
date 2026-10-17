@@ -24,7 +24,7 @@ import {
   Ungroup,
 } from 'lucide-react'
 import i18n from 'i18next'
-import { canCropElement, cropUpdateFromRects, imageRectFromCrop, readCropInsets } from 'ooxml-ui/pptx'
+import { canCropElement, createBlankSlide, cropUpdateFromRects, imageRectFromCrop, readCropInsets } from 'ooxml-ui/pptx'
 import type { SlideTemplateId } from 'pptx-react-viewer'
 import { SlideCanvas, useViewerBuildingBlocks } from 'pptx-react-viewer'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -174,10 +174,10 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
     const h = handle.current
     if (!h || !indexes.length) return
     setPicked([])
-    // A deck keeps at least one slide: deleting them all leaves a new blank one.
+    // A deck keeps at least one slide: deleting them all leaves a blank one, in one undo step.
     if (indexes.length >= slides.length) {
-      h.addSlide(slides.length - 1)
-      requestAnimationFrame(() => handle.current?.deleteSlides([...indexes]))
+      h.editSlides(() => [createBlankSlide(1)])
+      h.setActiveSlideIndex(0)
       return
     }
     h.deleteSlides([...indexes])

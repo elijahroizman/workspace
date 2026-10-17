@@ -1132,7 +1132,7 @@ function useLinks(stageRef: React.RefObject<HTMLDivElement | null>, editorRef: R
     }
     const onOver = (e: MouseEvent) => {
       const link = linkAt(e.target)
-      if (link && !link.title) link.title = `${link.getAttribute('href')}\n${isMac ? '⌘-click' : 'Ctrl+click'} to open`
+      if (link && !link.title) link.title = `${link.getAttribute('href')}\n${shortcut('⌘Click')} to open`
     }
     const onKey = (e: KeyboardEvent) => stage.classList.toggle('follow-links', modifier(e))
     const onBlur = () => stage.classList.remove('follow-links')
