@@ -1,9 +1,31 @@
 import './setup'
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Copy, EyeOff, Minus, Play, Plus, Redo2, Trash2, Undo2 } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUp,
+  BringToFront,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardPaste,
+  Copy,
+  EyeOff,
+  Group,
+  Minus,
+  MoveDown,
+  MoveUp,
+  Play,
+  Plus,
+  Redo2,
+  Scissors,
+  SendToBack,
+  StickyNote,
+  Trash2,
+  Undo2,
+  Ungroup,
+} from 'lucide-react'
 import i18n from 'i18next'
-import type { PowerPointViewerHandle, SlideTemplateId } from 'pptx-react-viewer'
+import type { SlideTemplateId } from 'pptx-react-viewer'
 import { SlideCanvas, useViewerBuildingBlocks } from 'pptx-react-viewer'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { EditorProps } from '../../App'
 import { FindBar, Workbench, formatZoom } from '../../components/Workbench'
@@ -11,13 +33,18 @@ import type { MenuEntry } from '../../components/ui'
 import { CenterState, IconButton, PopoverMenu } from '../../components/ui'
 import { usePinchZoom } from '../../lib/pinch'
 import * as platform from '../../lib/platform'
+import { keysFor, withKeys } from '../../state/shortcuts'
 import { registerEditor, useWorkspace } from '../../state/workspace'
+import type { Restack } from './arrange'
+import { canRestack, mapPicked, pickedText, restack, styleText, withElements } from './arrange'
 import { blankPresentation } from './blank'
 import { Inspector, tableLooks } from './Inspector'
+import { NotesPane } from './Notes'
 import { PresentMode } from './PresentMode'
+import type { PickMode } from './SlideStrip'
 import { SlidePreview, SlideStrip } from './SlideStrip'
 import { newTable } from './table'
-import type { Deck, Element, Slide, Toolbar } from './types'
+import type { Deck, Element, Handle, Slide, Toolbar } from './types'
 import { parseVideoLink, videoPoster } from './video'
 import './pptx.css'
 
@@ -34,7 +61,7 @@ export default function PptxEditor({ tab, active }: EditorProps) {
 }
 
 function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Array }) {
-  const handle = useRef<PowerPointViewerHandle>(null)
+  const handle = useRef<Handle>(null)
   const { toolbarProps: tb, canvasProps: cv, loading, error } = useViewerBuildingBlocks({
     content,
     // The engine listens for shortcuts on the whole window; a deck in a background tab must
@@ -111,37 +138,144 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
     [templateVersion],
   )
 
-  const deck: Deck = { handle, tb, cv, slides, activeIndex, templateFor, tbRef }
+  // ── Slides picked in the sidebar, by id so they survive moves. The active slide is always picked.
+  const [picked, setPicked] = useState<string[]>([])
+  const pickAnchor = useRef(0)
+  const selectedSlides = useMemo(() => {
+    const ids = new Set(picked)
+    const out = slides.flatMap((s, i) => (ids.has(s.id) ? [i] : []))
+    return out.includes(activeIndex) ? out : [activeIndex]
+  }, [picked, slides, activeIndex])
+  const pickSlide = (index: number, mode: PickMode) => {
+    const id = slides[index]?.id
+    if (!id) return
+    if (mode === 'range') {
+      const [a, b] = [Math.min(pickAnchor.current, index), Math.max(pickAnchor.current, index)]
+      setPicked(slides.slice(a, b + 1).map((s) => s.id))
+    } else if (mode === 'toggle' && selectedSlides.includes(index)) {
+      if (selectedSlides.length === 1) return
+      const rest = selectedSlides.filter((i) => i !== index)
+      setPicked(rest.map((i) => slides[i].id))
+      pickAnchor.current = rest[0]
+      // Put down the active slide, and the nearest picked one takes over.
+      if (index === activeIndex) handle.current?.setActiveSlideIndex(rest.reduce((best, i) => (Math.abs(i - index) < Math.abs(best - index) ? i : best)))
+      return
+    } else {
+      setPicked(mode === 'toggle' ? [...selectedSlides.map((i) => slides[i].id), id] : [id])
+      pickAnchor.current = index
+    }
+    handle.current?.setActiveSlideIndex(index)
+  }
+  const deleteSlides = (indexes: readonly number[]) => {
+    // A deck keeps at least one slide.
+    if (!indexes.length || indexes.length >= slides.length) return
+    handle.current?.deleteSlides([...indexes])
+    setPicked([])
+  }
+
+  const selectedIds = useMemo(() => [...cv.selectedElementIdSet], [cv.selectedElementIdSet])
+  const deck: Deck = { handle, tb, cv, slides, activeIndex, templateFor, tbRef, selectedSlides, selectedIds }
+  const deckRef = useRef(deck)
+  deckRef.current = deck
 
   // Spellcheck while typing in text boxes.
   useEffect(() => {
     if (!loading && !tb.spellCheckEnabled) tb.onSetSpellCheckEnabled(true)
   }, [loading, tb])
 
-  // Trackpad pinch / ⌘-scroll zoom with a live preview, committed when the gesture ends.
+  // Trackpad pinch / ⌘-scroll zoom with a live preview, committed when the gesture ends. The
+  // preview scales the wrapper around the slide: the slide itself carries the engine's own scale.
   usePinchZoom(stageRef, {
     getZoom: () => tbRef.current.scale,
-    setZoom: (z) => handle.current?.setZoom(Math.min(4, Math.max(0.1, z))),
-    target: () => cvRef.current.zoom.canvasStageRef.current,
+    setZoom: (z) => handle.current?.setZoom(z),
+    commit: (z, anchor) => zoomAround(() => handle.current?.setZoom(z), anchor),
+    target: () => cvRef.current.zoom.editWrapperRef.current,
+    min: 0.25,
+    max: 4,
   })
 
+  /**
+   * Zoom while keeping one point of the slide where it is on screen: the pointer for a pinch,
+   * the middle of the view for buttons and keys. The engine alone leaves the scroll position as
+   * it was, which drifts toward the slide's top-left corner.
+   */
+  const zoomAround = (apply: () => void, at?: { x: number; y: number }) => {
+    const viewport = cvRef.current.zoom.canvasViewportRef.current
+    const wrapper = cvRef.current.zoom.editWrapperRef.current
+    if (!viewport || !wrapper) return apply()
+    const view = viewport.getBoundingClientRect()
+    const before = wrapper.getBoundingClientRect()
+    const point = at ?? { x: view.left + view.width / 2, y: view.top + view.height / 2 }
+    const fx = (point.x - before.left) / before.width
+    const fy = (point.y - before.top) / before.height
+    apply()
+    // Wait for the engine to lay the slide out at the new size.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const after = wrapper.getBoundingClientRect()
+        viewport.scrollLeft += after.left + fx * after.width - point.x
+        viewport.scrollTop += after.top + fy * after.height - point.y
+      }),
+    )
+  }
+  const zoomStep = (dir: 'in' | 'out' | 'fit' | 'reset') => {
+    if (dir === 'fit' || dir === 'reset') return tbRef.current.onZoomToFit()
+    const scale = tbRef.current.scale
+    const next = dir === 'in' ? ZOOM_STEPS.find((z) => z > scale + 0.001) : [...ZOOM_STEPS].reverse().find((z) => z < scale - 0.001)
+    if (next) zoomAround(() => handle.current?.setZoom(next))
+  }
+
   // ── Inserting things
-  const insertImage = async () => {
-    const files = await platform.pickImages({ multiple: true })
+  const addImages = async (files: readonly File[]) => {
+    const ids: string[] = []
     for (const file of files) {
-      const dataUrl = await readAsDataUrl(file)
-      const { width, height } = await imageSize(dataUrl)
-      const size = fitInside(width, height, cv.canvasSize.width * 0.6, cv.canvasSize.height * 0.6)
-      handle.current?.addElement({
+      const canvasSize = cvRef.current.canvasSize
+      const { dataUrl, width, height } = await loadImage(file, canvasSize)
+      const size = fitInside(width, height, canvasSize.width * 0.6, canvasSize.height * 0.6)
+      const id = handle.current?.addElement({
         id: crypto.randomUUID(),
         type: 'image',
         imageData: dataUrl,
-        x: Math.round((cv.canvasSize.width - size.width) / 2),
-        y: Math.round((cv.canvasSize.height - size.height) / 2),
+        x: Math.round((canvasSize.width - size.width) / 2),
+        y: Math.round((canvasSize.height - size.height) / 2),
         ...size,
       } as unknown as Element)
+      if (id) ids.push(id)
     }
+    if (ids.length > 1) requestAnimationFrame(() => handle.current?.selectElements(ids))
   }
+  const insertImage = async () => addImages(await platform.pickImages({ multiple: true }))
+
+  // Pasting an image: the engine only catches it while its canvas has keyboard focus, and
+  // keeps the full-size picture. Take any image paste aimed at the deck, sized for the slide.
+  const addImagesRef = useRef(addImages)
+  addImagesRef.current = addImages
+  useEffect(() => {
+    if (!active) return
+    const onPaste = (e: ClipboardEvent) => {
+      if (isTextTarget(e.target) || document.querySelector('.present')) return
+      const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'))
+      if (!files.length) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      void addImagesRef.current(files)
+    }
+    window.addEventListener('paste', onPaste, true)
+    return () => window.removeEventListener('paste', onPaste, true)
+  }, [active])
+
+  // ── Arranging objects
+  const arrange = (how: Restack) => {
+    const { activeIndex: index, selectedIds: ids } = deckRef.current
+    if (ids.length) handle.current?.editSlides(withElements(index, (els) => restack(els, new Set(ids), how)))
+  }
+  const canArrange = (how: Restack) => {
+    const elements = slides[activeIndex]?.elements
+    return !!elements && selectedIds.length > 0 && canRestack(elements, new Set(selectedIds), how)
+  }
+
+  const arrangeRef = useRef(arrange)
+  arrangeRef.current = arrange
 
   const insertTable = (rows: number, cols: number) => {
     const table = newTable(rows, cols, cv.canvasSize, tableLooks(deck)[0], tb.themeFonts?.body)
@@ -188,6 +322,22 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
 
   const slideMenu = (index: number, x: number, y: number) => {
     const h = handle.current
+    const group = selectedSlides.includes(index) && selectedSlides.length > 1 ? selectedSlides : null
+    if (group) {
+      const allHidden = group.every((i) => slides[i]?.hidden)
+      setMenu({
+        x,
+        y,
+        items: [
+          { label: `Duplicate ${group.length} Slides`, icon: <Copy size={14} />, onSelect: () => h?.duplicateSlides(group) },
+          { label: allHidden ? 'Show in Slideshow' : 'Hide in Slideshow', icon: <EyeOff size={14} />, onSelect: () => h?.toggleHideSlides(group.filter((i) => !!slides[i]?.hidden === allHidden)) },
+          ...(group.length < slides.length
+            ? [{ label: `Delete ${group.length} Slides`, icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: () => deleteSlides(group) }]
+            : []),
+        ],
+      })
+      return
+    }
     setMenu({
       x,
       y,
@@ -209,6 +359,108 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
       ],
     })
   }
+
+  // ── Right-click on the slide: the engine selects what was clicked; the menu is ours.
+  const objectMenu = (x: number, y: number) => {
+    requestAnimationFrame(() => {
+      const t = tbRef.current
+      const { selectedIds: ids } = deckRef.current
+      const items: MenuEntry[] = []
+      if (ids.length) {
+        items.push(
+          { label: 'Cut', icon: <Scissors size={14} />, shortcut: '⌘X', onSelect: t.onCut },
+          { label: 'Copy', icon: <Copy size={14} />, shortcut: '⌘C', onSelect: t.onCopy },
+        )
+      }
+      if (t.clipboardPayload) items.push({ label: 'Paste', icon: <ClipboardPaste size={14} />, shortcut: '⌘V', onSelect: t.onPaste })
+      if (!ids.length) {
+        if (items.length) setMenu({ x, y, items })
+        return
+      }
+      items.push({ label: 'Duplicate', icon: <Copy size={14} />, shortcut: keysFor('pptx.duplicate'), onSelect: t.onDuplicate })
+      if (ids.length > 1) items.push({ label: 'Group', icon: <Group size={14} />, shortcut: keysFor('pptx.group'), separatorBefore: true, disabled: !t.selectionGroupable, onSelect: t.onGroupElements })
+      else if (t.selectedElement?.type === 'group') items.push({ label: 'Ungroup', icon: <Ungroup size={14} />, shortcut: keysFor('pptx.ungroup'), separatorBefore: true, onSelect: t.onUngroupElement })
+      const elements = deckRef.current.slides[deckRef.current.activeIndex]?.elements ?? []
+      const picked = new Set(ids)
+      const layer = (label: string, how: Restack, icon: React.ReactNode, first = false): MenuEntry => ({
+        label,
+        icon,
+        shortcut: keysFor(`pptx.${how}`),
+        separatorBefore: first,
+        disabled: !canRestack(elements, picked, how),
+        onSelect: () => arrange(how),
+      })
+      items.push(
+        layer('Bring to Front', 'front', <BringToFront size={14} />, true),
+        layer('Bring Forward', 'forward', <MoveUp size={14} />),
+        layer('Send Backward', 'backward', <MoveDown size={14} />),
+        layer('Send to Back', 'back', <SendToBack size={14} />),
+        { label: 'Delete', icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: t.onDelete },
+      )
+      setMenu({ x, y, items })
+    })
+  }
+  // Shift-click (or ⌘-click; Ctrl-click on Windows) adds an object to the selection or takes it
+  // out. The engine's own press handler first selects the object alone, so its click then
+  // undoes the pick; modified clicks are handled here instead.
+  const isAdditive = (e: React.MouseEvent) => e.shiftKey || (platform.isMac ? e.metaKey : e.ctrlKey)
+  const toggleObject = (pressedId: string) => {
+    const elements = deckRef.current.slides[deckRef.current.activeIndex]?.elements ?? []
+    // A press inside a group picks the whole group, as a plain click does.
+    const id = elements.find((el) => el.id === pressedId || containsId(el, pressedId))?.id ?? pressedId
+    const current = deckRef.current.selectedIds
+    handle.current?.selectElements(current.includes(id) ? current.filter((x) => x !== id) : [...current, id])
+  }
+  const canvasProps = {
+    ...cv,
+    onMouseDown: (id: string, e: React.MouseEvent) => {
+      if (e.button === 0 && isAdditive(e) && !cv.inlineEditingElementId) {
+        e.stopPropagation()
+        toggleObject(id)
+        return
+      }
+      cv.onMouseDown(id, e)
+    },
+    onClick: (id: string, e: React.MouseEvent) => {
+      if (isAdditive(e) && !cv.inlineEditingElementId) {
+        e.stopPropagation()
+        return
+      }
+      cv.onClick(id, e)
+    },
+    onContextMenu: (id: string, e: React.MouseEvent) => {
+      cv.onContextMenu(id, e)
+      objectMenu(e.clientX, e.clientY)
+    },
+    onCanvasContextMenu: (e: React.MouseEvent) => {
+      cv.onCanvasContextMenu?.(e)
+      objectMenu(e.clientX, e.clientY)
+    },
+  }
+
+  // Shortcut actions (see state/shortcuts.ts); they read the deck through refs.
+  const arrangeKey = (how: Restack) => {
+    if (isTextTarget(document.activeElement) || !deckRef.current.selectedIds.length) return false
+    arrangeRef.current(how)
+  }
+  const toggleText = (key: 'bold' | 'italic' | 'underline') => {
+    const { selectedIds: ids, activeIndex: index, slides: all } = deckRef.current
+    const t = tbRef.current
+    if (ids.length === 1 && t.selectedElement && 'textStyle' in t.selectedElement) {
+      const style = (t.selectedElement as { textStyle?: Record<string, unknown> }).textStyle
+      t.onUpdateTextStyle({ [key]: !style?.[key] })
+      return
+    }
+    const picked = new Set(ids)
+    const texts = pickedText(all[index]?.elements ?? [], picked)
+    if (!texts.length) return false
+    const on = !texts.every((el) => !!el.textStyle?.[key])
+    handle.current?.editSlides(withElements(index, (els) => mapPicked(els, picked, (el) => styleText(el, { [key]: on }))))
+  }
+
+  // ── Speaker notes
+  const [notesOpen, setNotesOpen] = useState(true)
+  const setNotes = (id: string, notes: string) => handle.current?.editSlides((all) => all.map((s) => (s.id === id ? { ...s, notes, notesSegments: undefined } : s)))
 
   // ── Find across every slide's text.
   const runFind = (query: string) => {
@@ -255,10 +507,22 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
           markDirty(tab.id, false)
         },
         find: () => setFindOpen(true),
-        zoom: (dir) => {
-          if (dir === 'in') tbRef.current.onZoomIn()
-          else if (dir === 'out') tbRef.current.onZoomOut()
-          else tbRef.current.onZoomToFit()
+        zoom: (dir) => zoomStep(dir),
+        actions: {
+          'text.bold': () => toggleText('bold'),
+          'text.italic': () => toggleText('italic'),
+          'text.underline': () => toggleText('underline'),
+          'pptx.new-slide': () => handle.current?.addSlide(deckRef.current.activeIndex),
+          'pptx.duplicate': () => (deckRef.current.selectedIds.length ? tbRef.current.onDuplicate() : handle.current?.duplicateSlides([...deckRef.current.selectedSlides])),
+          'pptx.group': () => deckRef.current.selectedIds.length > 1 && (tbRef.current.onGroupElements(), true),
+          'pptx.ungroup': () => tbRef.current.selectedElement?.type === 'group' && (tbRef.current.onUngroupElement(), true),
+          'pptx.front': () => arrangeKey('front'),
+          'pptx.forward': () => arrangeKey('forward'),
+          'pptx.backward': () => arrangeKey('backward'),
+          'pptx.back': () => arrangeKey('back'),
+          'pptx.notes': () => setNotesOpen((open) => !open),
+          'pptx.present': () => setPresenting(deckRef.current.activeIndex),
+          'pptx.present-start': () => setPresenting(0),
         },
         print: () => printSlides(slidesRef.current, cvRef.current.canvasSize, templateForRef.current),
       }),
@@ -276,11 +540,13 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
     <SlideStrip
       slides={slides}
       activeIndex={activeIndex}
+      selected={selectedSlides}
       canvasSize={cv.canvasSize}
       templateFor={templateFor}
-      onSelect={(i) => handle.current?.setActiveSlideIndex(i)}
+      onSelect={pickSlide}
       onMove={(from, to) => handle.current?.moveSlide(from, to)}
       onMenu={slideMenu}
+      onDelete={() => deleteSlides(selectedSlides)}
     />
   )
 
@@ -300,13 +566,17 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
             onInsertVideo={insertVideo}
             onNewSlide={newSlideMenu}
             onPresent={(fromStart) => setPresenting(fromStart ? 0 : activeIndex)}
+            onDeleteSlides={deleteSlides}
+            onArrange={arrange}
+            canArrange={canArrange}
           />
         )
       }
     >
       <div className="deck-stage" ref={stageRef}>
-        {loading ? <CenterState spinner /> : <SlideCanvas {...cv} showRulers={false} />}
+        {loading ? <CenterState spinner /> : <SlideCanvas {...canvasProps} showRulers={false} />}
       </div>
+      {!loading && notesOpen && slides[activeIndex] && <NotesPane key={slides[activeIndex].id} slide={slides[activeIndex]} onChange={(text) => setNotes(slides[activeIndex].id, text)} />}
       <FindBar
         open={findOpen}
         onClose={() => setFindOpen(false)}
@@ -318,7 +588,7 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
         placeholder="Find in slides"
       />
       {!loading && slides.length > 0 && (
-        <div className="canvas-bar">
+        <div className="canvas-bar" style={notesOpen ? { bottom: 'calc(var(--notes-h, 120px) + 12px)' } : undefined}>
           <IconButton label="Undo (⌘Z)" size="sm" disabled={!tb.canUndo} onClick={tb.onUndo}>
             <Undo2 size={14} />
           </IconButton>
@@ -336,17 +606,20 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
             <ChevronRight size={14} />
           </IconButton>
           <span className="sep" />
-          <IconButton label="Zoom out (⌘−)" size="sm" onClick={tb.onZoomOut}>
+          <IconButton label="Zoom out (⌘−)" size="sm" onClick={() => zoomStep('out')} disabled={tb.scale <= ZOOM_STEPS[0] + 0.001}>
             <Minus size={14} />
           </IconButton>
-          <button type="button" className="icon-btn sm readout" title={platform.shortcut('Fit to window (⌘0)')} onClick={tb.onZoomToFit}>
+          <button type="button" className="icon-btn sm readout" title={platform.shortcut('Fit to window (⌘0)')} onClick={() => zoomStep('fit')}>
             {formatZoom(tb.scale)}
           </button>
-          <IconButton label="Zoom in (⌘+)" size="sm" onClick={tb.onZoomIn}>
+          <IconButton label="Zoom in (⌘+)" size="sm" onClick={() => zoomStep('in')} disabled={tb.scale >= ZOOM_STEPS[ZOOM_STEPS.length - 1] - 0.001}>
             <Plus size={14} />
           </IconButton>
           <span className="sep" />
-          <IconButton label="Present" size="sm" onClick={() => setPresenting(activeIndex)}>
+          <IconButton label={withKeys(notesOpen ? 'Hide speaker notes' : 'Show speaker notes', 'pptx.notes')} size="sm" active={notesOpen} onClick={() => setNotesOpen(!notesOpen)}>
+            <StickyNote size={14} />
+          </IconButton>
+          <IconButton label={withKeys('Present', 'pptx.present')} size="sm" onClick={() => setPresenting(activeIndex)}>
             <Play size={14} />
           </IconButton>
         </div>
@@ -376,6 +649,20 @@ function elementText(e: Element): string {
   return ''
 }
 
+function containsId(el: Element, id: string): boolean {
+  const children = (el as { children?: Element[] }).children
+  return !!children?.some((c) => c.id === id || containsId(c, id))
+}
+
+/** Zoom levels for the buttons and keys, relative to fitting the slide in the window. */
+const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4]
+
+/** Typing somewhere: a text box, a field, or text being edited on the slide. */
+function isTextTarget(target: EventTarget | null) {
+  const el = target instanceof HTMLElement ? target : null
+  return !!el && (el.isContentEditable || !!el.closest('input, textarea, select'))
+}
+
 function readAsDataUrl(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -385,13 +672,28 @@ function readAsDataUrl(file: Blob): Promise<string> {
   })
 }
 
-function imageSize(src: string): Promise<{ width: number; height: number }> {
-  return new Promise((resolve) => {
-    const img = new Image()
-    img.onload = () => resolve({ width: img.naturalWidth || 400, height: img.naturalHeight || 300 })
-    img.onerror = () => resolve({ width: 400, height: 300 })
-    img.src = src
-  })
+/**
+ * Read an image for the slide. One far bigger than the slide could ever show (a phone photo,
+ * a Retina screenshot) is scaled down to twice the slide's size, which keeps the slide, its
+ * thumbnail and the saved file quick. Smaller ones are kept byte for byte.
+ */
+async function loadImage(file: File, canvas: { width: number; height: number }) {
+  const bitmap = await createImageBitmap(file).catch(() => null)
+  if (!bitmap) return { dataUrl: await readAsDataUrl(file), width: 400, height: 300 }
+  const { width, height } = bitmap
+  const scale = Math.min(1, (canvas.width * 2) / width, (canvas.height * 2) / height)
+  if (scale > 0.75 || file.type === 'image/gif' || file.type === 'image/svg+xml') {
+    bitmap.close()
+    return { dataUrl: await readAsDataUrl(file), width, height }
+  }
+  const out = document.createElement('canvas')
+  out.width = Math.round(width * scale)
+  out.height = Math.round(height * scale)
+  out.getContext('2d')!.drawImage(bitmap, 0, 0, out.width, out.height)
+  bitmap.close()
+  // Photos stay JPEG; anything that may have transparency stays PNG.
+  const type = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png'
+  return { dataUrl: out.toDataURL(type, 0.9), width: out.width, height: out.height }
 }
 
 function fitInside(w: number, h: number, maxW: number, maxH: number) {

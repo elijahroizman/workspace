@@ -34,6 +34,8 @@ export interface EditorHandle {
   print?(): Promise<void>
   /** Markdown view mode: read, split, write, or cycle through them. */
   viewMode?(mode: 'read' | 'split' | 'write' | 'cycle'): void
+  /** Editor shortcuts by id (see state/shortcuts.ts). One that can't run right now answers false, and the key goes on to the document. */
+  actions?: Record<string, () => boolean | void>
 }
 
 const handles = new Map<string, EditorHandle>()

@@ -17,6 +17,8 @@ interface PinchOptions {
   target?: () => HTMLElement | null
   min?: number
   max?: number
+  /** Apply the final zoom yourself, keeping the point under the pointer in place (instead of setZoom and the scroll fix-up). */
+  commit?: (zoom: number, anchor: { x: number; y: number }) => void
 }
 
 /**
@@ -82,6 +84,10 @@ export function usePinchZoom(containerRef: React.RefObject<HTMLElement | null>, 
       }
       el = null
       if (Math.abs(next - startZoom) < 0.005) return
+      if (opts.current.commit) {
+        opts.current.commit(next, anchor)
+        return
+      }
       opts.current.setZoom(next)
       const ratio = next / startZoom
       // Wait for the editor to lay out at the new zoom, then keep the anchor point in place.

@@ -8,6 +8,8 @@ import * as platform from './lib/platform'
 import { flushAutosave, startAutosave } from './lib/autosave'
 import { installUpdate, openUpdatePanel, startUpdateChecks } from './lib/updater'
 import { useSettings } from './state/settings'
+import type { Scope } from './state/shortcuts'
+import { keysFromEvent, movedBuiltIn, shortcutFor, syncMenu } from './state/shortcuts'
 import type { DocTab } from './state/workspace'
 import { getEditor, HOME_TAB_ID, persistSession, restoreSession, useWorkspace } from './state/workspace'
 
@@ -203,57 +205,6 @@ async function confirmDiscardAll(): Promise<boolean> {
 
 let sessionFrozen = false
 
-// Shortcuts the native menu bar owns in the Mac app. Windows and the browser handle them here:
-// WebView2 keeps keystrokes to itself, so a Windows menu accelerator never sees them.
-const SHORTCUTS: Record<string, string> = {
-  t: 'new-tab',
-  n: 'new-docx',
-  'shift+n': 'new-pptx',
-  'alt+n': 'new-md',
-  o: 'open',
-  s: 'save',
-  'shift+s': 'save-as',
-  p: 'print',
-  w: 'close-tab',
-  'shift+t': 'reopen-tab',
-  'shift+d': 'duplicate-tab',
-  f: 'find',
-  '\\': 'toggle-left',
-  'alt+\\': 'toggle-right',
-  '=': 'zoom-in',
-  '-': 'zoom-out',
-  '0': 'zoom-reset',
-  'shift+l': 'toggle-theme',
-  ',': 'settings',
-  e: 'view-cycle',
-  'alt+1': 'view-read',
-  'alt+2': 'view-split',
-  'alt+3': 'view-write',
-  'shift+]': 'next-tab',
-  'shift+[': 'prev-tab',
-}
-
-// Windows conventions that have no Mac menu item.
-const WINDOWS_SHORTCUTS: Record<string, string> = {
-  Tab: 'next-tab',
-  'shift+Tab': 'prev-tab',
-}
-
-const CODE_KEYS: Record<string, string> = { Comma: ',', Equal: '=', NumpadAdd: '=', Minus: '-', NumpadSubtract: '-', Backslash: '\\', BracketRight: ']', BracketLeft: '[' }
-
-/**
- * The key part of a shortcut. Letters follow the keyboard layout. When the key types something
- * else (⌥ on a Mac, a Cyrillic layout) fall back to the physical key, except for Ctrl+Alt on
- * Windows: that is AltGr, which types characters like ń.
- */
-function comboKey(e: KeyboardEvent): string {
-  if (e.code.startsWith('Digit')) return e.code.slice(5)
-  if (CODE_KEYS[e.code]) return CODE_KEYS[e.code]
-  if (/^[a-z]$/i.test(e.key)) return e.key.toLowerCase()
-  if (e.code.startsWith('Key') && (platform.isMac || !e.altKey)) return e.code.slice(3).toLowerCase()
-  return e.key
-}
-
 /** Commands that only mean something in some editors; elsewhere the key goes to the document (Ctrl+E centers text in Word). */
 function editorHandles(command: string) {
   const editor = getEditor(useWorkspace.getState().activeId)
@@ -303,6 +254,8 @@ export default function App() {
         return true
       }),
     )
+    // Shortcuts changed in Settings: the menu is built with the defaults.
+    void syncMenu()
     const stopUpdateChecks = startUpdateChecks()
     const stopAutosave = startAutosave()
     return () => {
@@ -317,32 +270,46 @@ export default function App() {
     if (!sessionFrozen) persistSession()
   }, [tabs, activeId])
 
-  // Keyboard: ⌘1–⌘9 everywhere, plus everything the Mac menu bar would handle on Windows and in a browser.
+  // Keyboard: ⌘1–⌘9 everywhere; app shortcuts the Mac menu bar would handle, on Windows and in a
+  // browser; and editor shortcuts (see state/shortcuts.ts, which Settings can change).
   // Capture phase, so an editor that swallows keys can't eat Save or Close Tab.
   useEffect(() => {
     const menuOwnsShortcuts = platform.isTauri && platform.isMac
     const onKey = (e: KeyboardEvent) => {
-      if (!menuOwnsShortcuts && e.key === 'F11' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault()
-        void runCommand('toggle-fullscreen')
-        return
-      }
+      if (useSettings.getState().open) return
       const mod = platform.isMac ? e.metaKey : e.ctrlKey
-      if (!mod || (!platform.isMac && e.metaKey)) return
-      if (/^Digit[1-9]$/.test(e.code) && !e.shiftKey && !e.altKey) {
+      if (mod && (platform.isMac || !e.metaKey) && /^Digit[1-9]$/.test(e.code) && !e.shiftKey && !e.altKey) {
         e.preventDefault()
         useWorkspace.getState().activateIndex(Number(e.code.slice(5)) - 1)
         return
       }
-      if (menuOwnsShortcuts) return
-      const key = comboKey(e)
-      const combo = `${e.shiftKey ? 'shift+' : ''}${e.altKey ? 'alt+' : ''}${key}`
-      const command = SHORTCUTS[combo] ?? (platform.isMac ? undefined : WINDOWS_SHORTCUTS[combo])
-      if (command && editorHandles(command)) {
+      const keys = keysFromEvent(e)
+      if (!keys) return
+      const ws = useWorkspace.getState()
+      const kind = ws.tabs.find((t) => t.id === ws.activeId)?.kind
+      const scope: Scope | null = kind === 'docx' || kind === 'pptx' ? kind : null
+      const def = shortcutFor(keys, scope)
+      const stop = () => {
         e.preventDefault()
         e.stopPropagation()
-        void runCommand(command)
       }
+      if (def?.scope === 'app') {
+        if (menuOwnsShortcuts || !editorHandles(def.id)) return
+        stop()
+        void runCommand(def.id)
+        return
+      }
+      // Editor shortcuts are for the document, not a field beside it (speaker notes, a comment box).
+      if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select')) return
+      const editor = getEditor(ws.activeId)
+      // An engine shortcut still on its own keys: the engine does it.
+      if (def && !(def.builtIn && def.keys === keys)) {
+        const action = editor?.actions?.[def.id]
+        if (action && action() !== false) stop()
+        return
+      }
+      // An engine shortcut moved to other keys: its old ones do nothing now.
+      if (!def && movedBuiltIn(keys, scope)) stop()
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)

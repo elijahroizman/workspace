@@ -1,6 +1,12 @@
+import { Sparkles } from 'lucide-react'
 import { SlideLayer } from 'pptx-react-viewer/internals'
 import { memo, useEffect, useRef, useState } from 'react'
+import { isMac } from '../../lib/platform'
+import { transitionLabel } from './transitions'
 import type { Canvas, Element, Slide } from './types'
+
+/** How a click picks slides: on its own, added to or taken from the picked ones, or a run from the last pick. */
+export type PickMode = 'only' | 'toggle' | 'range'
 
 /** A slide drawn by the engine at full size and scaled down; mounted only when on screen. */
 export const SlidePreview = memo(function SlidePreview({
@@ -36,23 +42,30 @@ export const SlidePreview = memo(function SlidePreview({
   )
 })
 
-/** Left sidebar: every slide, click to go, drag to reorder, right-click for more. */
+/**
+ * Left sidebar: every slide, click to go, drag to reorder, right-click for more.
+ * ⌘-click (Ctrl on Windows) and shift-click pick several; Delete removes the picked slides.
+ */
 export function SlideStrip({
   slides,
   activeIndex,
+  selected,
   canvasSize,
   templateFor,
   onSelect,
   onMove,
   onMenu,
+  onDelete,
 }: {
   slides: readonly Slide[]
   activeIndex: number
+  selected: readonly number[]
   canvasSize: Canvas['canvasSize']
   templateFor: (slide: Slide) => Element[]
-  onSelect: (index: number) => void
+  onSelect: (index: number, mode: PickMode) => void
   onMove: (from: number, to: number) => void
   onMenu: (index: number, x: number, y: number) => void
+  onDelete: () => void
 }) {
   const listRef = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<{ from: number; target: number } | null>(null)
@@ -72,6 +85,12 @@ export function SlideStrip({
 
   const startDrag = (e: React.PointerEvent, index: number) => {
     if (e.button !== 0) return
+    listRef.current?.focus({ preventScroll: true })
+    const mode: PickMode = e.shiftKey ? 'range' : (isMac ? e.metaKey : e.ctrlKey) ? 'toggle' : 'only'
+    if (mode !== 'only') {
+      onSelect(index, mode)
+      return
+    }
     const startY = e.clientY
     const el = e.currentTarget as HTMLElement
     let dragging = false
@@ -103,7 +122,7 @@ export function SlideStrip({
       el.removeEventListener('pointercancel', up)
       setDrag(null)
       if (!dragging) {
-        onSelect(index)
+        onSelect(index, 'only')
         return
       }
       const to = target > index ? target - 1 : target
@@ -115,24 +134,49 @@ export function SlideStrip({
   }
 
   return (
-    <div className="slide-list" ref={listRef} role="listbox" aria-label="Slides">
+    <div
+      className="slide-list"
+      ref={listRef}
+      role="listbox"
+      aria-label="Slides"
+      aria-multiselectable
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Delete' || e.key === 'Backspace') onDelete()
+        else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          const next = activeIndex + (e.key === 'ArrowDown' ? 1 : -1)
+          if (next >= 0 && next < slides.length) onSelect(next, e.shiftKey ? 'range' : 'only')
+        } else return
+        // The slide editor listens on the window; these keys are the sidebar's.
+        e.preventDefault()
+        e.stopPropagation()
+      }}
+    >
       {slides.map((slide, i) => (
         <div
           key={slide.id}
           data-index={i}
           role="option"
-          aria-selected={i === activeIndex}
-          className={`slide-item ${i === activeIndex ? 'active' : ''} ${slide.hidden ? 'hidden-slide' : ''} ${drag?.target === i ? 'drop-before' : ''} ${
+          aria-selected={selected.includes(i)}
+          className={`slide-item ${i === activeIndex ? 'active' : ''} ${selected.length > 1 && selected.includes(i) ? 'picked' : ''} ${slide.hidden ? 'hidden-slide' : ''} ${drag?.target === i ? 'drop-before' : ''} ${
             drag && drag.target === slides.length && i === slides.length - 1 ? 'drop-after' : ''
           } ${drag?.from === i ? 'dragging' : ''}`}
           onPointerDown={(e) => startDrag(e, i)}
           onContextMenu={(e) => {
             e.preventDefault()
-            onSelect(i)
+            // Right-clicking one of several picked slides acts on all of them.
+            if (!selected.includes(i)) onSelect(i, 'only')
             onMenu(i, e.clientX, e.clientY)
           }}
         >
-          <span className="slide-number">{i + 1}</span>
+          <span className="slide-number">
+            {i + 1}
+            {transitionLabel(slide.transition) && (
+              <span className="slide-transition-mark" title={`Transition: ${transitionLabel(slide.transition)}`}>
+                <Sparkles size={10} />
+              </span>
+            )}
+          </span>
           <div className="slide-thumb">
             <SlidePreview slide={slide} templateElements={templateFor(slide)} canvasSize={canvasSize} width={thumbWidth} />
           </div>

@@ -278,6 +278,7 @@ export interface MenuEntry {
   onSelect: () => void
   separatorBefore?: boolean
   danger?: boolean
+  disabled?: boolean
 }
 
 /** A small popover menu anchored to a point or element. */
@@ -321,6 +322,7 @@ export function PopoverMenu({
               type="button"
               role="menuitem"
               className="menu-item"
+              disabled={item.disabled}
               style={item.danger ? { color: 'var(--danger)' } : undefined}
               onClick={() => {
                 onClose()

@@ -9,8 +9,8 @@ A small, fast Mac and Windows app for the document types most people actually us
 
   | Type | Left sidebar | Inspector (right) |
   | --- | --- | --- |
-  | Word | Heading outline, page and word count | Style, font, size, bold/italic/…, color, highlight, alignment, lists, line spacing, insert table/image/link/page break/contents; table rows, columns, shading and borders; page size (A4 for new documents) & margins |
-  | PowerPoint | Slide thumbnails (drag to reorder, right-click for more) | Insert text boxes, shapes, tables, images, video links and slides; font, size, bold/italic/…, color, alignment and lists; table styles, rows and columns; fill and line; position, size, rotation, flip and layer order; links; align several objects; slide layout; Present |
+  | Word | Heading outline, page and word count | Style, font, size, bold/italic/…, color, highlight, alignment, lists, line spacing, insert table/image/link/page break; header and footer with page numbers; comments with replies; image size (or drag a corner); table rows, columns, shading and borders; page size (A4 for new documents) & margins |
+  | PowerPoint | Slide thumbnails (drag to reorder, shift- or ⌘-click to pick several, right-click for more); speaker notes under the slide | Insert text boxes, shapes, tables, images, video links and slides; font, size, bold/italic/…, color, alignment and lists, for one object or several at once; table styles, rows and columns; fill and line; position, size, rotation, flip and layer order; group and ungroup; links; align several objects; slide layout; transitions for one or many slides; Present |
   | PDF | Page thumbnails (drag to reorder) or the PDF's outline | Highlight, add text, draw/sign, place images; rotate/move/duplicate/delete/insert/extract pages; document info |
   | Markdown | Heading outline | Hidden by default: Markdown is mostly for reading. Save a copy or print. Read / Split / Write switch at the bottom (⌘E). Front matter, such as an Agent Skill's name and description, shows as a table |
   | Text | None: just the text | None |
@@ -69,6 +69,8 @@ To update later, pull the new code and repeat steps 2–3.
 
 ## Keyboard shortcuts
 
+These are the defaults. **Settings → Keyboard Shortcuts** (⌘,) lists every shortcut, including the Word and PowerPoint ones, and lets you change any of them: click it and press the new keys.
+
 On Windows, use Ctrl for ⌘, Alt for ⌥ and Shift for ⇧. Ctrl+Tab and Ctrl+Shift+Tab also switch tabs, and F11 toggles full screen.
 
 | | |
@@ -87,6 +89,11 @@ On Windows, use Ctrl for ⌘, Alt for ⌥ and Shift for ⇧. Ctrl+Tab and Ctrl+S
 | Markdown: next view / Read / Split / Write | ⌘E / ⌥⌘1 / ⌥⌘2 / ⌥⌘3 |
 | Zoom (Word, PowerPoint, PDF) | Pinch on the trackpad, or ⌘ + scroll |
 | Light / dark appearance | ⇧⌘L |
+| Word: add comment | ⌥⌘A (Ctrl+Alt+M on Windows) |
+| PowerPoint: bring to front / send to back | ⇧⌘F / ⇧⌘B |
+| PowerPoint: bring forward / send backward | ⌥⇧⌘F / ⌥⇧⌘B |
+| PowerPoint: group / ungroup | ⌘G / ⇧⌘G |
+| PowerPoint: play from this slide / from the start | ⌘↩ / ⇧⌘↩ |
 
 You can also drop files from Finder onto the window or the Dock icon.
 
@@ -105,8 +112,8 @@ All of these are open source and run locally:
 
 ## What it doesn't do (yet)
 
-- **PowerPoint:** videos are added as their thumbnail with a link, which is how a link to an online video travels between apps. In Workspace's slideshow they play right on the slide; in PowerPoint or Keynote, clicking one opens the video in the browser. The slideshow doesn't play animations or transitions yet.
-- **Word:** no editing of comments or tracked changes. When printing, table borders are left out.
+- **PowerPoint:** videos are added as their thumbnail with a link, which is how a link to an online video travels between apps. In Workspace's slideshow they play right on the slide; in PowerPoint or Keynote, clicking one opens the video in the browser. The slideshow plays slide transitions but not object animations.
+- **Word:** tracked changes can’t be accepted or rejected. A comment covers text within one paragraph, and adding or removing comments isn't part of undo. When printing, table borders are left out.
 - **PDF:** text, checkbox, radio and list form fields can be filled; buttons, signature fields and form scripts don't do anything. Forms made only with Adobe's XFA show their placeholder page. Chinese, Japanese or Korean text in a font the PDF doesn't include (some older PDFs) may not show.
 - Excel and other formats are intentionally out of scope.
 

@@ -83,8 +83,23 @@
   box-shadow: 0 0 0 1px var(--line);
 }
 
-.slide-item.active .slide-thumb {
+.slide-item.active .slide-thumb,
+.slide-item.picked .slide-thumb {
   box-shadow: 0 0 0 2px var(--accent);
+}
+
+.slide-item.picked:not(.active) .slide-thumb {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.slide-list:focus-visible .slide-item.active .slide-thumb {
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.slide-transition-mark {
+  display: block;
+  margin-top: 4px;
+  color: var(--fg-faint);
 }
 
 .slide-preview {
@@ -219,4 +234,83 @@
   min-width: 18px;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+/* Two slides stacked for a transition (slideshow and the inspector preview). */
+.slide-swap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  perspective: 1600px;
+}
+
+.slide-swap-layer {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+}
+
+/* Speaker notes under the slide. */
+.notes-pane {
+  flex: none;
+  height: var(--notes-h, 120px);
+  border-top: 1px solid var(--line);
+  background: var(--panel, var(--bg));
+}
+
+.notes-pane textarea {
+  width: 100%;
+  height: 100%;
+  padding: 12px 20px 48px;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.notes-pane textarea::placeholder {
+  color: var(--fg-faint);
+}
+
+/* Nine colours across the inspector on one line: they share the width rather than wrap. */
+.swatches.one-line {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  gap: 3px;
+}
+
+.swatches.one-line .swatch {
+  flex: 0 1 22px;
+  min-width: 0;
+  height: auto;
+  aspect-ratio: 1;
+}
+
+.btn.layer-btn {
+  justify-content: flex-start;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.transition-preview {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 0 0 1px var(--line);
+  cursor: pointer;
+}
+
+.transition-blank {
+  width: 100%;
+  height: 100%;
+  background: #000;
 }

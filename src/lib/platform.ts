@@ -12,7 +12,18 @@ export const isWindows = typeof navigator !== 'undefined' && /Win/.test(navigato
 /** “Show in Finder” on a Mac, “Show in File Explorer” on Windows. */
 export const revealLabel = isMac ? 'Show in Finder' : isWindows ? 'Show in File Explorer' : 'Show in Folder'
 
-const KEY_NAMES: Record<string, string> = { '↩': 'Enter', '−': 'Minus', '+': 'Plus', '⌫': 'Backspace' }
+const KEY_NAMES: Record<string, string> = {
+  '↩': 'Enter',
+  '−': 'Minus',
+  '+': 'Plus',
+  '⌫': 'Backspace',
+  '⌦': 'Delete',
+  '⇥': 'Tab',
+  '←': 'Left',
+  '→': 'Right',
+  '↑': 'Up',
+  '↓': 'Down',
+}
 
 /**
  * Shortcuts are written the Mac way in the source (“Duplicate (⇧⌘D)”). Everywhere else they
