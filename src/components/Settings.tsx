@@ -10,7 +10,7 @@ import { useWorkspace } from '../state/workspace'
 import { IconButton, Segmented, Switch } from './ui'
 
 const KIND_OPTIONS: { kind: DocKind; label: string }[] = [
-  { kind: 'docx', label: 'Word documents' },
+  { kind: 'docx', label: 'Documents' },
   { kind: 'pptx', label: 'Presentations' },
   { kind: 'md', label: 'Markdown notes' },
   { kind: 'txt', label: 'Text files' },

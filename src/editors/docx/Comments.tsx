@@ -167,9 +167,14 @@ export class CommentStore {
 
   /** The thread whose highlighted text is under a point in the document. */
   threadAt(editor: Editor, x: number, y: number) {
+    return this.hitAt(editor, x, y)?.id ?? null
+  }
+
+  /** The thread under a point, and the highlighted line box there. */
+  hitAt(editor: Editor, x: number, y: number) {
     const hit = editor.getHighlightsAt(x, y).find((h) => h.name === 'comments')
     const id = hit ? this.ids[hit.index] : null
-    return id && id !== 'draft' ? id : null
+    return hit && id && id !== 'draft' ? { id, rect: hit.rect } : null
   }
 
   /** Start a comment on the selected text. Answers false when nothing is selected. */
@@ -409,6 +414,27 @@ function ThreadCard({ store, editor, thread }: { store: CommentStore; editor: Ed
         </div>
       ))}
       {active && !thread.resolved && <Composer placeholder="Reply" submitLabel="Reply" onSubmit={(text, author) => store.reply(editor, thread.id, text, author)} />}
+    </div>
+  )
+}
+
+/** A thread shown over its text while the pointer rests on it; `at` is the highlighted line box. */
+export function CommentPeek({ store, id, at }: { store: CommentStore; id: string; at: { left: number; top: number; bottom: number } }) {
+  useComments(store)
+  const thread = store.threads.find((t) => t.id === id)
+  if (!thread) return null
+  const replies = thread.replies.length
+  // Under the line, or above it near the bottom of the window.
+  const below = at.bottom + 180 < window.innerHeight
+  return (
+    <div
+      className="comment-peek"
+      role="tooltip"
+      style={{ left: Math.max(8, Math.min(at.left, window.innerWidth - 300)), ...(below ? { top: at.bottom + 6 } : { bottom: window.innerHeight - at.top + 6 }) }}
+    >
+      <NoteHead note={thread} />
+      <div className="comment-text">{thread.text}</div>
+      {replies > 0 && <div className="comment-peek-more">{replies === 1 ? '1 reply' : `${replies} replies`}</div>}
     </div>
   )
 }

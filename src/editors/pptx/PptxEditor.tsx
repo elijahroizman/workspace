@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ClipboardPaste,
   Copy,
+  Crop,
   EyeOff,
   Group,
   Minus,
@@ -23,11 +24,14 @@ import {
   Ungroup,
 } from 'lucide-react'
 import i18n from 'i18next'
+import { canCropElement, createBlankSlide, cropUpdateFromRects, imageRectFromCrop, readCropInsets } from 'ooxml-ui/pptx'
 import type { SlideTemplateId } from 'pptx-react-viewer'
 import { SlideCanvas, useViewerBuildingBlocks } from 'pptx-react-viewer'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { EditorProps } from '../../App'
+import type { Rect } from '../../components/CropOverlay'
+import { CropOverlay, rectOf } from '../../components/CropOverlay'
 import { FindBar, Workbench, formatZoom } from '../../components/Workbench'
 import type { MenuEntry } from '../../components/ui'
 import { CenterState, IconButton, PopoverMenu } from '../../components/ui'
@@ -167,13 +171,43 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
     handle.current?.setActiveSlideIndex(index)
   }
   const deleteSlides = (indexes: readonly number[]) => {
-    // A deck keeps at least one slide.
-    if (!indexes.length || indexes.length >= slides.length) return
-    handle.current?.deleteSlides([...indexes])
+    const h = handle.current
+    if (!h || !indexes.length) return
     setPicked([])
+    // A deck keeps at least one slide: deleting them all leaves a blank one, in one undo step.
+    if (indexes.length >= slides.length) {
+      h.editSlides(() => [createBlankSlide(1)])
+      h.setActiveSlideIndex(0)
+      return
+    }
+    h.deleteSlides([...indexes])
   }
 
   const selectedIds = useMemo(() => [...cv.selectedElementIdSet], [cv.selectedElementIdSet])
+
+  // ── Cropping the selected picture, on the slide.
+  const [crop, setCrop] = useState<{ el: Element; src: string; frame: Rect; image: Rect } | null>(null)
+  const croppable = (el: Element | null, picked: number) => !!el && picked === 1 && canCropElement(el) && !el.rotation && !el.flipHorizontal && !el.flipVertical
+  const startCrop = () => {
+    const el = tbRef.current.selectedElement
+    const node = el && stageRef.current?.querySelector(`[data-element-id="${CSS.escape(el.id)}"]`)
+    const src = node?.querySelector('img')?.src
+    if (!el || !node || !src || !croppable(el, deckRef.current.selectedIds.length)) return
+    const frame = rectOf(node.getBoundingClientRect())
+    setCrop({ el, src, frame, image: imageRectFromCrop(frame, readCropInsets(el)) })
+  }
+  const endCrop = (frame?: Rect, image?: Rect) => {
+    setCrop(null)
+    if (!crop || !frame || !image) return
+    const { el, frame: start } = crop
+    // From screen pixels to the slide's.
+    const scale = start.width / el.width
+    const onSlide = (r: Rect) => ({ x: el.x + (r.x - start.x) / scale, y: el.y + (r.y - start.y) / scale, width: r.width / scale, height: r.height / scale })
+    const update = cropUpdateFromRects(onSlide(frame), onSlide(image))
+    const before: Record<string, number> = { x: el.x, y: el.y, width: el.width, height: el.height, ...readCropInsets(el) }
+    if (Object.entries(update).every(([key, value]) => Math.abs(value - before[key]) < (key.startsWith('crop') ? 1e-4 : 0.01))) return
+    handle.current?.updateElement(el.id, update as Partial<Element>)
+  }
   const deck: Deck = { handle, tb, cv, slides, activeIndex, templateFor, tbRef, selectedSlides, selectedIds }
   const deckRef = useRef(deck)
   deckRef.current = deck
@@ -331,9 +365,7 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
         items: [
           { label: `Duplicate ${group.length} Slides`, icon: <Copy size={14} />, onSelect: () => h?.duplicateSlides(group) },
           { label: allHidden ? 'Show in Slideshow' : 'Hide in Slideshow', icon: <EyeOff size={14} />, onSelect: () => h?.toggleHideSlides(group.filter((i) => !!slides[i]?.hidden === allHidden)) },
-          ...(group.length < slides.length
-            ? [{ label: `Delete ${group.length} Slides`, icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: () => deleteSlides(group) }]
-            : []),
+          { label: `Delete ${group.length} Slides`, icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: () => deleteSlides(group) },
         ],
       })
       return
@@ -355,7 +387,7 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
         { label: slides[index]?.hidden ? 'Show in Slideshow' : 'Hide in Slideshow', icon: <EyeOff size={14} />, onSelect: () => h?.toggleHideSlides([index]) },
         ...(index > 0 ? [{ label: 'Move Up', icon: <ArrowUp size={14} />, onSelect: () => h?.moveSlide(index, index - 1) }] : []),
         ...(index < slides.length - 1 ? [{ label: 'Move Down', icon: <ArrowDown size={14} />, onSelect: () => h?.moveSlide(index, index + 1) }] : []),
-        ...(slides.length > 1 ? [{ label: 'Delete Slide', icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: () => h?.deleteSlides([index]) }] : []),
+        { label: 'Delete Slide', icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: () => deleteSlides([index]) },
       ],
     })
   }
@@ -378,6 +410,7 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
         return
       }
       items.push({ label: 'Duplicate', icon: <Copy size={14} />, shortcut: keysFor('pptx.duplicate'), onSelect: t.onDuplicate })
+      if (croppable(t.selectedElement, ids.length)) items.push({ label: 'Crop', icon: <Crop size={14} />, onSelect: startCrop })
       if (ids.length > 1) items.push({ label: 'Group', icon: <Group size={14} />, shortcut: keysFor('pptx.group'), separatorBefore: true, disabled: !t.selectionGroupable, onSelect: t.onGroupElements })
       else if (t.selectedElement?.type === 'group') items.push({ label: 'Ungroup', icon: <Ungroup size={14} />, shortcut: keysFor('pptx.ungroup'), separatorBefore: true, onSelect: t.onUngroupElement })
       const elements = deckRef.current.slides[deckRef.current.activeIndex]?.elements ?? []
@@ -569,11 +602,12 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
             onDeleteSlides={deleteSlides}
             onArrange={arrange}
             canArrange={canArrange}
+            onCrop={croppable(tb.selectedElement, selectedIds.length) ? startCrop : null}
           />
         )
       }
     >
-      <div className="deck-stage" ref={stageRef}>
+      <div className={`deck-stage ${crop ? 'cropping' : ''}`} ref={stageRef}>
         {loading ? <CenterState spinner /> : <SlideCanvas {...canvasProps} showRulers={false} />}
       </div>
       {!loading && notesOpen && slides[activeIndex] && <NotesPane key={slides[activeIndex].id} slide={slides[activeIndex]} onChange={(text) => setNotes(slides[activeIndex].id, text)} />}
@@ -625,6 +659,7 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
         </div>
       )}
       {menu && <PopoverMenu anchor={menu} items={menu.items} onClose={() => setMenu(null)} />}
+      {crop && <CropOverlay src={crop.src} frame={crop.frame} image={crop.image} onDone={endCrop} onCancel={() => endCrop()} />}
       {presenting !== null && (
         <PresentMode
           slides={slides}

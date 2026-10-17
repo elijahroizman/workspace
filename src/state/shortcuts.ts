@@ -8,7 +8,7 @@ import { isMac, isTauri, isWindows } from '../lib/platform'
  * On Windows ⌘ means Ctrl and ⌥ means Alt, and `shortcut()` in lib/platform shows them so.
  */
 
-/** Where a shortcut works: everywhere, in one kind of editor, or in both Word and PowerPoint. */
+/** Where a shortcut works: everywhere, in one kind of editor, or in both documents and presentations. */
 export type Scope = 'app' | 'docx' | 'pptx' | 'text'
 
 export interface ShortcutDef {
@@ -68,30 +68,30 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'paste', label: 'Paste', group: 'Editing', scope: 'app', keys: '⌘V', fixed: true },
   { id: 'select-all', label: 'Select all', group: 'Editing', scope: 'app', keys: '⌘A', fixed: true },
 
-  // ── Text, in Word and PowerPoint
-  { id: 'text.bold', label: 'Bold', group: 'Text (Word and PowerPoint)', scope: 'text', keys: '⌘B', builtIn: true },
-  { id: 'text.italic', label: 'Italic', group: 'Text (Word and PowerPoint)', scope: 'text', keys: '⌘I', builtIn: true },
-  { id: 'text.underline', label: 'Underline', group: 'Text (Word and PowerPoint)', scope: 'text', keys: '⌘U', builtIn: true },
+  // ── Text, in documents and presentations
+  { id: 'text.bold', label: 'Bold', group: 'Text (documents and presentations)', scope: 'text', keys: '⌘B', builtIn: true },
+  { id: 'text.italic', label: 'Italic', group: 'Text (documents and presentations)', scope: 'text', keys: '⌘I', builtIn: true },
+  { id: 'text.underline', label: 'Underline', group: 'Text (documents and presentations)', scope: 'text', keys: '⌘U', builtIn: true },
 
-  // ── Word
-  { id: 'docx.link', label: 'Link', group: 'Word', scope: 'docx', keys: '⌘K', builtIn: true },
+  // ── Documents (.docx)
+  { id: 'docx.link', label: 'Link', group: 'Document', scope: 'docx', keys: '⌘K', builtIn: true },
   // Word's own keys; ⌥⌘M on a Mac is the Window menu's Minimize All.
-  { id: 'docx.comment', label: 'Add comment', group: 'Word', scope: 'docx', keys: isMac ? '⌥⌘A' : '⌥⌘M' },
-  { id: 'docx.header', label: 'Edit header', group: 'Word', scope: 'docx', keys: '' },
-  { id: 'docx.footer', label: 'Edit footer', group: 'Word', scope: 'docx', keys: '' },
+  { id: 'docx.comment', label: 'Add comment', group: 'Document', scope: 'docx', keys: isMac ? '⌥⌘A' : '⌥⌘M' },
+  { id: 'docx.header', label: 'Edit header', group: 'Document', scope: 'docx', keys: '' },
+  { id: 'docx.footer', label: 'Edit footer', group: 'Document', scope: 'docx', keys: '' },
 
-  // ── PowerPoint
-  { id: 'pptx.new-slide', label: 'New slide', group: 'PowerPoint', scope: 'pptx', keys: '⌘M', builtIn: true },
-  { id: 'pptx.duplicate', label: 'Duplicate', group: 'PowerPoint', scope: 'pptx', keys: '⌘D', builtIn: true },
-  { id: 'pptx.group', label: 'Group', group: 'PowerPoint', scope: 'pptx', keys: '⌘G', builtIn: true },
-  { id: 'pptx.ungroup', label: 'Ungroup', group: 'PowerPoint', scope: 'pptx', keys: '⇧⌘G', builtIn: true },
-  { id: 'pptx.front', label: 'Bring to front', group: 'PowerPoint', scope: 'pptx', keys: '⇧⌘F' },
-  { id: 'pptx.forward', label: 'Bring forward', group: 'PowerPoint', scope: 'pptx', keys: '⌥⇧⌘F' },
-  { id: 'pptx.backward', label: 'Send backward', group: 'PowerPoint', scope: 'pptx', keys: '⌥⇧⌘B' },
-  { id: 'pptx.back', label: 'Send to back', group: 'PowerPoint', scope: 'pptx', keys: '⇧⌘B' },
-  { id: 'pptx.notes', label: 'Show or hide speaker notes', group: 'PowerPoint', scope: 'pptx', keys: '' },
-  { id: 'pptx.present', label: 'Play from this slide', group: 'PowerPoint', scope: 'pptx', keys: '⌘↩' },
-  { id: 'pptx.present-start', label: 'Play from start', group: 'PowerPoint', scope: 'pptx', keys: '⇧⌘↩' },
+  // ── Presentations (.pptx)
+  { id: 'pptx.new-slide', label: 'New slide', group: 'Presentation', scope: 'pptx', keys: '⌘M', builtIn: true },
+  { id: 'pptx.duplicate', label: 'Duplicate', group: 'Presentation', scope: 'pptx', keys: '⌘D', builtIn: true },
+  { id: 'pptx.group', label: 'Group', group: 'Presentation', scope: 'pptx', keys: '⌘G', builtIn: true },
+  { id: 'pptx.ungroup', label: 'Ungroup', group: 'Presentation', scope: 'pptx', keys: '⇧⌘G', builtIn: true },
+  { id: 'pptx.front', label: 'Bring to front', group: 'Presentation', scope: 'pptx', keys: '⇧⌘F' },
+  { id: 'pptx.forward', label: 'Bring forward', group: 'Presentation', scope: 'pptx', keys: '⌥⇧⌘F' },
+  { id: 'pptx.backward', label: 'Send backward', group: 'Presentation', scope: 'pptx', keys: '⌥⇧⌘B' },
+  { id: 'pptx.back', label: 'Send to back', group: 'Presentation', scope: 'pptx', keys: '⇧⌘B' },
+  { id: 'pptx.notes', label: 'Show or hide speaker notes', group: 'Presentation', scope: 'pptx', keys: '' },
+  { id: 'pptx.present', label: 'Play from this slide', group: 'Presentation', scope: 'pptx', keys: '⌘↩' },
+  { id: 'pptx.present-start', label: 'Play from start', group: 'Presentation', scope: 'pptx', keys: '⇧⌘↩' },
 ].filter((s) => !s.platform || (s.platform === 'mac') === isMac) as ShortcutDef[]
 
 const BY_ID = new Map(SHORTCUTS.map((s) => [s.id, s]))

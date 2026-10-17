@@ -317,3 +317,48 @@
 .comment-input:focus {
   border-color: var(--accent);
 }
+
+/* A comment shown while the pointer rests on its text. */
+.comment-peek {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 280px;
+  max-height: 180px;
+  overflow: hidden;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--raised);
+  color: var(--fg);
+  box-shadow: var(--shadow-pop);
+  font-family: var(--font-ui);
+  pointer-events: none;
+}
+
+.comment-peek .comment-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.comment-peek-more {
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+
+/* Links read as text until ⌘ (Ctrl on Windows) is held, when a click opens them. */
+.docx-stage .docx-hyperlink {
+  cursor: text !important;
+}
+
+.docx-stage.follow-links .docx-hyperlink[data-docx-link-kind='external'] {
+  cursor: pointer !important;
+}
+
+/* While cropping, the crop overlay draws the picture and its handles. */
+.docx-stage.cropping .docx-image-selection-overlay {
+  visibility: hidden;
+}
