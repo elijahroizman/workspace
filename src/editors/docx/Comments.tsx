@@ -3,8 +3,8 @@ import { Check, MessageSquarePlus, RotateCcw, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { IconButton, Section } from '../../components/ui'
 import { withKeys } from '../../state/shortcuts'
-import type { Anchor, Note, Thread } from './comments'
-import { hasComments, initialsOf, nearest, newParaId, readComments, writeComments } from './comments'
+import type { Anchor, Note, Thread } from './commentXml'
+import { hasComments, initialsOf, nearest, newParaId, readComments, writeComments } from './commentXml'
 
 type Paragraphs = readonly { paraId?: string; text: string }[]
 
