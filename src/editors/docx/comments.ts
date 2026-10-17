@@ -162,6 +162,9 @@ export async function readComments(bytes: Uint8Array): Promise<Thread[]> {
     return { paraId: attr(p, 'paraId', W14), index: indexOf.get(p) ?? 0, start: from, text: start.localName === 'commentRangeStart' ? text.slice(from, to) : '' }
   }
 
+  // An older file may have no paragraph ids; threads need one to be resolved or answered,
+  // unique among every paragraph in the package. Saving writes it into the comment.
+  const takenParaIds = new Set([...els(comments, 'p'), ...els(doc, 'p')].map((p) => attr(p, 'paraId', W14)).filter(Boolean))
   const notes = els(comments, 'comment').map((c): Note => {
     const lastP = els(c, 'p').at(-1)
     return {
@@ -169,7 +172,7 @@ export async function readComments(bytes: Uint8Array): Promise<Thread[]> {
       author: attr(c, 'author') || 'Unknown',
       date: attr(c, 'date'),
       text: noteText(c),
-      paraId: lastP ? attr(lastP, 'paraId', W14) : '',
+      paraId: (lastP && attr(lastP, 'paraId', W14)) || newParaId(takenParaIds),
       inFile: true,
     }
   })
@@ -384,7 +387,7 @@ export async function writeComments(bytes: Uint8Array, threads: readonly Thread[
   for (const note of notes) {
     const el = existing.get(note.id)
     if (el && !deleted.has(note.id)) {
-      // An older file may have no paragraph ids; threads need one to be resolved or answered.
+      // A comment from an older file gets the paragraph id it was given when read.
       const lastP = els(el, 'p').at(-1)
       if (lastP && !attr(lastP, 'paraId', W14)) lastP.setAttributeNS(W14, 'w14:paraId', note.paraId)
     } else if (!el) {
@@ -393,8 +396,11 @@ export async function writeComments(bytes: Uint8Array, threads: readonly Thread[
   }
 
   // commentsExtended.xml: replies point at their thread, resolved threads are done.
+  // Only entries for comments this save writes or deletes are replaced; the rest stay as they were.
   const exRoot = ex.documentElement
-  for (const c of els(ex, 'commentEx', W15)) c.remove()
+  const managed = new Set(notes.map((n) => n.paraId))
+  for (const [id, el] of existing) if (deleted.has(id)) for (const p of els(el, 'p')) managed.add(attr(p, 'paraId', W14))
+  for (const c of els(ex, 'commentEx', W15)) if (managed.has(attr(c, 'paraId', W15))) c.remove()
   for (const t of threads) {
     const entry = (note: Note, parent?: string) => {
       const c = ex.createElementNS(W15, 'w15:commentEx')

@@ -11,13 +11,19 @@ export function NotesPane({ slide, onChange }: { slide: Slide; onChange: (notes:
   const timer = useRef(0)
   const save = useRef(onChange)
   save.current = onChange
+  // What the deck holds now; the cleanup below runs with the first render's closure.
+  const saved = useRef(slide.notes ?? '')
+  saved.current = slide.notes ?? ''
 
   const flush = () => {
     window.clearTimeout(timer.current)
     if (pending.current === null) return
     const value = pending.current
     pending.current = null
-    if (value !== (slide.notes ?? '')) save.current(value)
+    if (value !== saved.current) {
+      saved.current = value
+      save.current(value)
+    }
   }
 
   // Another slide, or an undo: show what the deck holds, unless there's typing still to save.

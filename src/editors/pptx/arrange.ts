@@ -63,3 +63,13 @@ export function pickedText(elements: readonly Element[], ids: ReadonlySet<string
 export function withElements(index: number, update: (elements: readonly Element[]) => Element[]) {
   return (slides: readonly Slide[]) => slides.map((s, i) => (i === index ? { ...s, elements: update(s.elements) } : s))
 }
+
+/** Every selected object with a fill and line, including inside groups. */
+export function pickedShapes(elements: readonly Element[], ids: ReadonlySet<string>, inside = false): Element[] {
+  return elements.flatMap((el) => {
+    const picked = inside || ids.has(el.id)
+    const children = (el as { children?: Element[] }).children
+    if (el.type === 'group' && children) return pickedShapes(children, ids, picked)
+    return picked && (el.type === 'shape' || el.type === 'text' || el.type === 'connector') ? [el] : []
+  })
+}

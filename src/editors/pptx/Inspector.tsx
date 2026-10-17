@@ -53,7 +53,7 @@ import * as platform from '../../lib/platform'
 import { withKeys } from '../../state/shortcuts'
 import { ColorField, IconButton, NumberField, PopoverMenu, Section, Segmented, SelectField, TableSizePicker, normalizeHex } from '../../components/ui'
 import type { Restack } from './arrange'
-import { mapPicked, pickedText, styleShape, styleText, withElements } from './arrange'
+import { mapPicked, pickedShapes, pickedText, styleShape, styleText, withElements } from './arrange'
 import { SlidePreview } from './SlideStrip'
 import { SlideSwap } from './SlideSwap'
 import type { TableData, TableElement, TableLook } from './table'
@@ -660,7 +660,7 @@ function GroupTextSection({ deck }: { deck: Deck }) {
 function GroupFillSection({ deck }: { deck: Deck }) {
   const { handle, slides, activeIndex, selectedIds } = deck
   const ids = new Set(selectedIds)
-  const shapes = (slides[activeIndex]?.elements ?? []).filter((e) => ids.has(e.id) && (e.type === 'shape' || e.type === 'text'))
+  const shapes = pickedShapes(slides[activeIndex]?.elements ?? [], ids)
   if (!shapes.length) return null
   const set = (patch: Partial<ShapeStyle>) => handle.current?.editSlides(withElements(activeIndex, (els) => mapPicked(els, ids, (el) => styleShape(el, patch))))
   const fills = shapes.map((e) => shapeStyleOf(e))

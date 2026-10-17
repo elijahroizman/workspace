@@ -36,10 +36,14 @@ export function transitionLabel(t: Transition | undefined) {
 
 /** A new transition keeps the slide's timing and sound, and drops options that belonged to the old type. */
 export function changeTransition(current: Transition | undefined, type: Kind): Transition | undefined {
-  if (type === 'none') return current?.advanceAfterMs != null ? { type: 'none', advanceOnClick: current.advanceOnClick, advanceAfterMs: current.advanceAfterMs } : undefined
+  const timing = {
+    ...(current?.advanceOnClick != null ? { advanceOnClick: current.advanceOnClick } : {}),
+    ...(current?.advanceAfterMs != null ? { advanceAfterMs: current.advanceAfterMs } : {}),
+  }
+  if (type === 'none') return Object.keys(timing).length ? { type: 'none', ...timing } : undefined
   const directions = TRANSITIONS.find((o) => o.value === type)?.directions
   return {
-    ...(current?.advanceAfterMs != null ? { advanceOnClick: current.advanceOnClick, advanceAfterMs: current.advanceAfterMs } : {}),
+    ...timing,
     type,
     durationMs: current?.durationMs ?? DEFAULT_DURATION_MS,
     ...(directions ? { direction: current?.direction && DIRECTIONS.some((d) => d.value === current.direction) ? current.direction : 'l' } : {}),

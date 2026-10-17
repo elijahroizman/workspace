@@ -96,7 +96,9 @@ export class CommentStore {
     this.loading = (async () => {
       if (!original || !(await hasComments(original).catch(() => false))) return
       // Read them from the engine's own save, whose paragraph ids are the ones it uses.
-      this.threads = await readComments(new Uint8Array(await editor.save()))
+      const loaded = await readComments(new Uint8Array(await editor.save()))
+      // Keep anything posted while the file's comments were still being read.
+      this.threads = [...loaded, ...this.threads].sort((a, b) => a.anchor.index - b.anchor.index || a.anchor.start - b.anchor.start)
       this.relocate(editor)
     })().catch((error) => console.error('Could not read comments', error))
     this.emit()
