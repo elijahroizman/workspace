@@ -2,9 +2,9 @@
 
 # Workspace
 
-A small, fast Mac and Windows app for the document types most people actually use: **Word (.docx), PowerPoint (.pptx), PDF, Markdown and plain text (.txt)**, plus optional plugins such as **Excalidraw** drawings and **EPUB** books. Everything opens as a tab in one window, and each kind of document gets its own sidebar and inspector.
+A small, fast Mac and Windows app for the document types most people actually use: **Word (.docx), PowerPoint (.pptx), PDF, Markdown and plain text (.txt)**, plus optional plugins: **Excalidraw** drawings, **EPUB** books, **Mermaid** diagrams and **LaTeX** documents. Everything opens as a tab in one window, and each kind of document gets its own sidebar and inspector.
 
-- **Plugins.** Office, PDF, Markdown and text are built in. Others are optional: turn them on in the setup screen that opens the first time you launch Workspace, or later in **Settings › Plugins**. The first optional plugin is [Excalidraw](https://excalidraw.com) for `.excalidraw` drawings. It's about 16 MB, mostly fonts, so Workspace downloads it from this repository's releases when you turn it on and checks its signature before installing it. The EPUB reader is small, so it comes with the app and turns on instantly. It shows a book as one scrolling column with its table of contents in the sidebar, and reopens a book where you left off.
+- **Plugins.** Office, PDF, Markdown and text are built in. Others are optional: turn them on in the setup screen that opens the first time you launch Workspace, or later in **Settings › Plugins**. The first optional plugin is [Excalidraw](https://excalidraw.com) for `.excalidraw` drawings. It's about 16 MB, mostly fonts, so Workspace downloads it from this repository's releases when you turn it on and checks its signature before installing it. The EPUB reader is small, so it comes with the app and turns on instantly. It shows a book as one scrolling column with its table of contents in the sidebar, and reopens a book where you left off. **Mermaid** and **LaTeX** work like Markdown: source and preview side by side, and ⌘E switches between the preview, both, and the source. Mermaid draws the diagram as you type. LaTeX compiles with the TeX installed on your computer (MacTeX on a Mac, MiKTeX or TeX Live on Windows) a few seconds after you stop typing (set how long in **Settings › Plugins**), shows the PDF in Workspace's own viewer, and lists errors and the outline in the sidebar. If there's no TeX, Workspace offers to install it when you turn the plugin on. Both plugins download when you turn them on.
 
 - **Tabs across the top.** Open as many files as you like and switch with ⌘1–⌘9 or ⇧⌘[ / ⇧⌘]. Drag tabs to reorder them, and right-click a tab to duplicate it (⇧⌘D), for example to keep a textbook's questions and answers open side by side. Open tabs come back the next time you launch.
 - **Sidebars that fit the document.**
@@ -89,7 +89,7 @@ On Windows, use Ctrl for ⌘, Alt for ⌥ and Shift for ⇧. Ctrl+Tab and Ctrl+S
 | Zoom in / out / reset | ⌘+ / ⌘− / ⌘0 |
 | Print (and Save as PDF from the print panel) | ⌘P |
 | Duplicate tab | ⇧⌘D |
-| Markdown: next view / Read / Split / Write | ⌘E / ⌥⌘1 / ⌥⌘2 / ⌥⌘3 |
+| Markdown, Mermaid, LaTeX: next view / preview only / source and preview / source only | ⌘E / ⌥⌘1 / ⌥⌘2 / ⌥⌘3 |
 | Zoom (Word, PowerPoint, PDF) | Pinch on the trackpad, or ⌘ + scroll |
 | Light / dark appearance | ⇧⌘L |
 | Word: add comment | ⌥⌘A (Ctrl+Alt+M on Windows) |
@@ -115,6 +115,8 @@ All of these are open source and run locally:
 | Markdown | [markdown-it](https://github.com/markdown-it/markdown-it), [CodeMirror 6](https://codemirror.net), [highlight.js](https://highlightjs.org), [yaml](https://github.com/eemeli/yaml) | MIT / BSD / ISC |
 | Drawings (optional plugin) | [Excalidraw](https://github.com/excalidraw/excalidraw) | MIT |
 | Books (optional plugin) | Workspace's own EPUB reader, on [JSZip](https://github.com/Stuk/jszip) and [DOMPurify](https://github.com/cure53/DOMPurify) | MIT / MPL-2.0 or Apache-2.0 |
+| Diagrams (optional plugin) | [Mermaid](https://github.com/mermaid-js/mermaid), [CodeMirror 6](https://codemirror.net) | MIT |
+| LaTeX (optional plugin) | Your system's TeX ([MacTeX](https://tug.org/mactex/), [MiKTeX](https://miktex.org), [TeX Live](https://tug.org/texlive/)); not shipped with Workspace | various free licenses |
 
 **Settings › General › Open-source licenses** lists every package in the app, its plugins and the native shell, with their license texts.
 
@@ -124,6 +126,8 @@ All of these are open source and run locally:
 - **Word:** tracked changes can’t be accepted or rejected. A comment covers text within one paragraph, and adding or removing comments isn't part of undo. When printing, table borders are left out.
 - **PDF:** text, checkbox, radio and list form fields can be filled; buttons, signature fields and form scripts don't do anything. Forms made only with Adobe's XFA show their placeholder page. Chinese, Japanese or Korean text in a font the PDF doesn't include (some older PDFs) may not show.
 - **EPUB:** books are for reading: no highlights, notes or editing. Pages scroll rather than turn. Books with DRM don't open, and audio narration (Media Overlays) doesn't play.
+- **LaTeX:** needs TeX on the computer. A document compiles from the folder it's saved in, so `\input` and pictures beside it work; a new, unsaved one can't use other files. Clicking in the PDF doesn't jump to the source (no SyncTeX yet). A PDF opened in its own tab is a snapshot: open it again after changes.
+- **Mermaid:** one diagram per file. Exports are SVG and PNG.
 - Excel and other formats are intentionally out of scope.
 
 ## Developing

@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import type { PluginInfo } from '../plugins/catalog'
 import { PLUGINS, isBuiltIn, pluginById, pluginForKind } from '../plugins/catalog'
 import { isTauri, isWindows } from '../lib/platform'
+import { texTestHook, useTex } from './tex'
 
 const KEY = 'workspace.plugins'
 const RELEASES = 'https://github.com/elijahroizman/workspace/releases/download'
@@ -80,6 +81,7 @@ export const usePlugins = create<PluginsState>((set, get) => {
       }
       set({ enabled: { ...get().enabled, [id]: true } })
       save()
+      if (plugin.services?.includes('tex') && (isTauri || texTestHook())) void offerTex()
       return true
     },
 
@@ -121,6 +123,12 @@ export const usePlugins = create<PluginsState>((set, get) => {
     }
   }
 })
+
+/** The LaTeX plugin compiles with the system's TeX: offer to install it if there's none. */
+async function offerTex() {
+  const status = await useTex.getState().refresh()
+  if (!status.installed) await useTex.getState().offerInstall()
+}
 
 /** Resolves once no download of this plugin is in flight (at once if none is). */
 export function installSettled(id: string): Promise<void> {
@@ -177,5 +185,6 @@ export async function startPlugins() {
 }
 
 export function formatSize(bytes: number) {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`
   return bytes >= 1e6 ? `${Math.round(bytes / 1e6)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} KB`
 }

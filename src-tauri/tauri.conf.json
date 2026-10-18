@@ -130,6 +130,31 @@
         "role": "Viewer",
         "rank": "Alternate",
         "mimeType": "application/epub+zip"
+      },
+      {
+        "ext": [
+          "mmd",
+          "mermaid"
+        ],
+        "name": "Mermaid Diagram",
+        "role": "Editor",
+        "rank": "Alternate",
+        "mimeType": "text/vnd.mermaid",
+        "exportedType": {
+          "identifier": "com.eliroizman.workspace.mermaid",
+          "conformsTo": [
+            "public.plain-text"
+          ]
+        }
+      },
+      {
+        "ext": [
+          "tex"
+        ],
+        "name": "LaTeX Document",
+        "role": "Editor",
+        "rank": "Alternate",
+        "mimeType": "text/x-tex"
       }
     ],
     "macOS": {

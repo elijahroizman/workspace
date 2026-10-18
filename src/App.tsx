@@ -2,6 +2,7 @@ import { Component, lazy, memo, Suspense, useEffect, useRef, useState } from 're
 import type { ComponentType, ErrorInfo, ReactNode } from 'react'
 import { Home } from './components/Home'
 import { NewFilePicker, useNewFile } from './components/NewFile'
+import { TexInstall } from './components/TexInstall'
 import { TitleBar } from './components/TitleBar'
 import { CenterState } from './components/ui'
 import type { DocKind } from './lib/kinds'
@@ -11,6 +12,7 @@ import { installUpdate, openUpdatePanel, startUpdateChecks } from './lib/updater
 import { startPlugins } from './state/plugins'
 import { useSettings } from './state/settings'
 import { useSetup } from './state/setup'
+import { useTex } from './state/tex'
 import type { Scope } from './state/shortcuts'
 import { keysFromEvent, movedBuiltIn, shortcutFor, syncMenu } from './state/shortcuts'
 import type { DocTab } from './state/workspace'
@@ -222,6 +224,7 @@ export default function App() {
   const settingsOpen = useSettings((s) => s.open)
   const setupOpen = useSetup((s) => s.open)
   const newFileOpen = useNewFile((s) => s.open)
+  const texOffer = useTex((s) => s.offer)
   const started = useRef(false)
 
   useEffect(() => {
@@ -371,6 +374,7 @@ export default function App() {
           <SetupScreen />
         </Suspense>
       )}
+      {texOffer && <TexInstall />}
       {dropHover && (
         <div className="drop-overlay">
           <div className="pill">Drop to open</div>

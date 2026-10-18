@@ -52,10 +52,10 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'toggle-theme', label: 'Light or dark', group: 'View', scope: 'app', keys: '⇧⌘L' },
   { id: 'toggle-fullscreen', label: 'Full screen', group: 'View', scope: 'app', keys: 'F11', platform: 'windows' },
   { id: 'fullscreen-mac', label: 'Full screen', group: 'View', scope: 'app', keys: '⌃⌘F', fixed: true, platform: 'mac' },
-  { id: 'view-read', label: 'Markdown: read', group: 'View', scope: 'app', keys: '⌥⌘1' },
-  { id: 'view-split', label: 'Markdown: split', group: 'View', scope: 'app', keys: '⌥⌘2' },
-  { id: 'view-write', label: 'Markdown: write', group: 'View', scope: 'app', keys: '⌥⌘3' },
-  { id: 'view-cycle', label: 'Markdown: next view', group: 'View', scope: 'app', keys: '⌘E' },
+  { id: 'view-read', label: 'Preview only', group: 'View', scope: 'app', keys: '⌥⌘1' },
+  { id: 'view-split', label: 'Source and preview', group: 'View', scope: 'app', keys: '⌥⌘2' },
+  { id: 'view-write', label: 'Source only', group: 'View', scope: 'app', keys: '⌥⌘3' },
+  { id: 'view-cycle', label: 'Next view', group: 'View', scope: 'app', keys: '⌘E' },
 
   // ── Editing (everywhere)
   { id: 'undo', label: 'Undo', group: 'Editing', scope: 'app', keys: '⌘Z', fixed: true },

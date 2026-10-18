@@ -6,6 +6,7 @@ mod files;
 mod launch_services;
 mod menu;
 mod plugins;
+mod tex;
 mod update;
 
 use std::sync::Mutex;
@@ -144,6 +145,10 @@ pub fn run() {
             plugins::installed_plugins,
             plugins::install_plugin,
             plugins::remove_plugin,
+            tex::tex_status,
+            tex::tex_compile,
+            tex::tex_forget,
+            tex::tex_install,
             defaults::default_apps,
             defaults::set_default_apps,
         ])

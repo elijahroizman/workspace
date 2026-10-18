@@ -7,8 +7,10 @@
 // A plugin bigger than about 1 MB should be a download.
 
 import type { ComponentType } from 'react'
-import { BookOpen, FileCode2, FileText, FileType2, NotepadText, Presentation } from 'lucide-react'
+import { BookOpen, FileCode2, FileText, FileType2, NotepadText, Presentation, Sigma, Workflow } from 'lucide-react'
 import excalidraw from '../../plugins/excalidraw/plugin.json'
+import latex from '../../plugins/latex/plugin.json'
+import mermaid from '../../plugins/mermaid/plugin.json'
 import { ExcalidrawIcon } from './icons'
 
 export interface KindInfo {
@@ -39,6 +41,8 @@ export interface PluginInfo {
   /** The engines' licenses, as SPDX ids (the full texts are in Settings › General › Licenses). */
   license: string
   homepage: string
+  /** What the plugin's editor gets from Workspace beyond the basics (see context.tex in api.ts). */
+  services?: 'tex'[]
   /** Built in: always on. Otherwise how its files arrive. */
   source:
     | { type: 'builtin' }
@@ -192,6 +196,51 @@ export const PLUGINS: PluginInfo[] = [
         color: 'var(--kind-epub)',
         icon: BookOpen,
         untitled: 'Untitled Book',
+        panels: { left: true, right: false },
+      },
+    ],
+  },
+  {
+    id: 'mermaid',
+    name: 'Mermaid',
+    description: 'Flowcharts, sequence diagrams, Gantt charts and more, written as text and drawn as you type.',
+    homepage: 'https://mermaid.js.org',
+    license: 'MIT',
+    source: { type: 'download', version: mermaid.version, size: mermaid.size },
+    kinds: [
+      {
+        id: 'mermaid',
+        prose: 'Mermaid',
+        label: 'Mermaid Diagram',
+        short: 'Diagram',
+        extensions: ['mmd', 'mermaid'],
+        color: 'var(--kind-mermaid)',
+        icon: Workflow,
+        untitled: 'Untitled Diagram',
+        create: { title: 'New diagram', hint: 'Mermaid (.mmd)' },
+        panels: { left: true, right: false },
+      },
+    ],
+  },
+  {
+    id: 'latex',
+    name: 'LaTeX',
+    description: 'Write LaTeX and watch the PDF update as you go. Compiles with the TeX on your computer (MacTeX or MiKTeX), which Workspace can install.',
+    homepage: 'https://www.latex-project.org',
+    license: 'MIT',
+    services: ['tex'],
+    source: { type: 'download', version: latex.version, size: latex.size },
+    kinds: [
+      {
+        id: 'latex',
+        prose: 'LaTeX',
+        label: 'LaTeX Document',
+        short: 'LaTeX',
+        extensions: ['tex'],
+        color: 'var(--kind-latex)',
+        icon: Sigma,
+        untitled: 'Untitled LaTeX',
+        create: { title: 'New LaTeX document', hint: 'LaTeX (.tex)' },
         panels: { left: true, right: false },
       },
     ],

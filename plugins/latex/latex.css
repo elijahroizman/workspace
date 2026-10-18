@@ -1,0 +1,69 @@
+.tex-pdf {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.tex-pdf > .pdf-stage {
+  flex: 1;
+}
+
+.tex-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  text-align: center;
+  color: var(--fg-faint);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.tex-empty[hidden] {
+  display: none;
+}
+
+.tex-status {
+  font-size: 12px;
+  color: var(--fg-muted);
+  padding: 2px 0 4px;
+}
+
+.tex-status.busy::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: tex-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes tex-pulse {
+  from {
+    opacity: 0.3;
+  }
+}
+
+.tex-engine-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.tex-engine {
+  flex: 1;
+  min-width: 0;
+  max-width: 170px;
+  font: inherit;
+  color: var(--fg);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 6px;
+}

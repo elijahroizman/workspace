@@ -35,7 +35,7 @@ export interface EditorHandle {
   find?(): void
   zoom?(direction: 'in' | 'out' | 'reset'): void
   print?(): Promise<void>
-  /** Markdown view mode: read, split, write, or cycle through them. */
+  /** Source-and-preview editors (Markdown, Mermaid, LaTeX): read, split, write, or cycle through them. */
   viewMode?(mode: 'read' | 'split' | 'write' | 'cycle'): void
   /** Editor shortcuts by id (see state/shortcuts.ts). One that can't run right now answers false, and the key goes on to the document. */
   actions?: Record<string, () => boolean | void>
@@ -80,6 +80,12 @@ interface WorkspaceState {
   openPaths(paths: string[]): Promise<void>
   openFiles(files: platform.OpenedFile[]): void
   openDialog(): Promise<void>
+  /**
+   * Open bytes that aren't a file yet (a plugin's compiled PDF) as an unsaved tab of the kind
+   * `name`'s extension says. Passing the id this returned last time updates that tab instead,
+   * if it's still open and unchanged. Returns the tab's id, or null if no plugin opens the kind.
+   */
+  openUnsaved(bytes: Uint8Array, name: string, replace?: string | null): string | null
   newDocument(kind: DocKind): void
   markDirty(id: string, dirty: boolean): void
   /**
@@ -254,6 +260,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     openDialog: async () => {
       const files = await platform.pickFiles()
       get().openFiles(files)
+    },
+
+    openUnsaved: (bytes, name, replace) => {
+      const kind = kindFromPath(name)
+      if (!kind || !kindEnabled(kind)) return null
+      const existing = replace ? get().tabs.find((t) => t.id === replace && !t.path && !t.dirty && t.kind === kind) : undefined
+      if (existing) {
+        set({ tabs: get().tabs.map((t) => (t.id === existing.id ? { ...t, bytes, loadId: t.loadId + 1 } : t)), activeId: existing.id })
+        return existing.id
+      }
+      const id = newId()
+      addTab({ id, kind, title: stripExtension(name), path: null, bytes, loadId: 0, dirty: false })
+      return id
     },
 
     newDocument: (kind) => {

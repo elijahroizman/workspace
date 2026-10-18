@@ -110,10 +110,10 @@ fn build_with<R: Runtime>(app: &AppHandle<R>, keys: &Shortcuts) -> tauri::Result
         .item(&item(app, keys, "find", "Find…", Some("CmdOrCtrl+F"))?)
         .build()?;
 
-    let markdown_menu = SubmenuBuilder::new(app, "Markdown View")
-        .item(&item(app, keys, "view-read", "Read", Some("CmdOrCtrl+Alt+1"))?)
-        .item(&item(app, keys, "view-split", "Split", Some("CmdOrCtrl+Alt+2"))?)
-        .item(&item(app, keys, "view-write", "Write", Some("CmdOrCtrl+Alt+3"))?)
+    let markdown_menu = SubmenuBuilder::new(app, "Source and Preview")
+        .item(&item(app, keys, "view-read", "Preview Only", Some("CmdOrCtrl+Alt+1"))?)
+        .item(&item(app, keys, "view-split", "Source and Preview", Some("CmdOrCtrl+Alt+2"))?)
+        .item(&item(app, keys, "view-write", "Source Only", Some("CmdOrCtrl+Alt+3"))?)
         .separator()
         .item(&item(app, keys, "view-cycle", "Next View", Some("CmdOrCtrl+E"))?)
         .build()?;

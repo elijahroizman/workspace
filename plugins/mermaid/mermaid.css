@@ -1,0 +1,42 @@
+.mm-stage {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  background: var(--sp-paper);
+}
+
+.mm-canvas {
+  min-width: 100%;
+  min-height: 100%;
+  width: max-content;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.mm-canvas svg {
+  display: block;
+  flex: none;
+}
+
+.mm-empty {
+  color: var(--fg-faint);
+  font-size: 13px;
+}
+
+.mm-info {
+  font-size: 12px;
+  color: var(--fg-muted);
+  padding: 2px 0 4px;
+}
+
+.mm-info:empty {
+  display: none;
+}
+
+.mm-print {
+  display: flex;
+  justify-content: center;
+}

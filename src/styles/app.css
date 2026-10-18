@@ -17,6 +17,8 @@
   --kind-txt: #8e8e93;
   --kind-excalidraw: #6965db;
   --kind-epub: #2fb39a;
+  --kind-mermaid: #ff3670;
+  --kind-latex: #c9902c;
 
   --accent: #4f8cff;
   --accent-fg: #ffffff;
@@ -2389,4 +2391,87 @@ button {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 26px;
+}
+
+/* ── Installing TeX (LaTeX plugin) */
+
+.tex-install-backdrop {
+  z-index: 130;
+}
+
+.tex-install {
+  width: min(440px, calc(100% - 32px));
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--raised);
+  box-shadow: var(--shadow-pop);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tex-install h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.tex-install p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.tex-install-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tex-install-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tex-install-choice:hover {
+  background: var(--hover);
+}
+
+.tex-install-choice.primary {
+  border-color: var(--accent);
+}
+
+.tex-install-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tex-install-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.plugin-extra {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.plugin-extra-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
