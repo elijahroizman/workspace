@@ -202,12 +202,21 @@ fn unpack(archive: &[u8], root: &Path, id: &str, version: &str) -> Result<(), St
         let _ = fs::remove_dir_all(&staging);
         return Err(e);
     }
+    // Two renames, so the plugin's folder is missing only for an instant (a tab loading it then
+    // waits for the install; see loadModule in PluginEditor.tsx).
     let dest = root.join(id);
-    let _ = fs::remove_dir_all(&dest);
-    fs::rename(&staging, &dest).map_err(|e| {
+    let old = root.join(format!(".{id}-old"));
+    let _ = fs::remove_dir_all(&old);
+    let had_old = fs::rename(&dest, &old).is_ok();
+    if let Err(e) = fs::rename(&staging, &dest) {
+        if had_old {
+            let _ = fs::rename(&old, &dest);
+        }
         let _ = fs::remove_dir_all(&staging);
-        fail(&e)
-    })
+        return Err(fail(&e));
+    }
+    let _ = fs::remove_dir_all(&old);
+    Ok(())
 }
 
 /// `wsplugin://localhost/<id>/<file>` (`http://wsplugin.localhost/…` on Windows): files of an

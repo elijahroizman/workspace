@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { EditorProps } from '../App'
 import { CenterState } from '../components/ui'
 import { openExternal } from '../lib/platform'
-import { pluginBaseUrl } from '../state/plugins'
+import { installSettled, pluginBaseUrl } from '../state/plugins'
 import { useSettings } from '../state/settings'
 import { registerEditor, useWorkspace } from '../state/workspace'
 import type { PluginEditor as Instance, PluginModule } from './api'
@@ -16,7 +16,10 @@ function loadModule(kind: string): Promise<PluginModule> {
   const plugin = pluginForKind(kind)
   let module = modules.get(plugin.id)
   if (!module) {
-    module = import(/* @vite-ignore */ `${pluginBaseUrl(plugin)}index.js`).then((m: PluginModule) => {
+    // An update downloading at launch replaces the files; load the new ones once it's done.
+    module = installSettled(plugin.id)
+      .then(() => import(/* @vite-ignore */ `${pluginBaseUrl(plugin)}index.js`))
+      .then((m: PluginModule) => {
       if (m.apiVersion !== PLUGIN_API_VERSION) throw new Error(`This version of the ${plugin.name} plugin doesn't fit this version of Workspace.`)
       return m
     })

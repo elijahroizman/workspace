@@ -122,6 +122,18 @@ export const usePlugins = create<PluginsState>((set, get) => {
   }
 })
 
+/** Resolves once no download of this plugin is in flight (at once if none is). */
+export function installSettled(id: string): Promise<void> {
+  if (!usePlugins.getState().progress[id]) return Promise.resolve()
+  return new Promise((resolve) => {
+    const stop = usePlugins.subscribe((s) => {
+      if (s.progress[id]) return
+      stop()
+      resolve()
+    })
+  })
+}
+
 /** Whether files of this kind open: its plugin is built in, or turned on. */
 export function kindEnabled(kind: string, enabled = usePlugins.getState().enabled): boolean {
   const plugin = pluginForKind(kind)

@@ -4,6 +4,7 @@
   "version": "0.6.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/licenses.mjs",
     "dev": "vite",
     "build": "node scripts/licenses.mjs && tsc-rs --noEmit -p . && tsc-rs --noEmit -p plugins && vite build",
     "preview": "vite preview",

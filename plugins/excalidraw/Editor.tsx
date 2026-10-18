@@ -25,6 +25,7 @@ export async function mountEditor(element: HTMLElement, context: PluginEditorCon
   let ready: () => void
   const apiReady = new Promise<void>((resolve) => (ready = resolve))
   let savedKey: string | null = null
+  let reportedKey: string | null = null
   let setTheme: (theme: Theme) => void = () => {}
 
   function App() {
@@ -45,9 +46,13 @@ export async function mountEditor(element: HTMLElement, context: PluginEditorCon
         onChange={() => {
           if (!api) return
           const key = sceneKey(api)
-          // The first change is Excalidraw settling the loaded scene.
-          if (savedKey === null) savedKey = key
-          else if (key !== savedKey) context.onChange()
+          // The first change is Excalidraw settling the loaded scene. After that it also calls
+          // this for scrolling and selection; only a different drawing is an edit.
+          if (savedKey === null) savedKey = reportedKey = key
+          else if (key !== reportedKey) {
+            reportedKey = key
+            if (key !== savedKey) context.onChange()
+          }
         }}
         onLinkOpen={(el, event) => {
           const link = el.link

@@ -102,7 +102,11 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(PendingOpens(Mutex::new(cli_paths)))
-        .register_uri_scheme_protocol("wsplugin", |ctx, request| plugins::serve(ctx.app_handle(), &request))
+        // Reading plugin files is disk I/O: answer off the thread that asked.
+        .register_asynchronous_uri_scheme_protocol("wsplugin", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || responder.respond(plugins::serve(&app, &request)));
+        })
         .setup(|app| {
             // A second Workspace.app (an old install, a target/ build, a mounted
             // disk image) shows up in Open With as another version. Unregister

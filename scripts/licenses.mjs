@@ -125,8 +125,8 @@ function cratePackages() {
       }),
     )
   } catch (err) {
-    console.warn(`licenses: skipping Rust crates (cargo metadata failed: ${err.message})`)
-    return []
+    // A list without the native app's crates would claim to be complete; don't write one.
+    throw new Error(`licenses: cargo metadata failed, so the Rust crates can't be listed: ${err.message}`)
   }
   const ours = new Set(metadata.workspace_members)
   const inGraph = new Set(metadata.resolve.nodes.map((n) => n.id))
@@ -135,6 +135,13 @@ function cratePackages() {
     .map((p) => {
       const license = p.license ?? (p.license_file ? 'See files' : 'Unknown')
       let files = licenseFiles(dirname(p.manifest_path))
+      // A crate can name its license file anything (license-file in Cargo.toml).
+      if (p.license_file) {
+        const declared = join(dirname(p.manifest_path), p.license_file)
+        if (existsSync(declared) && !files.some((f) => join(dirname(p.manifest_path), f.file) === declared)) {
+          files.push({ file: p.license_file, text: textId(readFileSync(declared, 'utf8').trim()) })
+        }
+      }
       // Dual-licensed crates that publish no file: take the MIT option, with its notice.
       if (!files.length && /\bMIT\b/.test(license)) {
         const holder = p.authors?.length ? p.authors.map((a) => a.replace(/\s*<.*$/, '')).join(', ') : `the ${p.name} authors`
