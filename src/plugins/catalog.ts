@@ -225,7 +225,7 @@ export const PLUGINS: PluginInfo[] = [
   {
     id: 'latex',
     name: 'LaTeX',
-    description: 'Write LaTeX and watch the PDF update as you go. Compiles with the TeX on your computer (MacTeX or MiKTeX), which Workspace can install.',
+    description: 'Write LaTeX and watch the PDF update as you go. Compiles with the TeX on your computer (MacTeX, MiKTeX or TeX Live), which Workspace can install.',
     homepage: 'https://www.latex-project.org',
     license: 'MIT',
     services: ['tex'],

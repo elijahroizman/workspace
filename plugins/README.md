@@ -55,7 +55,7 @@ Fields marked optional in `api.ts` can be missing in an older app, so check them
 The `plugins/shared` folder has reusable helpers:
 
 - `vite.ts`: `pluginConfig(import.meta.url)` is the one-line Vite config every plugin uses
-- `source-preview.ts`: `mountSourcePreview()` gives you a CodeMirror editor on the left and a preview pane on the right, with view switching (read/split/write) and idle delays. Use it for text-to-rendered formats like Markdown, Mermaid, LaTeX. It also exports `sidebarSection`, `sidebarItem`, and `sidebarHint` for styling sidebar content to match Workspace.
+- `source-preview.ts`: `mountSourcePreview()` gives you a CodeMirror editor on the left and a preview pane on the right, with view switching (read/split/write) and idle delays. Use it for text-to-rendered formats like Markdown, Mermaid, LaTeX. It also exports `sidebarSection` (pass `{ list: true }` for rows made with `sidebarItem`), `sidebarItem`, and `sidebarHint` for styling sidebar content to match Workspace. Show errors in the sidebar, not in a popup over the preview. A plugin that opens a copy of its output in a tab (`openDocument`) can keep it current with `updateDocument`.
 
 ## Making a plugin
 

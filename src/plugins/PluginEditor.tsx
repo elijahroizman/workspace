@@ -112,6 +112,7 @@ export default function PluginEditor({ tab, active }: EditorProps) {
           openDocument: ({ bytes, name }) => {
             opened = useWorkspace.getState().openUnsaved(bytes, name, opened)
           },
+          updateDocument: ({ bytes }) => !!opened && useWorkspace.getState().refreshUnsaved(opened, bytes),
           saveFile: ({ bytes, name }) =>
             saveBytesAs(name, bytes).catch(async (err) => {
               await showError(err instanceof Error ? err.message : String(err))

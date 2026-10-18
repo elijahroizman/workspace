@@ -5,7 +5,7 @@
 
 import type { Update } from '@tauri-apps/plugin-updater'
 import { create } from 'zustand'
-import { isMac, isTauri } from './platform'
+import { isLinux, isMac, isTauri } from './platform'
 
 const FIRST_CHECK = 10_000
 const CHECK_EVERY = 4 * 60 * 60_000
@@ -44,8 +44,11 @@ export const useUpdate = create<UpdateSnapshot>(() => ({
 let downloaded: Update | null = null
 let checking = false
 
-/** Release builds can download and install. Dev and the browser can still read the notes. */
-export const updatesInstallable = isTauri && !import.meta.env.DEV
+/**
+ * Release builds on a Mac or Windows can download and install. Dev, the browser and Linux (a
+ * .deb is installed with apt, which Tauri's updater can't drive) can still read the notes.
+ */
+export const updatesInstallable = isTauri && !import.meta.env.DEV && !isLinux
 
 async function fetchRelease(): Promise<ReleaseNotes> {
   if (isTauri) {

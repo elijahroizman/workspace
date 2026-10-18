@@ -8,6 +8,7 @@ import { KINDS, kindFromPath } from './kinds'
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 export const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform || navigator.userAgent)
 export const isWindows = typeof navigator !== 'undefined' && /Win/.test(navigator.platform || navigator.userAgent)
+export const isLinux = typeof navigator !== 'undefined' && /Linux/.test(navigator.platform || navigator.userAgent) && !/Android/.test(navigator.userAgent)
 
 /** “Show in Finder” on a Mac, “Show in File Explorer” on Windows. */
 export const revealLabel = isMac ? 'Show in Finder' : isWindows ? 'Show in File Explorer' : 'Show in Folder'

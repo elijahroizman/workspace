@@ -1,14 +1,15 @@
 // The system's TeX, for the LaTeX plugin: whether it's installed, compiling, and installing it
-// (src-tauri/src/tex.rs). Workspace doesn't ship TeX; it offers to install MacTeX or MiKTeX when
-// the plugin is turned on and there's none.
+// (src-tauri/src/tex.rs). Workspace doesn't ship TeX; it offers to install it (MacTeX, MiKTeX or
+// TeX Live, through Homebrew, winget or apt where those are there) when the plugin is turned on
+// and there's none, and to remove it again when the plugin is turned off.
 
 import { create } from 'zustand'
 import type { TexResult, TexService, TexStatus } from '../plugins/api'
-import { isMac, isTauri, isWindows, listen } from '../lib/platform'
+import { isLinux, isMac, isTauri, isWindows, listen } from '../lib/platform'
 
 const invoke = async <T>(cmd: string, args?: Record<string, unknown>) => (await import('@tauri-apps/api/core')).invoke<T>(cmd, args)
 
-export type InstallVariant = 'mactex' | 'basictex' | 'miktex'
+export type InstallVariant = 'mactex' | 'basictex' | 'miktex' | 'texlive' | 'texlive-basic'
 
 export interface InstallProgress {
   stage: 'download' | 'verify' | 'install'
@@ -20,6 +21,8 @@ interface TexState {
   status: TexStatus | null
   /** The install offer is showing. */
   offer: boolean
+  /** The "turn off LaTeX" question is showing: how TeX would be removed, and where that has got to. */
+  removal: { method: string; busy: boolean; error: string | null } | null
   installing: InstallProgress | null
   error: string | null
   refresh(): Promise<TexStatus>
@@ -27,14 +30,23 @@ interface TexState {
   offerInstall(): Promise<TexStatus>
   install(variant: InstallVariant): Promise<void>
   close(): void
+  /**
+   * Called when the LaTeX plugin is turned off. If Workspace can take TeX off the computer, asks
+   * whether to (it's off unless they tick it). Resolves false if they cancel turning the plugin off.
+   */
+  confirmTurnOff(): Promise<boolean>
+  /** Answer the question `confirmTurnOff` is asking. */
+  answerTurnOff(proceed: boolean, remove: boolean): Promise<void>
 }
 
 const NONE: TexStatus = { installed: false, engines: [] }
 let closed: ((status: TexStatus) => void)[] = []
+let turnOff: ((proceed: boolean) => void) | null = null
 
 export const useTex = create<TexState>((set, get) => ({
   status: null,
   offer: false,
+  removal: null,
   installing: null,
   error: null,
 
@@ -68,6 +80,43 @@ export const useTex = create<TexState>((set, get) => ({
     }
   },
 
+  confirmTurnOff: async () => {
+    const hook = texTestHook()
+    const status = await get().refresh()
+    const method = !status.installed ? null : hook ? (hook.uninstallMethod?.() ?? null) : isTauri ? await invoke<string | null>('tex_uninstall_method').catch(() => null) : null
+    if (!method) return true
+    set({ removal: { method, busy: false, error: null } })
+    return new Promise((resolve) => (turnOff = resolve))
+  },
+
+  answerTurnOff: async (proceed, remove) => {
+    const removal = get().removal
+    if (!removal || removal.busy) return
+    const finish = (value: boolean) => {
+      set({ removal: null })
+      turnOff?.(value)
+      turnOff = null
+    }
+    if (!proceed) return finish(false)
+    // After a failed removal the button says "Turn off anyway": the plugin goes off, the TeX stays.
+    if (!remove || removal.error) return finish(true)
+    set({ removal: { ...removal, busy: true, error: null } })
+    let stop = () => {}
+    try {
+      const hook = texTestHook()
+      if (hook?.uninstall) set({ status: await hook.uninstall() })
+      else {
+        stop = await listen<InstallProgress>('tex-progress', () => {})
+        set({ status: await invoke<TexStatus>('tex_uninstall') })
+      }
+      finish(true)
+    } catch (err) {
+      set({ removal: { ...removal, busy: false, error: String(err) } })
+    } finally {
+      stop()
+    }
+  },
+
   close: () => {
     if (get().installing) return
     set({ offer: false })
@@ -85,15 +134,22 @@ export const INSTALL_CHOICES: { variant: InstallVariant; name: string; size: str
     ]
   : isWindows
     ? [{ variant: 'miktex', name: 'MiKTeX', size: '140 MB', hint: 'Installs packages as documents need them. Just for you, no administrator needed.' }]
-    : []
+    : isLinux
+      ? [
+          { variant: 'texlive', name: 'TeX Live', size: 'about 1 GB', hint: 'Installed with apt. What documents commonly need, with XeTeX and LuaTeX. Asks for your password.' },
+          { variant: 'texlive-basic', name: 'TeX Live, basics', size: 'about 400 MB', hint: 'Installed with apt. Just the basic packages; add others with apt.' },
+        ]
+      : []
 
 /**
  * Test builds can stand in for the app's TeX (window.__texFake), so the plugin can be driven in
  * a browser.
  */
-export function texTestHook(): Pick<TexService, 'status' | 'compile'> | undefined {
+type TexFake = Pick<TexService, 'status' | 'compile'> & { uninstallMethod?(): string | null; uninstall?(): Promise<TexStatus> }
+
+export function texTestHook(): TexFake | undefined {
   if (!import.meta.env.DEV && !import.meta.env.VITE_TEST_HOOKS) return undefined
-  return (window as { __texFake?: Pick<TexService, 'status' | 'compile'> }).__texFake
+  return (window as { __texFake?: TexFake }).__texFake
 }
 
 /** Compiles one at a time per tab; asking again while one runs replaces the waiting request. */

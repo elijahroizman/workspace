@@ -2,7 +2,7 @@
 
 # Workspace
 
-A small, fast Mac and Windows app for the document types most people actually use: **Word (.docx), PowerPoint (.pptx), PDF, Markdown and plain text (.txt)**, plus optional plugins: **Excalidraw** drawings, **EPUB** books, **Mermaid** diagrams and **LaTeX** documents. Everything opens as a tab in one window, and each kind of document gets its own sidebar and inspector.
+A small, fast Mac, Windows and Debian/Ubuntu app for the document types most people actually use: **Word (.docx), PowerPoint (.pptx), PDF, Markdown and plain text (.txt)**, plus optional plugins: **Excalidraw** drawings, **EPUB** books, **Mermaid** diagrams and **LaTeX** documents. Everything opens as a tab in one window, and each kind of document gets its own sidebar and inspector.
 
 - **Plugins.** Office, PDF, Markdown and text are built in. Others are optional: turn them on in the setup screen that opens the first time you launch Workspace, or later in **Settings › Plugins**. The first optional plugin is [Excalidraw](https://excalidraw.com) for `.excalidraw` drawings. It's about 16 MB, mostly fonts, so Workspace downloads it from this repository's releases when you turn it on and checks its signature before installing it. The EPUB reader is small, so it comes with the app and turns on instantly. It shows a book as one scrolling column with its table of contents in the sidebar, and reopens a book where you left off. **Mermaid** and **LaTeX** work like Markdown: source and preview side by side, and ⌘E switches between the preview, both, and the source. Mermaid draws the diagram as you type. LaTeX compiles with the TeX installed on your computer (MacTeX on a Mac, MiKTeX or TeX Live on Windows) a few seconds after you stop typing (set how long in **Settings › Plugins**), shows the PDF in Workspace's own viewer, and lists errors and the outline in the sidebar. If there's no TeX, Workspace offers to install it when you turn the plugin on. Both plugins download when you turn them on.
 
@@ -21,7 +21,7 @@ A small, fast Mac and Windows app for the document types most people actually us
 - **New files.** ⌘N asks which kind of file to make, from the plugins you have on. The Home tab has a button for each too.
 - **Autosave.** A file you have already saved is written back to that same place a few seconds after you stop editing. That place can be any folder, including one that iCloud Drive, Dropbox, OneDrive or another sync app already watches. The sync app uploads the file. Workspace does not sign in to anything. A new document is not saved until you use Save. In **Settings** (⌘,) you can turn autosave off, change the delay, or leave PDFs on manual save, because saving a PDF rewrites the whole file.
 - **Works offline, no accounts.** Every document engine runs locally on your computer.
-- **Keeps itself up to date.** New versions download in the background and install when you quit. To install one straight away, click **Restart to Update** in the tab bar.
+- **Keeps itself up to date (Mac and Windows).** New versions download in the background and install when you quit. To install one straight away, click **Restart to Update** in the tab bar. On Linux, install each new `.deb` yourself.
 
 ## Install
 
@@ -29,8 +29,9 @@ Download the latest build from [Releases](https://github.com/elijahroizman/works
 
 - **Mac (Apple silicon):** open `Workspace_…_aarch64.dmg` and drag Workspace to Applications.
 - **Windows (x64):** run `Workspace_…_x64-setup.exe`. Windows may say "Windows protected your PC" because the app isn't signed. Click **More info** → **Run anyway**.
+- **Debian, Ubuntu (x64):** run `sudo apt install ./Workspace_…_amd64.deb`. Needs Ubuntu 22.04 or Debian 12 or newer.
 
-After that, updates install themselves.
+On Mac and Windows, updates install themselves. On Linux, the update button shows the latest release's notes; install each new `.deb` the same way.
 
 ## Build it yourself on a Mac
 
@@ -166,6 +167,6 @@ src-tauri/
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before you change anything. It covers who can push to `main` and what every pull request must say.
 
-The **Release** workflow (`.github/workflows/release.yml`) builds a Windows x64 installer (`.exe`) and a Mac Apple-silicon `.dmg` on GitHub's runners and attaches both to a GitHub Release. Run it from the Actions tab, or push a tag such as `v0.3.0` after bumping the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. The workflow also signs the update bundles and publishes `latest.json`, the feed installed copies check. The signing key is in the repository's Actions secrets (`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`), and its public half is in `tauri.conf.json`. If the key is lost, installed copies can't verify new versions, and everyone has to reinstall by hand once. On Windows, a local build is `npx tauri build --bundles nsis`.
+The **Release** workflow (`.github/workflows/release.yml`) builds a Windows x64 installer (`.exe`), a Mac Apple-silicon `.dmg` and a Debian/Ubuntu x64 `.deb` on GitHub's runners and attaches them to a GitHub Release. Run it from the Actions tab, or push a tag such as `v0.3.0` after bumping the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. The workflow also signs the update bundles and publishes `latest.json`, the feed installed copies check (the `.deb` has no update bundle, so the Linux job doesn't touch it). The signing key is in the repository's Actions secrets (`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`), and its public half is in `tauri.conf.json`. If the key is lost, installed copies can't verify new versions, and everyone has to reinstall by hand once. On Windows, a local build is `npx tauri build --bundles nsis`; on Debian or Ubuntu it's `npx tauri build --bundles deb` (needs `build-essential`, `pkg-config`, `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `libssl-dev`, `libxdo-dev` and `patchelf`).
 
 Optional plugins have their own **Plugins** workflow (`.github/workflows/plugins.yml`): push a tag like `plugin-excalidraw-0.18.1-1` and it builds, zips and signs that plugin with the same key, and attaches it to a pre-release. Do that whenever a plugin's version in `plugins/<id>/plugin.json` changes, before releasing an app version that wants it.

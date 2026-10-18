@@ -71,7 +71,7 @@ function problemFrom(err: unknown): Problem {
   const caret = lines.findIndex((l) => /^-*\^\s*$/.test(l))
   if (/^Parse error on line \d+:?$/.test(message.trim()) && caret > 0) {
     const near = lines[caret - 1].slice(lines[caret].indexOf('^')).trim()
-    message = near ? `Mermaid can’t read “${near.length > 30 ? `${near.slice(0, 30)}…` : near}”` : 'Mermaid can’t read this line'
+    message = near ? `Mermaid can’t read “${near.length > 60 ? `${near.slice(0, 60)}…` : near}”` : 'Mermaid can’t read this line'
   }
   return { message: message.replace(/^Error:\s*/, ''), line: Number.isFinite(line) && line ? line : undefined }
 }
@@ -156,9 +156,7 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
   const stage = el('div', 'mm-stage')
   const canvas = el('div', 'mm-canvas')
   stage.appendChild(canvas)
-  const message = el('div', 'sp-message tone-error')
-  message.hidden = true
-  kit.preview.append(stage, message)
+  kit.preview.appendChild(stage)
 
   // ── Drawing
 
@@ -189,19 +187,9 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
     refreshInfo(text)
   }
 
+  /** The error shows in the sidebar's list, not over the diagram, which stays as last drawn. */
   function setProblem(next: Problem | null) {
     problem = next
-    message.hidden = !next
-    message.replaceChildren()
-    if (next) {
-      message.append(el('div', undefined, next.line ? `Line ${next.line}: ${next.message}` : next.message))
-      if (next.line) {
-        const button = el('button', 'btn', 'Show the line')
-        button.type = 'button'
-        button.addEventListener('click', () => kit.goToLine(next.line!))
-        message.append(button)
-      }
-    }
     renderProblems()
   }
 
@@ -265,8 +253,8 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
     svgButton.type = pngButton.type = 'button'
     actions.append(info, svgButton, pngButton)
     diagram.appendChild(actions)
-    problemsBody = sidebarSection(sidebar, 'Errors')
-    const templates = sidebarSection(sidebar, 'Start from a template')
+    problemsBody = sidebarSection(sidebar, 'Errors', { list: true })
+    const templates = sidebarSection(sidebar, 'Start from a template', { list: true })
     for (const [name, text] of Object.entries(TEMPLATES)) {
       templates.appendChild(
         sidebarItem(name, {

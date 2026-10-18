@@ -1,10 +1,11 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { startAppearance } from './state/appearance'
 import { getEditor, useWorkspace } from './state/workspace'
 import './styles/app.css'
 
-document.documentElement.dataset.theme = useWorkspace.getState().theme
+startAppearance()
 
 // Development helper: http://localhost:1420/?open=/dev-samples/Handbook.pdf opens files without a dialog.
 // Also available in test builds (VITE_TEST_HOOKS=1 npm run build) for automated UI checks.

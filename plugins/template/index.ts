@@ -53,7 +53,7 @@ export const mount: PluginModule['mount'] = (element, context): PluginEditor => 
   const words = document.createElement('div')
   if (context.sidebar) {
     sidebarSection(context.sidebar, 'Document').appendChild(words)
-    sidebarSection(context.sidebar, 'Export').appendChild(
+    sidebarSection(context.sidebar, 'Export', { list: true }).appendChild(
       sidebarItem('Save as text…', {
         onClick: () => void context.saveFile?.({ bytes: encode(kit.text()), name: `${context.title}.txt` }),
       }),

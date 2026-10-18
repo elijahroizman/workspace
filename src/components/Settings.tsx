@@ -1,10 +1,13 @@
-import { ArrowLeft, Blocks, Keyboard, Moon, Palette, RotateCcw, Save, Search, Settings2, Sun, X } from 'lucide-react'
+import { ArrowLeft, Blocks, Copy, Keyboard, Monitor, Moon, Palette, Pencil, Plus, RotateCcw, Save, Search, Settings2, Sun, Trash2, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { canSetDefaults, defaultStatus, makeDefault } from '../lib/defaults'
-import { isMac, openExternal, shortcut, showError } from '../lib/platform'
+import { isLinux, isMac, openExternal, shortcut, showError } from '../lib/platform'
+import type { Appearance, ThemeDef } from '../lib/themes'
+import { isHex, orbBackground } from '../lib/themes'
 import { openUpdatePanel } from '../lib/updater'
 import { PLUGINS, isBuiltIn } from '../plugins/catalog'
+import { allThemes, useAppearance } from '../state/appearance'
 import { enabledKinds, usePlugins } from '../state/plugins'
 import type { SettingsPage } from '../state/settings'
 import { PREVIEW_DELAYS, useSettings } from '../state/settings'
@@ -87,7 +90,7 @@ export default function SettingsPanel() {
               <X size={16} />
             </IconButton>
           </header>
-          <div className="settings-scroll">
+          <div className="settings-scroll" key={page}>
             {page === 'general' && <GeneralPage />}
             {page === 'plugins' && <PluginsPage />}
             {page === 'autosave' && <AutosavePage />}
@@ -113,7 +116,7 @@ function GeneralPage() {
       <div className="settings-row">
         <div className="settings-row-text">
           <span className="settings-label">Workspace {__APP_VERSION__}</span>
-          <span className="settings-hint">Updates download by themselves and install when you quit.</span>
+          <span className="settings-hint">{isLinux ? 'Download new versions from GitHub. Check for updates shows whether a new one is out.' : 'Updates download by themselves and install when you quit.'}</span>
         </div>
         <div className="settings-row-control">
           <button type="button" className="btn" onClick={() => (setOpen(false), openUpdatePanel())}>
@@ -123,6 +126,8 @@ function GeneralPage() {
       </div>
 
       <DefaultAppsRow />
+
+      <RecentFilesRow />
 
       <div className="settings-row">
         <div className="settings-row-text">
@@ -148,6 +153,36 @@ function GeneralPage() {
         </div>
       </div>
     </>
+  )
+}
+
+/** Home's Recent list: which file types get a tab, and clearing the history. */
+function RecentFilesRow() {
+  const plugins = usePlugins((s) => s.enabled)
+  const recentTabs = useSettings((s) => s.recentTabs)
+  const setRecentTab = useSettings((s) => s.setRecentTab)
+  const count = useWorkspace((s) => s.recents.length)
+  return (
+    <div className="settings-row column">
+      <div className="settings-row-text">
+        <span className="settings-label">Recent files</span>
+        <span className="settings-hint">Every file you open is under All. Choose which types also get a tab of their own on Home.</span>
+      </div>
+      <div className="kind-checks">
+        {enabledKinds(plugins).map((k) => (
+          <label key={k.id} className="check">
+            <input type="checkbox" checked={recentTabs[k.id] !== false} onChange={(e) => setRecentTab(k.id, e.currentTarget.checked)} />
+            {k.short}
+          </label>
+        ))}
+      </div>
+      <div className="settings-inline">
+        <button type="button" className="btn" disabled={!count} onClick={() => useWorkspace.getState().clearRecents()}>
+          Clear file history
+        </button>
+        <span className="settings-hint">{count ? `Forgets the ${count === 1 ? 'file' : `${count} files`} on Home. The files themselves stay where they are.` : 'There’s nothing in the history.'}</span>
+      </div>
+    </div>
   )
 }
 
@@ -306,6 +341,8 @@ async function disablePlugin(id: string, disable: (id: string) => Promise<void>)
     await showError(`Close the ${open.length === 1 ? 'tab' : `${open.length} tabs`} using ${plugin.name} first (${open.map((t) => `“${t.title}”`).join(', ')}).`)
     return
   }
+  // LaTeX uses the computer's own TeX; offer to remove that too (unticked unless they choose).
+  if (plugin.services?.includes('tex') && !(await useTex.getState().confirmTurnOff())) return
   await disable(id)
 }
 
@@ -365,23 +402,141 @@ function AutosavePage() {
 }
 
 function AppearancePage() {
-  const theme = useWorkspace((s) => s.theme)
-  const setTheme = useWorkspace((s) => s.setTheme)
+  const mode = useWorkspace((s) => s.themeMode)
+  const setThemeMode = useWorkspace((s) => s.setThemeMode)
+  const light = useAppearance((s) => s.light)
+  const dark = useAppearance((s) => s.dark)
+  const custom = useAppearance((s) => s.custom)
+  const { use, remove } = useAppearance.getState()
+  const [editing, setEditing] = useState<ThemeDef | null>(null)
+
   return (
-    <div className="settings-row">
-      <div className="settings-row-text">
-        <span className="settings-label">Theme</span>
-        <span className="settings-hint">{shortcut('Switch any time with ⇧⌘L.')}</span>
+    <>
+      <div className="settings-row">
+        <div className="settings-row-text">
+          <span className="settings-label">Appearance</span>
+          <span className="settings-hint">{shortcut('System follows your computer. Switch between light and dark any time with ⇧⌘L.')}</span>
+        </div>
+        <div className="settings-row-control">
+          <Segmented
+            value={mode}
+            onChange={setThemeMode}
+            options={[
+              { value: 'system', label: 'System', icon: <Monitor size={14} /> },
+              { value: 'light', label: 'Light', icon: <Sun size={14} /> },
+              { value: 'dark', label: 'Dark', icon: <Moon size={14} /> },
+            ]}
+          />
+        </div>
       </div>
-      <div className="settings-row-control">
-        <Segmented
-          value={theme}
-          onChange={setTheme}
-          options={[
-            { value: 'light', label: 'Light', icon: <Sun size={14} /> },
-            { value: 'dark', label: 'Dark', icon: <Moon size={14} /> },
-          ]}
-        />
+
+      <section className="theme-section">
+        <div className="theme-section-header">
+          <h4>Themes</h4>
+          {!editing && (
+            <button type="button" className="btn" onClick={() => setEditing(blankTheme())}>
+              <Plus size={14} /> Create theme
+            </button>
+          )}
+        </div>
+        {editing && (
+          <ThemeEditor
+            theme={editing}
+            onChange={setEditing}
+            onCancel={() => setEditing(null)}
+            onSave={() => {
+              useAppearance.getState().save(editing)
+              // A new theme is used straight away.
+              if (!custom.some((t) => t.id === editing.id)) use(editing.id)
+              setEditing(null)
+            }}
+          />
+        )}
+        <div className="theme-grid">
+          {allThemes(custom).map((t) => (
+            <div key={t.id} className="theme-card">
+              <div className="theme-orbs">
+                <Orb theme={t} mode="light" selected={light === t.id} onSelect={() => use(t.id, 'light')} />
+                <Orb theme={t} mode="dark" selected={dark === t.id} onSelect={() => use(t.id, 'dark')} />
+              </div>
+              <div className="theme-card-foot">
+                <button type="button" className="theme-name" title="Use for light and dark" onClick={() => use(t.id)}>
+                  {t.name}
+                </button>
+                {t.custom && (
+                  <>
+                    <IconButton label="Edit theme" size="sm" onClick={() => setEditing({ ...t })}>
+                      <Pencil size={13} />
+                    </IconButton>
+                    <IconButton label="Delete theme" size="sm" onClick={() => remove(t.id)}>
+                      <Trash2 size={13} />
+                    </IconButton>
+                  </>
+                )}
+                <IconButton label="Make a copy to change" size="sm" onClick={() => setEditing({ ...t, id: newThemeId(), name: `${t.name} copy`, custom: true })}>
+                  <Copy size={13} />
+                </IconButton>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </>
+  )
+}
+
+const newThemeId = () => `custom-${Math.random().toString(36).slice(2, 8)}`
+const blankTheme = (): ThemeDef => ({ id: newThemeId(), name: 'My theme', accent: '#e0527a', light: '#f0d8e2', dark: '#2a1822', custom: true })
+
+/** Two orbs per theme: how it looks in light and in dark. Click one to use the theme for just that appearance. */
+function Orb({ theme, mode, selected, onSelect }: { theme: ThemeDef; mode: Appearance; selected: boolean; onSelect: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`theme-orb ${selected ? 'on' : ''}`}
+      title={`Use for ${mode} mode only`}
+      aria-label={`${theme.name}: use for ${mode} mode only`}
+      aria-pressed={selected}
+      onClick={onSelect}
+    >
+      <span className="theme-orb-ball" style={{ background: orbBackground(theme, mode) }} />
+      {selected && <span className="theme-orb-badge">{mode === 'light' ? <Sun size={11} /> : <Moon size={11} />}</span>}
+    </button>
+  )
+}
+
+/** The name, the accent, and the tone each appearance takes its surfaces from. */
+function ThemeEditor({ theme, onChange, onSave, onCancel }: { theme: ThemeDef; onChange: (theme: ThemeDef) => void; onSave: () => void; onCancel: () => void }) {
+  const valid = theme.name.trim().length > 0 && isHex(theme.accent) && isHex(theme.light) && isHex(theme.dark)
+  const swatch = (label: string, key: 'accent' | 'light' | 'dark') => (
+    <label className="theme-color">
+      <input type="color" value={theme[key]} onChange={(e) => onChange({ ...theme, [key]: e.currentTarget.value })} />
+      <span>{label}</span>
+    </label>
+  )
+  return (
+    <div className="theme-editor">
+      <div className="theme-orbs preview" aria-hidden="true">
+        <span className="theme-orb-ball" style={{ background: orbBackground(theme, 'light') }} />
+        <span className="theme-orb-ball" style={{ background: orbBackground(theme, 'dark') }} />
+      </div>
+      <div className="theme-editor-fields">
+        <label className="field">
+          <input value={theme.name} maxLength={40} placeholder="Theme name" spellCheck={false} onChange={(e) => onChange({ ...theme, name: e.currentTarget.value })} />
+        </label>
+        <div className="theme-colors">
+          {swatch('Accent', 'accent')}
+          {swatch('Light tone', 'light')}
+          {swatch('Dark tone', 'dark')}
+        </div>
+        <div className="theme-editor-actions">
+          <button type="button" className="btn primary" disabled={!valid} onClick={onSave}>
+            Save theme
+          </button>
+          <button type="button" className="btn" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   )

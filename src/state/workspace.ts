@@ -62,13 +62,17 @@ export const autosaveHooks = {
 }
 
 type Theme = 'dark' | 'light'
+/** What the user chose: a fixed appearance, or whatever the system is set to. */
+export type ThemeMode = Theme | 'system'
 
 interface WorkspaceState {
   tabs: DocTab[]
   activeId: string
   recents: RecentFile[]
   closedPaths: string[]
+  /** The appearance in use: `themeMode`, with 'system' resolved. */
   theme: Theme
+  themeMode: ThemeMode
   leftOpen: Record<DocKind, boolean>
   rightOpen: Record<DocKind, boolean>
   dropHover: boolean
@@ -86,6 +90,11 @@ interface WorkspaceState {
    * if it's still open and unchanged. Returns the tab's id, or null if no plugin opens the kind.
    */
   openUnsaved(bytes: Uint8Array, name: string, replace?: string | null): string | null
+  /**
+   * Replace the bytes of a tab openUnsaved made, without switching to it. Returns false once the
+   * tab is gone, or saved or edited (it's the user's now, so a rebuild must not overwrite it).
+   */
+  refreshUnsaved(id: string, bytes: Uint8Array): boolean
   newDocument(kind: DocKind): void
   markDirty(id: string, dirty: boolean): void
   /**
@@ -101,9 +110,12 @@ interface WorkspaceState {
   duplicateTab(id?: string): Promise<void>
   closeOthers(id: string): Promise<void>
   removeRecent(path: string): void
+  clearRecents(): void
   toggleLeft(kind?: DocKind): void
   toggleRight(kind?: DocKind): void
+  /** Switch between light and dark (⇧⌘L): a fixed choice from then on. */
   setTheme(theme: Theme): void
+  setThemeMode(mode: ThemeMode): void
   setDropHover(on: boolean): void
 }
 
@@ -111,6 +123,7 @@ const STORAGE = {
   recents: 'workspace.recents',
   session: 'workspace.session',
   theme: 'workspace.theme',
+  themeMode: 'workspace.themeMode',
   panels: 'workspace.panels',
 }
 
@@ -134,8 +147,16 @@ const initialPanels = {
   left: { ...defaultPanels.left, ...savedPanels.left },
   right: { ...defaultPanels.right, ...savedPanels.right },
 }
-const systemTheme: Theme =
-  typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+const systemTheme = (): Theme => (typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+
+/** An earlier build stored only a fixed light or dark; with nothing stored, follow the system. */
+function loadThemeMode(): ThemeMode {
+  const mode = load<unknown>(STORAGE.themeMode, null)
+  if (mode === 'light' || mode === 'dark' || mode === 'system') return mode
+  const old = load<unknown>(STORAGE.theme, null)
+  return old === 'light' || old === 'dark' ? old : 'system'
+}
+const initialThemeMode = loadThemeMode()
 
 const newId = () => Math.random().toString(36).slice(2, 10)
 
@@ -166,7 +187,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     activeId: HOME_TAB_ID,
     recents: load<RecentFile[]>(STORAGE.recents, []),
     closedPaths: [],
-    theme: load<Theme>(STORAGE.theme, systemTheme),
+    theme: initialThemeMode === 'system' ? systemTheme() : initialThemeMode,
+    themeMode: initialThemeMode,
     leftOpen: initialPanels.left,
     rightOpen: initialPanels.right,
     dropHover: false,
@@ -273,6 +295,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       const id = newId()
       addTab({ id, kind, title: stripExtension(name), path: null, bytes, loadId: 0, dirty: false })
       return id
+    },
+
+    refreshUnsaved: (id, bytes) => {
+      const tab = get().tabs.find((t) => t.id === id)
+      if (!tab || tab.path || tab.dirty) return false
+      set({ tabs: get().tabs.map((t) => (t.id === id ? { ...t, bytes, loadId: t.loadId + 1 } : t)) })
+      return true
     },
 
     newDocument: (kind) => {
@@ -411,6 +440,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       localStorage.setItem(STORAGE.recents, JSON.stringify(recents))
     },
 
+    clearRecents: () => {
+      set({ recents: [], closedPaths: [] })
+      localStorage.setItem(STORAGE.recents, '[]')
+    },
+
     toggleLeft: (kind) => {
       const k = kind ?? activeDoc()?.kind
       if (!k) return
@@ -425,14 +459,24 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       persistPanels()
     },
 
-    setTheme: (theme) => {
-      set({ theme })
-      localStorage.setItem(STORAGE.theme, JSON.stringify(theme))
+    setTheme: (theme) => get().setThemeMode(theme),
+
+    setThemeMode: (mode) => {
+      set({ themeMode: mode, theme: mode === 'system' ? systemTheme() : mode })
+      localStorage.setItem(STORAGE.themeMode, JSON.stringify(mode))
     },
 
     setDropHover: (dropHover) => set({ dropHover }),
   }
 })
+
+// While the mode is 'system', the app follows the system as it changes.
+if (typeof matchMedia !== 'undefined') {
+  matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+    const { themeMode } = useWorkspace.getState()
+    if (themeMode === 'system') useWorkspace.setState({ theme: systemTheme() })
+  })
+}
 
 /** “Word, PowerPoint, PDF, Markdown or plain text”, from the plugins that are on. */
 function openableTypes() {

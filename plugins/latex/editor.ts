@@ -78,7 +78,11 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
   let lastCompiled: string | null = null
   let compiledAt = 0
   let problems: Problem[] = []
+  /** Failures that aren't in TeX's log (no engine, no PDF made), listed with the problems. */
+  let failures: Problem[] = []
   let texStatus: TexStatus | null = null
+  /** The PDF has been opened in a tab of its own, which each compile then updates. */
+  let pdfTab = false
 
   const kit = mountSourcePreview({
     element,
@@ -91,35 +95,19 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
     delay: () => (context.previewDelay?.() ?? 3) * 1000,
     onIdle: (text) => {
       refreshOutline(text)
-      if (kit.view === 'write') stale = true
+      // Source-only view makes no PDF to look at, unless there's one open in its own tab.
+      if (kit.view === 'write' && !pdfTab) stale = true
       else void compile(text)
     },
   })
 
-  // ── Preview: Workspace's PDF viewer, and a message over it when there's no PDF to show.
+  // ── Preview: Workspace's PDF viewer, and a line over it when there's no PDF to show.
 
   const pdfHost = el('div', 'tex-pdf')
   kit.preview.appendChild(pdfHost)
   const pdfView: PdfView | null = context.createPdfView?.(pdfHost) ?? null
-  const message = el('div', 'sp-message')
-  message.hidden = true
-  kit.preview.appendChild(message)
   const empty = el('div', 'tex-empty')
   kit.preview.appendChild(empty)
-
-  function showMessage(text: string | null, tone?: 'error', action?: { label: string; run(): void }) {
-    message.hidden = !text
-    message.className = `sp-message${tone ? ` tone-${tone}` : ''}`
-    message.replaceChildren()
-    if (!text) return
-    message.append(el('div', undefined, text))
-    if (action) {
-      const button = el('button', 'btn', action.label)
-      button.type = 'button'
-      button.addEventListener('click', action.run)
-      message.append(button)
-    }
-  }
 
   function setEmpty(text: string | null) {
     empty.hidden = !text
@@ -146,18 +134,18 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
     }
     compiling = true
     stale = false
+    failures = []
     updateStatus()
     try {
       // TeX may have been installed since (from Settings, or outside Workspace).
       if (force || !texStatus?.installed) texStatus = await tex.status()
       if (!texStatus.installed) {
-        setEmpty(pdf ? null : 'No PDF yet.')
-        showMessage('LaTeX needs TeX to make the PDF, and this computer doesn’t have it.', 'error', { label: 'Install TeX…', run: () => void installTex() })
+        setEmpty(pdf ? null : 'LaTeX needs TeX to make the PDF. Install it from the sidebar.')
         return
       }
       const engine = engineFor(text)
       if (!texStatus.engines.includes(engine)) {
-        showMessage(`This document asks for ${engineLabel(engine)}, which your TeX doesn’t have.`, 'error')
+        failures = [{ severity: 'error', message: `This document asks for ${engineLabel(engine)}, which your TeX doesn’t have.` }]
         return
       }
       const result = await tex.compile(text, { engine })
@@ -168,18 +156,15 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
       if (result.pdf) {
         pdf = result.pdf
         setEmpty(null)
-        await pdfView?.show(result.pdf).catch((err) => showMessage(`Couldn’t show the PDF: ${err instanceof Error ? err.message : String(err)}`, 'error'))
+        // A copy of the PDF in its own tab follows along; it stops once that tab is closed or edited.
+        if (pdfTab) pdfTab = context.updateDocument?.({ bytes: result.pdf, name: `${context.title}.pdf` }) ?? false
+        await pdfView?.show(result.pdf).catch((err) => failures.push({ severity: 'error', message: `Couldn’t show the PDF: ${err instanceof Error ? err.message : String(err)}` }))
       } else if (!pdf) {
         setEmpty('No PDF yet.')
       }
-      const first = problems.find((p) => p.severity === 'error')
-      if (!result.pdf) {
-        showMessage(first ? `TeX stopped: ${first.message}${first.line ? ` (line ${first.line})` : ''}` : 'TeX didn’t make a PDF. The log may say why.', 'error', first?.line ? { label: 'Show the line', run: () => kit.goToLine(first.line!) } : undefined)
-      } else {
-        showMessage(null)
-      }
+      if (!result.pdf && !problems.some((p) => p.severity === 'error')) failures.push({ severity: 'error', message: 'TeX didn’t make a PDF, and its log doesn’t say why.' })
     } catch (err) {
-      showMessage(err instanceof Error ? err.message : String(err), 'error')
+      failures = [{ severity: 'error', message: err instanceof Error ? err.message : String(err) }]
     } finally {
       compiling = false
       renderProblems()
@@ -195,10 +180,8 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
   async function installTex() {
     if (!tex) return
     texStatus = await tex.install()
-    if (texStatus.installed) {
-      showMessage(null)
-      void compile(kit.text(), true)
-    }
+    updateStatus()
+    if (texStatus.installed) void compile(kit.text(), true)
   }
 
   const engineLabel = (id: string) => ENGINES.find((e) => e.id === id)?.label ?? id
@@ -211,6 +194,7 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
   const openButton = el('button', 'btn block', 'Open PDF in a new tab')
   const saveButton = el('button', 'btn block', 'Save PDF as…')
   const compileButton = el('button', 'btn block', 'Compile now')
+  const installButton = el('button', 'btn block primary', 'Install TeX…')
   let problemsBody: HTMLElement | null = null
   let outlineBody: HTMLElement | null = null
 
@@ -220,14 +204,20 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
     const actions = el('div', 'sp-side-actions')
     const engineRow = el('label', 'tex-engine-row')
     engineRow.append(el('span', undefined, 'Engine'), engineSelect)
-    for (const button of [openButton, saveButton, compileButton]) button.type = 'button'
-    actions.append(status, engineRow, openButton, saveButton, compileButton)
+    for (const button of [openButton, saveButton, compileButton, installButton]) button.type = 'button'
+    installButton.hidden = true
+    actions.append(status, engineRow, installButton, openButton, saveButton, compileButton)
     doc.appendChild(actions)
-    problemsBody = sidebarSection(sidebar, 'Problems')
-    outlineBody = sidebarSection(sidebar, 'Outline')
+    problemsBody = sidebarSection(sidebar, 'Problems', { list: true })
+    outlineBody = sidebarSection(sidebar, 'Outline', { list: true })
 
     engineSelect.addEventListener('change', () => setEngine(engineSelect.value))
-    openButton.addEventListener('click', () => pdf && context.openDocument?.({ bytes: pdf, name: `${context.title}.pdf` }))
+    openButton.addEventListener('click', () => {
+      if (!pdf || !context.openDocument) return
+      context.openDocument({ bytes: pdf, name: `${context.title}.pdf` })
+      pdfTab = !!context.updateDocument
+    })
+    installButton.addEventListener('click', () => void installTex())
     saveButton.addEventListener('click', () => pdf && void context.saveFile?.({ bytes: pdf, name: `${context.title}.pdf` }))
     compileButton.addEventListener('click', () => void compile(kit.text(), true))
     if (!context.openDocument) openButton.hidden = true
@@ -270,7 +260,8 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
     if (!sidebar) return
     openButton.disabled = saveButton.disabled = !pdf
     compileButton.disabled = compiling
-    const errors = problems.filter((p) => p.severity === 'error').length
+    installButton.hidden = !tex || !texStatus || texStatus.installed
+    const errors = [...failures, ...problems].filter((p) => p.severity === 'error').length
     status.textContent = compiling
       ? 'Compiling…'
       : !tex
@@ -285,12 +276,13 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
 
   function renderProblems() {
     if (!problemsBody) return
-    if (!problems.length) {
+    const all = [...failures, ...problems]
+    if (!all.length) {
       problemsBody.replaceChildren(sidebarHint(compiledAt ? 'No errors or warnings.' : 'Errors and warnings show here after a compile.'))
       return
     }
     problemsBody.replaceChildren(
-      ...problems.slice(0, 200).map((p) =>
+      ...all.slice(0, 200).map((p) =>
         sidebarItem(p.message, {
           tone: p.severity,
           detail: p.line ? `Line ${p.line}` : p.file,

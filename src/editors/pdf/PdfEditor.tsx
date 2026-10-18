@@ -883,7 +883,7 @@ export default function PdfEditor({ tab, active }: EditorProps) {
     <Workbench tab={tab} left={left} right={right} leftFooter={numPages ? <span>{numPages === 1 ? '1 page' : `${numPages} pages`}</span> : undefined}>
       <div ref={stageRef} className={`pdf-stage tool-${tool}`}>
         {store && (
-          <Viewer ref={viewer} store={store} pages={pages} awake={awake} onPageChange={onPageChange} onZoomChange={onZoomChange} renderPage={renderPage} />
+          <Viewer ref={viewer} store={store} pages={pages} awake={awake} onPageChange={onPageChange} onZoomChange={onZoomChange} renderPage={renderPage} positionKey={tab.id} />
         )}
       </div>
       {!store && !error && !password && <CenterState spinner />}
