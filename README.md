@@ -2,7 +2,7 @@
 
 # Workspace
 
-A small, fast Mac and Windows app for the document types most people actually use: **Word (.docx), PowerPoint (.pptx), PDF, Markdown and plain text (.txt)**, plus optional plugins: **Excalidraw** drawings, **EPUB** books, **Mermaid** diagrams and **LaTeX** documents. Everything opens as a tab in one window, and each kind of document gets its own sidebar and inspector.
+A small, fast Mac, Windows and Debian/Ubuntu app for the document types most people actually use: **Word (.docx), PowerPoint (.pptx), PDF, Markdown and plain text (.txt)**, plus optional plugins: **Excalidraw** drawings, **EPUB** books, **Mermaid** diagrams and **LaTeX** documents. Everything opens as a tab in one window, and each kind of document gets its own sidebar and inspector.
 
 - **Plugins.** Office, PDF, Markdown and text are built in. Others are optional: turn them on in the setup screen that opens the first time you launch Workspace, or later in **Settings › Plugins**. The first optional plugin is [Excalidraw](https://excalidraw.com) for `.excalidraw` drawings. It's about 16 MB, mostly fonts, so Workspace downloads it from this repository's releases when you turn it on and checks its signature before installing it. The EPUB reader is small, so it comes with the app and turns on instantly. It shows a book as one scrolling column with its table of contents in the sidebar, and reopens a book where you left off. **Mermaid** and **LaTeX** work like Markdown: source and preview side by side, and ⌘E switches between the preview, both, and the source. Mermaid draws the diagram as you type. LaTeX compiles with the TeX installed on your computer (MacTeX on a Mac, MiKTeX or TeX Live on Windows) a few seconds after you stop typing (set how long in **Settings › Plugins**), shows the PDF in Workspace's own viewer, and lists errors and the outline in the sidebar. If there's no TeX, Workspace offers to install it when you turn the plugin on. Both plugins download when you turn them on.
 
@@ -21,7 +21,7 @@ A small, fast Mac and Windows app for the document types most people actually us
 - **New files.** ⌘N asks which kind of file to make, from the plugins you have on. The Home tab has a button for each too.
 - **Autosave.** A file you have already saved is written back to that same place a few seconds after you stop editing. That place can be any folder, including one that iCloud Drive, Dropbox, OneDrive or another sync app already watches. The sync app uploads the file. Workspace does not sign in to anything. A new document is not saved until you use Save. In **Settings** (⌘,) you can turn autosave off, change the delay, or leave PDFs on manual save, because saving a PDF rewrites the whole file.
 - **Works offline, no accounts.** Every document engine runs locally on your computer.
-- **Keeps itself up to date.** New versions download in the background and install when you quit. To install one straight away, click **Restart to Update** in the tab bar.
+- **Keeps itself up to date (Mac and Windows).** New versions download in the background and install when you quit. To install one straight away, click **Restart to Update** in the tab bar. On Linux, install each new `.deb` yourself.
 
 ## Install
 
