@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import type { EditorProps } from '../App'
 import { CenterState } from '../components/ui'
+import type { ViewMode } from '../components/ViewSwitch'
+import { initialView, nextView, ViewSwitch } from '../components/ViewSwitch'
 import { FindBar, Workbench } from '../components/Workbench'
 import { KINDS } from '../lib/kinds'
-import { openExternal } from '../lib/platform'
+import { isTauri, openExternal, saveBytesAs, showError } from '../lib/platform'
 import { installSettled, pluginBaseUrl } from '../state/plugins'
 import { useSettings } from '../state/settings'
+import { forgetTexBuild, texService, texTestHook } from '../state/tex'
 import { registerEditor, useWorkspace } from '../state/workspace'
-import type { PluginEditor as Instance, PluginModule, SearchResult } from './api'
+import type { PluginEditor as Instance, PdfView, PluginModule, SearchResult } from './api'
 import { PLUGIN_API_VERSION } from './api'
 import { pluginForKind } from './catalog'
 
@@ -42,6 +45,24 @@ function SidebarSlot({ element }: { element: HTMLElement }) {
   return <div ref={slot} />
 }
 
+/** context.createPdfView: the PDF engine and viewer load the first time a plugin asks for one. */
+function lazyPdfView(element: HTMLElement): PdfView {
+  const view = import('./PdfPreview').then((m) => m.createPdfView(element))
+  return {
+    show: async (bytes) => (await view).show(bytes),
+    zoom: (direction) => void view.then((v) => v.zoom(direction)),
+    destroy: () => void view.then((v) => v.destroy()),
+  }
+}
+
+/** The tab's file now (Save As can move it), unless it only lives in the browser's memory. */
+function currentPath(tabId: string): string | null {
+  const path = useWorkspace.getState().tabs.find((t) => t.id === tabId)?.path ?? null
+  return path && !path.startsWith('browser:') ? path : null
+}
+
+const folderOf = (path: string) => path.slice(0, Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')))
+
 /** Hosts an optional plugin's editor: the plugin renders into a plain element and talks through plugins/api.ts. */
 export default function PluginEditor({ tab, active }: EditorProps) {
   const host = useRef<HTMLDivElement>(null)
@@ -49,6 +70,7 @@ export default function PluginEditor({ tab, active }: EditorProps) {
   /** `start`: the plugin didn't load. `open`: it did, but couldn't open this file. */
   const [error, setError] = useState<{ stage: 'start' | 'open'; message: string } | null>(null)
   const [ready, setReady] = useState(false)
+  const [view, setView] = useState<ViewMode>(() => initialView(!!tab.bytes))
   const [findOpen, setFindOpen] = useState(false)
   const [found, setFound] = useState<SearchResult | null>(null)
   const findQuery = useRef('')
@@ -60,6 +82,17 @@ export default function PluginEditor({ tab, active }: EditorProps) {
   useEffect(() => {
     let cancelled = false
     let mounted: Instance | null = null
+    let opened: string | null = null
+    const tex = plugin.services?.includes('tex') && (isTauri || texTestHook())
+      ? texService(
+          tab.id,
+          () => {
+            const path = currentPath(tab.id)
+            return path && folderOf(path)
+          },
+          () => useWorkspace.getState().tabs.find((t) => t.id === tab.id)?.title ?? tab.title,
+        )
+      : undefined
     void (async () => {
       let stage: 'start' | 'open' = 'start'
       try {
@@ -74,6 +107,18 @@ export default function PluginEditor({ tab, active }: EditorProps) {
           openExternal: (url) => void openExternal(url),
           sidebar: sidebar ?? undefined,
           searchChanged: (result) => setFound(result),
+          path: currentPath(tab.id),
+          previewDelay: () => useSettings.getState().previewDelay,
+          openDocument: ({ bytes, name }) => {
+            opened = useWorkspace.getState().openUnsaved(bytes, name, opened)
+          },
+          saveFile: ({ bytes, name }) =>
+            saveBytesAs(name, bytes).catch(async (err) => {
+              await showError(err instanceof Error ? err.message : String(err))
+              return false
+            }),
+          createPdfView: lazyPdfView,
+          tex,
           print: async (content) => {
             const root = document.getElementById('print-root')!
             const page = document.createElement('div')
@@ -85,6 +130,7 @@ export default function PluginEditor({ tab, active }: EditorProps) {
         })
         if (cancelled) return mounted.destroy()
         instance.current = mounted
+        mounted.setView?.(view)
         setReady(true)
       } catch (err) {
         if (!cancelled) setError({ stage, message: err instanceof Error ? err.message : String(err) })
@@ -94,6 +140,7 @@ export default function PluginEditor({ tab, active }: EditorProps) {
       cancelled = true
       mounted?.destroy()
       instance.current = null
+      if (tex) forgetTexBuild(tab.id)
     }
     // The tab remounts with a new loadId (see EditorSlot) when its bytes change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -108,6 +155,10 @@ export default function PluginEditor({ tab, active }: EditorProps) {
   }, [active, ready])
 
   useEffect(() => {
+    if (ready) instance.current?.setView?.(view)
+  }, [view, ready])
+
+  useEffect(() => {
     if (!ready) return
     const it = instance.current!
     return registerEditor(tab.id, {
@@ -116,6 +167,7 @@ export default function PluginEditor({ tab, active }: EditorProps) {
       find: it.search ? () => setFindOpen(true) : it.find && (() => it.find!()),
       zoom: it.zoom && ((direction) => it.zoom!(direction)),
       print: it.print && (() => it.print!()),
+      viewMode: it.setView && ((command) => setView((v) => nextView(v, command))),
     })
   }, [tab.id, ready])
 
@@ -167,6 +219,11 @@ export default function PluginEditor({ tab, active }: EditorProps) {
         count={found?.count ?? null}
         current={found ? Math.max(0, found.current) : null}
       />
+      {ready && instance.current?.views && (
+        <div className="canvas-bar">
+          <ViewSwitch mode={view} setMode={setView} labels={instance.current.views} />
+        </div>
+      )}
     </div>
   )
   if (!sidebar) return editor

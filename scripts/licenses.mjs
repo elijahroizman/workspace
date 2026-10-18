@@ -15,6 +15,8 @@ const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const PLUGIN_PACKAGES = {
   Excalidraw: ['@excalidraw/excalidraw', 'react', 'react-dom'],
   EPUB: ['jszip', 'dompurify'],
+  Mermaid: ['mermaid', '@codemirror/commands', '@codemirror/language', '@codemirror/search', '@codemirror/view'],
+  LaTeX: ['@codemirror/commands', '@codemirror/legacy-modes', '@codemirror/language', '@codemirror/search', '@codemirror/view'],
 }
 
 /** Copyright holders for packages that name none (no author field, no license file). */

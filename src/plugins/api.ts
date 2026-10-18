@@ -8,6 +8,9 @@ export const PLUGIN_API_VERSION = 1
 
 export type Theme = 'light' | 'dark'
 
+/** Source-and-preview editors (Markdown, Mermaid, LaTeX): the preview, both side by side, or the source. */
+export type ViewMode = 'read' | 'split' | 'write'
+
 export interface PluginEditorContext {
   /** The file's bytes; null for a new, empty document. */
   bytes: Uint8Array | null
@@ -27,6 +30,56 @@ export interface PluginEditorContext {
   sidebar?: HTMLElement
   /** For editors with search(): the matches changed without a new query (more content loaded). */
   searchChanged?(result: SearchResult): void
+  /** Where the file is on disk; null for a new document, and in the browser build. */
+  path?: string | null
+  /**
+   * Seconds to wait after typing stops before rebuilding a slow preview (a LaTeX compile). The
+   * user sets it in Settings › General, so read it each time.
+   */
+  previewDelay?(): number
+  /** Open a document in a tab of its own, of the kind its name's extension says (a compiled PDF). */
+  openDocument?(document: { bytes: Uint8Array; name: string }): void
+  /** Save bytes to a file the user picks (an export). Resolves false if they cancel. */
+  saveFile?(file: { bytes: Uint8Array; name: string }): Promise<boolean>
+  /** A read-only view of a PDF in `element`, drawn by Workspace's own PDF engine. */
+  createPdfView?(element: HTMLElement): PdfView
+  /** The system's TeX, for plugins whose catalog entry lists the `tex` service. */
+  tex?: TexService
+}
+
+export interface PdfView {
+  /** Shows a PDF, keeping the place and zoom of the one it replaces. Rejects if it can't be read. */
+  show(bytes: Uint8Array): Promise<void>
+  zoom(direction: 'in' | 'out' | 'reset'): void
+  destroy(): void
+}
+
+export interface TexStatus {
+  installed: boolean
+  /** "TeX Live 2026", "MiKTeX 25.12"… */
+  distribution?: string
+  /** Engines found: pdflatex, xelatex, lualatex. */
+  engines: string[]
+}
+
+export interface TexResult {
+  /** The compiled PDF; null when TeX made none (a fatal error). */
+  pdf: Uint8Array | null
+  /** TeX's log, to read errors and warnings from. */
+  log: string
+  /** The file TeX compiled (a copy of the document); the log's errors in the document name it. */
+  file: string
+}
+
+export interface TexService {
+  status(): Promise<TexStatus>
+  /**
+   * Compiles `source` as the tab's document. Files it \input s or \includegraphics come from the
+   * file's folder (a new document has none). A compile asked for while one runs waits its turn.
+   */
+  compile(source: string, options: { engine: string }): Promise<TexResult>
+  /** Offers to install TeX (Workspace's own dialog). Resolves with the status afterwards. */
+  install(): Promise<TexStatus>
 }
 
 export interface SearchResult {
@@ -51,6 +104,13 @@ export interface PluginEditor {
   search?(query: string, step: 1 | -1 | 0): SearchResult
   zoom?(direction: 'in' | 'out' | 'reset'): void
   print?(): Promise<void>
+  /**
+   * For source-and-preview editors: what each view shows, as the switch's tooltips put it
+   * (`{ read: 'Diagram', split: 'Source and diagram', write: 'Source' }`). With this, Workspace
+   * shows the same view switch as Markdown and its shortcuts (⌘E cycles) call setView.
+   */
+  views?: Record<ViewMode, string>
+  setView?(view: ViewMode): void
   /** The tab closed: release everything. */
   destroy(): void
 }

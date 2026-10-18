@@ -6,11 +6,12 @@ import { openSearchPanel, search, searchKeymap } from '@codemirror/search'
 import { EditorState } from '@codemirror/state'
 import { drawSelection, EditorView, highlightActiveLine, keymap, placeholder } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
-import { BookOpen, Columns2, SquarePen } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorProps } from '../../App'
 import { FindBar, InspectorHeader, Workbench } from '../../components/Workbench'
-import { Section, Segmented } from '../../components/ui'
+import { Section } from '../../components/ui'
+import type { ViewMode } from '../../components/ViewSwitch'
+import { initialView, nextView, ViewSwitch } from '../../components/ViewSwitch'
 import { kindFromPath } from '../../lib/kinds'
 import * as platform from '../../lib/platform'
 import { getEditor, registerEditor, useWorkspace } from '../../state/workspace'
@@ -18,10 +19,7 @@ import type { Heading } from './render'
 import { renderMarkdown } from './render'
 import './markdown.css'
 
-type Mode = 'preview' | 'split' | 'source'
-
 const NEW_NOTE = '# Untitled\n\n'
-const MODES: Mode[] = ['preview', 'split', 'source']
 
 const highlight = HighlightStyle.define([
   { tag: tags.heading1, fontSize: '1.45em', fontWeight: '700' },
@@ -45,7 +43,7 @@ const highlight = HighlightStyle.define([
 export default function MarkdownEditor({ tab, active }: EditorProps) {
   const initial = useMemo(() => (tab.bytes ? decode(tab.bytes) : NEW_NOTE), [tab.bytes])
   const [text, setText] = useState(initial)
-  const [mode, setMode] = useState<Mode>(tab.bytes ? 'preview' : 'split')
+  const [mode, setMode] = useState<ViewMode>(initialView(!!tab.bytes))
   const [rendered, setRendered] = useState(() => renderMarkdown(initial))
   const [activeSlug, setActiveSlug] = useState<string | null>(null)
   const [findOpen, setFindOpen] = useState(false)
@@ -106,7 +104,7 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
   }, [])
 
   useEffect(() => {
-    if (active && mode !== 'preview') viewRef.current?.focus()
+    if (active && mode !== 'read') viewRef.current?.focus()
   }, [active, mode])
 
   /** Keep the preview roughly aligned with the editor in split view. */
@@ -128,7 +126,7 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
   // Track which heading is on screen to highlight it in the outline.
   useEffect(() => {
     const preview = previewRef.current
-    if (!preview || mode === 'source') return
+    if (!preview || mode === 'write') return
     const onScroll = () => {
       let current: string | null = null
       for (const h of preview.querySelectorAll<HTMLElement>('h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]')) {
@@ -181,12 +179,12 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
   }
 
   const goToHeading = (h: Heading) => {
-    if (mode !== 'source') {
+    if (mode !== 'write') {
       const el = previewRef.current?.querySelector<HTMLElement>(`#${CSS.escape(h.slug)}`)
       if (el && previewRef.current) previewRef.current.scrollTo({ top: el.offsetTop - 20, behavior: 'smooth' })
     }
     const view = viewRef.current
-    if (view && mode !== 'preview') {
+    if (view && mode !== 'read') {
       const line = view.state.doc.line(Math.min(h.line + 1, view.state.doc.lines))
       view.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: 'start', yMargin: 20 }) })
       view.focus()
@@ -227,10 +225,9 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
         markSaved: () => {
           savedText.current = textRef.current
         },
-        viewMode: (next) =>
-          setMode((m) => (next === 'cycle' ? MODES[(MODES.indexOf(m) + 1) % MODES.length] : next === 'read' ? 'preview' : next === 'write' ? 'source' : 'split')),
+        viewMode: (next) => setMode((m) => nextView(m, next)),
         find: () => {
-          if (mode === 'source' && viewRef.current) openSearchPanel(viewRef.current)
+          if (mode === 'write' && viewRef.current) openSearchPanel(viewRef.current)
           else setFindOpen(true)
         },
         print: async () => {
@@ -300,23 +297,9 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
         current={findState?.current ?? null}
       />
       <div className="canvas-bar">
-        <ModeSwitch mode={mode} setMode={setMode} />
+        <ViewSwitch mode={mode} setMode={setMode} />
       </div>
     </Workbench>
-  )
-}
-
-function ModeSwitch({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
-  return (
-    <Segmented
-      value={mode}
-      onChange={setMode}
-      options={[
-        { value: 'preview', icon: <BookOpen size={14} />, title: 'Read (⌥⌘1)' },
-        { value: 'split', icon: <Columns2 size={14} />, title: 'Edit with preview (⌥⌘2)' },
-        { value: 'source', icon: <SquarePen size={14} />, title: 'Edit source (⌥⌘3)' },
-      ]}
-    />
   )
 }
 

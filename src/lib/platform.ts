@@ -343,6 +343,20 @@ export async function toggleMaximize(): Promise<void> {
   await getCurrentWindow().toggleMaximize()
 }
 
+/** Save bytes somewhere the user picks (an exported picture). Resolves false when cancelled. */
+export async function saveBytesAs(name: string, bytes: Uint8Array): Promise<boolean> {
+  if (!isTauri) {
+    download(name, bytes)
+    return true
+  }
+  const ext = name.includes('.') ? name.split('.').pop()! : ''
+  const { save } = await dialog()
+  const path = await save({ defaultPath: name, filters: ext ? [{ name: ext.toUpperCase(), extensions: [ext] }] : [] })
+  if (!path) return false
+  await writeFile(path, bytes)
+  return true
+}
+
 export function download(name: string, bytes: Uint8Array) {
   const url = URL.createObjectURL(new Blob([bytes as BlobPart]))
   const a = document.createElement('a')

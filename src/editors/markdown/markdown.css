@@ -17,16 +17,16 @@
   grid-template-columns: 1fr 1fr;
 }
 
-.md-split.mode-preview {
+.md-split.mode-read {
   grid-template-columns: 0 1fr;
 }
 
-.md-split.mode-source {
+.md-split.mode-write {
   grid-template-columns: 1fr 0;
 }
 
-.md-split.mode-preview .md-source,
-.md-split.mode-source .md-preview {
+.md-split.mode-read .md-source,
+.md-split.mode-write .md-preview {
   visibility: hidden;
   overflow: hidden;
 }

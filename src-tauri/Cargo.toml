@@ -27,6 +27,8 @@ ureq = { version = "3", default-features = false, features = ["native-tls"] }
 zip = { version = "4", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 minisign-verify = "0.3"
 base64 = "0.22"
+# Checks the MiKTeX installer against the checksum MiKTeX publishes (it isn't code-signed).
+sha2 = "0.10"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSUserDefaults", "NSString", "NSObject"] }

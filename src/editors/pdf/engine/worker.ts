@@ -508,6 +508,12 @@ async function extract(keys: number[]) {
 // ── Open and save
 
 async function open(bytes: ArrayBuffer, password: string): Promise<OpenResult> {
+  // A preview opens each new version in the same worker; the old one goes first.
+  if (doc) {
+    const old = doc
+    doc = null
+    await task(engine.closeDocument(old)).catch(() => {})
+  }
   const opened = await task(engine.openDocumentBuffer({ id: DOC_ID, content: bytes }, { password }))
   doc = opened
   setPages(opened.pages)

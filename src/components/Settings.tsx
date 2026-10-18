@@ -7,7 +7,8 @@ import { openUpdatePanel } from '../lib/updater'
 import { PLUGINS, isBuiltIn } from '../plugins/catalog'
 import { enabledKinds, usePlugins } from '../state/plugins'
 import type { SettingsPage } from '../state/settings'
-import { useSettings } from '../state/settings'
+import { PREVIEW_DELAYS, useSettings } from '../state/settings'
+import { INSTALL_CHOICES, useTex } from '../state/tex'
 import { useSetup } from '../state/setup'
 import type { ShortcutDef } from '../state/shortcuts'
 import { SHORTCUTS, isValidKeys, keysFor, keysFromEvent, syncMenu, useShortcuts } from '../state/shortcuts'
@@ -247,6 +248,7 @@ function PluginsPage() {
             <button type="button" className="link-btn" onClick={() => void openExternal(p.homepage)}>
               {p.homepage.replace(/^https:\/\//, '')}
             </button>
+            {p.services?.includes('tex') && enabled[p.id] && <TexSettings />}
           </PluginRow>
         ))}
       </section>
@@ -257,6 +259,41 @@ function PluginsPage() {
         ))}
       </section>
     </>
+  )
+}
+
+/** Under LaTeX: which TeX compiles, and how soon after typing stops. */
+function TexSettings() {
+  const status = useTex((s) => s.status)
+  const installing = useTex((s) => s.installing)
+  const previewDelay = useSettings((s) => s.previewDelay)
+  const setPreviewDelay = useSettings((s) => s.setPreviewDelay)
+  useEffect(() => void useTex.getState().refresh(), [])
+  return (
+    <div className="plugin-extra">
+      <div className="plugin-extra-row">
+        <span className="settings-hint">
+          {!status
+            ? 'Looking for TeX…'
+            : status.installed
+              ? `Compiles with ${status.distribution ?? 'TeX'} (${status.engines.join(', ')}).`
+              : 'TeX isn’t installed, so documents can’t compile.'}
+        </span>
+        {status && !status.installed && INSTALL_CHOICES.length > 0 && (
+          <button type="button" className="btn" disabled={!!installing} onClick={() => void useTex.getState().offerInstall()}>
+            Install TeX…
+          </button>
+        )}
+      </div>
+      <div className="plugin-extra-row">
+        <span className="settings-hint">Update the PDF after you stop typing for</span>
+        <Segmented
+          value={String(previewDelay)}
+          options={PREVIEW_DELAYS.map((d) => ({ value: String(d), label: `${d} sec` }))}
+          onChange={(v) => setPreviewDelay(Number(v))}
+        />
+      </div>
+    </div>
   )
 }
 

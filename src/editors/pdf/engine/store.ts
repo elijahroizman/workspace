@@ -90,6 +90,16 @@ export class DocStore {
     this.setPages(pages)
   }
 
+  /** A different document now (a recompiled preview): drop every cache and redraw every page. */
+  replaced(pages: PageInfo[]) {
+    this.text.clear()
+    this.annots.clear()
+    this.thumbs.clear()
+    // Revs only go up, so pages that keep their key still redraw.
+    for (const page of pages) this.revs.set(page.key, this.rev(page.key) + 1)
+    this.setPages(pages)
+  }
+
   rev(key: number) {
     return this.revs.get(key) ?? 0
   }

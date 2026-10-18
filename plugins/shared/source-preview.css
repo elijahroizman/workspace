@@ -1,0 +1,183 @@
+/* The layout Markdown uses (src/editors/markdown/markdown.css), for plugins. Workspace's own
+   variables (--fg, --line, --accent, --font-mono…) apply, since plugins render in its page. */
+
+.sp-split {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  --sp-paper: #141414;
+}
+
+:root[data-theme='light'] .sp-split {
+  --sp-paper: #ffffff;
+}
+
+.sp-split.mode-read {
+  grid-template-columns: 0 1fr;
+}
+
+.sp-split.mode-write {
+  grid-template-columns: 1fr 0;
+}
+
+.sp-split.mode-read .sp-source,
+.sp-split.mode-write .sp-preview {
+  visibility: hidden;
+  overflow: hidden;
+}
+
+.sp-source {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  background: var(--sp-paper);
+}
+
+.sp-split.mode-split .sp-source {
+  border-right: 1px solid var(--line);
+}
+
+.sp-source .cm-editor {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  font-size: 13.5px;
+  background: transparent;
+  color: var(--fg);
+}
+
+.sp-source .cm-editor.cm-focused {
+  outline: none;
+}
+
+.sp-source .cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.65;
+  padding: 24px 0 120px;
+}
+
+.sp-source .cm-content {
+  padding: 0 24px 0 12px;
+  caret-color: var(--accent);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.sp-source .cm-gutters {
+  background: transparent;
+  border: none;
+  color: var(--fg-faint);
+}
+
+.sp-source .cm-cursor {
+  border-left: 2px solid var(--accent);
+}
+
+.sp-source .cm-activeLine,
+.sp-source .cm-activeLineGutter {
+  background: transparent;
+}
+
+.sp-source .cm-selectionBackground,
+.sp-source .cm-focused .cm-selectionBackground {
+  background: color-mix(in srgb, var(--accent) 28%, transparent) !important;
+}
+
+.sp-source .cm-panels {
+  background: var(--raised);
+  color: var(--fg);
+  border-color: var(--line);
+}
+
+.sp-preview {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* A message over the preview (no TeX, a syntax error). */
+.sp-message {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 64px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--raised);
+  box-shadow: var(--shadow-pop);
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+  z-index: 5;
+}
+
+.sp-message.tone-error {
+  border-left: 3px solid #e5484d;
+}
+
+.sp-message button {
+  margin-top: 8px;
+}
+
+.sp-side-section + .sp-side-section {
+  margin-top: 12px;
+}
+
+.sp-side-title {
+  margin: 4px 8px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-faint);
+}
+
+.sp-side-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  text-align: left;
+}
+
+.sp-side-item .label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-side-item.tone-error .label::before,
+.sp-side-item.tone-warning .label::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #e5484d;
+  vertical-align: 1px;
+}
+
+.sp-side-item.tone-warning .label::before {
+  background: #f5a524;
+}
+
+.sp-side-detail {
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+
+.sp-side-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 8px;
+}
