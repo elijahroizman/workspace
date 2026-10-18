@@ -2,7 +2,7 @@
 // ES module (index.js, the entry in src/plugins/api.ts), its chunks, and manifest.json.
 // A plugin's vite.config.ts is `export default pluginConfig(import.meta.url)`.
 
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { UserConfig } from 'vite'
 import { defineConfig, mergeConfig } from 'vite'
@@ -10,7 +10,7 @@ import { defineConfig, mergeConfig } from 'vite'
 export function pluginConfig(configUrl: string, extra: UserConfig = {}) {
   const here = (path: string) => fileURLToPath(new URL(path, configUrl))
   const outDir = here('./dist')
-  const plugin = (async () => (await import(here('./plugin.json'), { with: { type: 'json' } })).default as { id: string; version: string })()
+  const plugin = JSON.parse(readFileSync(here('./plugin.json'), 'utf8')) as { id: string; version: string }
   return defineConfig(
     mergeConfig(
       {
@@ -19,8 +19,8 @@ export function pluginConfig(configUrl: string, extra: UserConfig = {}) {
         plugins: [
           {
             name: 'workspace:plugin-manifest',
-            async closeBundle() {
-              const { id, version } = await plugin
+            closeBundle() {
+              const { id, version } = plugin
               writeFileSync(`${outDir}/manifest.json`, JSON.stringify({ id, version, apiVersion: 1, entry: 'index.js' }, null, 2))
             },
           },
