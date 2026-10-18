@@ -1,56 +1,18 @@
-export type DocKind = 'docx' | 'pptx' | 'pdf' | 'md' | 'txt'
+import type { KindInfo } from '../plugins/catalog'
+import { PLUGINS } from '../plugins/catalog'
 
-export interface KindInfo {
-  label: string
-  short: string
-  extensions: string[]
-  /** CSS custom property used for this kind's accent dot. */
-  color: string
-  untitled: string
-}
+export type { KindInfo }
 
-export const KINDS: Record<DocKind, KindInfo> = {
-  docx: {
-    label: 'Word Document',
-    short: 'Document',
-    extensions: ['docx'],
-    color: 'var(--kind-docx)',
-    untitled: 'Untitled Document',
-  },
-  pptx: {
-    label: 'PowerPoint Presentation',
-    short: 'Presentation',
-    extensions: ['pptx'],
-    color: 'var(--kind-pptx)',
-    untitled: 'Untitled Presentation',
-  },
-  pdf: {
-    label: 'PDF Document',
-    short: 'PDF',
-    extensions: ['pdf'],
-    color: 'var(--kind-pdf)',
-    untitled: 'Untitled',
-  },
-  md: {
-    label: 'Markdown',
-    short: 'Markdown',
-    extensions: ['md', 'markdown'],
-    color: 'var(--kind-md)',
-    untitled: 'Untitled Note',
-  },
-  txt: {
-    label: 'Plain Text',
-    short: 'Text',
-    extensions: ['txt'],
-    color: 'var(--kind-txt)',
-    untitled: 'Untitled Text',
-  },
-}
+/** A document type, from a plugin (see plugins/catalog.ts): 'docx', 'pdf', 'excalidraw'… */
+export type DocKind = string
+
+/** Every kind any plugin opens, on or off. Whether a kind's plugin is on is in state/plugins.ts. */
+export const KINDS: Record<DocKind, KindInfo> = Object.fromEntries(PLUGINS.flatMap((p) => p.kinds).map((k) => [k.id, k]))
 
 export function kindFromPath(path: string): DocKind | null {
   const ext = path.split('.').pop()?.toLowerCase() ?? ''
-  for (const [kind, info] of Object.entries(KINDS) as [DocKind, KindInfo][]) {
-    if (info.extensions.includes(ext)) return kind
+  for (const info of Object.values(KINDS)) {
+    if (info.extensions.includes(ext)) return info.id
   }
   return null
 }

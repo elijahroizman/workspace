@@ -3,18 +3,12 @@ import { useMemo, useState } from 'react'
 import type { DocKind } from '../lib/kinds'
 import { KINDS } from '../lib/kinds'
 import { basename, dirname, revealInFinder, revealLabel, isTauri, shortcut, tildify } from '../lib/platform'
+import { enabledKinds, usePlugins } from '../state/plugins'
 import { useSettings } from '../state/settings'
 import type { RecentFile } from '../state/workspace'
 import { useWorkspace } from '../state/workspace'
 import { DocBadge, KindIcon } from './Workbench'
 import { IconButton, PopoverMenu } from './ui'
-
-const CREATE: { kind: DocKind; title: string; hint: string; shortcut: string }[] = [
-  { kind: 'docx', title: 'New document', hint: 'Word (.docx)', shortcut: '⌘N' },
-  { kind: 'pptx', title: 'New presentation', hint: 'PowerPoint (.pptx)', shortcut: '⇧⌘N' },
-  { kind: 'md', title: 'New note', hint: 'Markdown (.md)', shortcut: '⌥⌘N' },
-  { kind: 'txt', title: 'New text file', hint: 'Plain text (.txt)', shortcut: '' },
-]
 
 export function Home() {
   const recents = useWorkspace((s) => s.recents)
@@ -22,6 +16,9 @@ export function Home() {
   const { newDocument, openDialog, openPaths, removeRecent, setTheme } = useWorkspace.getState()
   const [filter, setFilter] = useState<DocKind | 'all'>('all')
   const [menu, setMenu] = useState<{ x: number; y: number; file: RecentFile } | null>(null)
+  const plugins = usePlugins((s) => s.enabled)
+  const kinds = enabledKinds(plugins)
+  const filters = kinds.map((k) => k.id)
 
   const shown = useMemo(() => recents.filter((r) => filter === 'all' || r.kind === filter), [recents, filter])
 
@@ -31,7 +28,7 @@ export function Home() {
         <header className="home-header">
           <div>
             <h1>Workspace</h1>
-            <p className="muted">Open, edit and create Word, PowerPoint, PDF, Markdown and text files.</p>
+            <p className="muted">Open, edit and create {listOf(kinds.map((k) => k.prose))} files.</p>
           </div>
           <div className="home-header-actions">
             <IconButton label={shortcut(theme === 'dark' ? 'Light appearance (⇧⌘L)' : 'Dark appearance (⇧⌘L)')} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
@@ -54,23 +51,24 @@ export function Home() {
             </span>
             <span className="kbd">{shortcut('⌘O')}</span>
           </button>
-          {CREATE.map((c) => (
-            <button key={c.kind} type="button" className="home-card" onClick={() => newDocument(c.kind)}>
-              <DocBadge kind={c.kind} size={36} />
-              <span className="home-card-text">
-                <strong>{c.title}</strong>
-                <span className="muted">{c.hint}</span>
-              </span>
-              {c.shortcut && <span className="kbd">{shortcut(c.shortcut)}</span>}
-            </button>
-          ))}
+          {kinds
+            .filter((k) => k.create)
+            .map((k) => (
+              <button key={k.id} type="button" className="home-card" onClick={() => newDocument(k.id)}>
+                <DocBadge kind={k.id} size={36} />
+                <span className="home-card-text">
+                  <strong>{k.create!.title}</strong>
+                  <span className="muted">{k.create!.hint}</span>
+                </span>
+              </button>
+            ))}
         </div>
 
         <section className="home-recents">
           <div className="home-recents-header">
             <h2>Recent</h2>
             <div className="home-filter" role="tablist">
-              {(['all', 'docx', 'pptx', 'pdf', 'md', 'txt'] as const).map((k) => (
+              {(['all', ...filters] as const).map((k) => (
                 <button key={k} type="button" role="tab" aria-selected={filter === k} className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>
                   {k === 'all' ? 'All' : KINDS[k].short}
                 </button>
@@ -135,6 +133,11 @@ export function Home() {
       )}
     </div>
   )
+}
+
+/** “Word, PowerPoint and PDF” */
+function listOf(items: string[]) {
+  return items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}` : items.join('')
 }
 
 function prettyDir(path: string) {

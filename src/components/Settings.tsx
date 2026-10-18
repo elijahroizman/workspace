@@ -1,21 +1,22 @@
-import { Keyboard, Moon, Palette, RotateCcw, Save, Search, Sun, X } from 'lucide-react'
+import { ArrowLeft, Blocks, Keyboard, Moon, Palette, RotateCcw, Save, Search, Settings2, Sun, X } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useEffect, useRef, useState } from 'react'
-import type { DocKind } from '../lib/kinds'
-import { shortcut } from '../lib/platform'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { canSetDefaults, defaultStatus, makeDefault } from '../lib/defaults'
+import { isMac, openExternal, shortcut, showError } from '../lib/platform'
+import { openUpdatePanel } from '../lib/updater'
+import { PLUGINS, isBuiltIn } from '../plugins/catalog'
+import { enabledKinds, usePlugins } from '../state/plugins'
+import type { SettingsPage } from '../state/settings'
 import { useSettings } from '../state/settings'
+import { useSetup } from '../state/setup'
 import type { ShortcutDef } from '../state/shortcuts'
 import { SHORTCUTS, isValidKeys, keysFor, keysFromEvent, syncMenu, useShortcuts } from '../state/shortcuts'
 import { useWorkspace } from '../state/workspace'
-import { IconButton, Segmented, Switch } from './ui'
+import { PluginRow } from './PluginList'
+import { DocBadge } from './Workbench'
+import { IconButton, Segmented, Spinner, Switch } from './ui'
 
-const KIND_OPTIONS: { kind: DocKind; label: string }[] = [
-  { kind: 'docx', label: 'Documents' },
-  { kind: 'pptx', label: 'Presentations' },
-  { kind: 'md', label: 'Markdown notes' },
-  { kind: 'txt', label: 'Text files' },
-  { kind: 'pdf', label: 'PDFs' },
-]
+const LicensesPage = lazy(() => import('./Licenses'))
 
 const DELAYS = [
   { value: '1', label: '1 sec' },
@@ -24,9 +25,9 @@ const DELAYS = [
   { value: '30', label: '30 sec' },
 ]
 
-type Page = 'autosave' | 'appearance' | 'shortcuts'
-
-const PAGES: { id: Page; label: string; icon: ReactNode }[] = [
+const PAGES: { id: SettingsPage; label: string; icon: ReactNode }[] = [
+  { id: 'general', label: 'General', icon: <Settings2 size={15} strokeWidth={1.75} /> },
+  { id: 'plugins', label: 'Plugins', icon: <Blocks size={15} strokeWidth={1.75} /> },
   { id: 'autosave', label: 'Autosave', icon: <Save size={15} strokeWidth={1.75} /> },
   { id: 'appearance', label: 'Appearance', icon: <Palette size={15} strokeWidth={1.75} /> },
   { id: 'shortcuts', label: 'Keyboard Shortcuts', icon: <Keyboard size={15} strokeWidth={1.75} /> },
@@ -37,7 +38,8 @@ let recording = false
 
 export default function SettingsPanel() {
   const setOpen = useSettings((s) => s.setOpen)
-  const [page, setPage] = useState<Page>('autosave')
+  const page = useSettings((s) => s.page)
+  const setPage = useSettings((s) => s.setPage)
   const dialog = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -58,7 +60,13 @@ export default function SettingsPanel() {
         <nav className="settings-nav" aria-label="Settings sections">
           <h2 id="settings-title">Settings</h2>
           {PAGES.map((p) => (
-            <button key={p.id} type="button" className={`settings-nav-item ${page === p.id ? 'on' : ''}`} aria-current={page === p.id} onClick={() => setPage(p.id)}>
+            <button
+              key={p.id}
+              type="button"
+              className={`settings-nav-item ${page === p.id || (page === 'licenses' && p.id === 'general') ? 'on' : ''}`}
+              aria-current={page === p.id}
+              onClick={() => setPage(p.id)}
+            >
               {p.icon}
               {p.label}
             </button>
@@ -66,21 +74,208 @@ export default function SettingsPanel() {
         </nav>
         <div className="settings-page">
           <header className="settings-page-header">
-            <h3>{PAGES.find((p) => p.id === page)!.label}</h3>
+            {page === 'licenses' ? (
+              <button type="button" className="settings-back" onClick={() => setPage('general')}>
+                <ArrowLeft size={15} />
+                <h3>Open-source licenses</h3>
+              </button>
+            ) : (
+              <h3>{PAGES.find((p) => p.id === page)!.label}</h3>
+            )}
             <IconButton label="Close (esc)" onClick={() => setOpen(false)}>
               <X size={16} />
             </IconButton>
           </header>
-          <div className="settings-scroll">{page === 'autosave' ? <AutosavePage /> : page === 'appearance' ? <AppearancePage /> : <ShortcutsPage />}</div>
+          <div className="settings-scroll">
+            {page === 'general' && <GeneralPage />}
+            {page === 'plugins' && <PluginsPage />}
+            {page === 'autosave' && <AutosavePage />}
+            {page === 'appearance' && <AppearancePage />}
+            {page === 'shortcuts' && <ShortcutsPage />}
+            {page === 'licenses' && (
+              <Suspense fallback={<Spinner />}>
+                <LicensesPage />
+              </Suspense>
+            )}
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
+function GeneralPage() {
+  const setOpen = useSettings((s) => s.setOpen)
+  const setPage = useSettings((s) => s.setPage)
+  return (
+    <>
+      <div className="settings-row">
+        <div className="settings-row-text">
+          <span className="settings-label">Workspace {__APP_VERSION__}</span>
+          <span className="settings-hint">Updates download by themselves and install when you quit.</span>
+        </div>
+        <div className="settings-row-control">
+          <button type="button" className="btn" onClick={() => (setOpen(false), openUpdatePanel())}>
+            Check for updates
+          </button>
+        </div>
+      </div>
+
+      <DefaultAppsRow />
+
+      <div className="settings-row">
+        <div className="settings-row-text">
+          <span className="settings-label">Setup</span>
+          <span className="settings-hint">Go through the first-launch screen again: plugins and default apps.</span>
+        </div>
+        <div className="settings-row-control">
+          <button type="button" className="btn" onClick={() => (setOpen(false), useSetup.getState().show())}>
+            Run setup again
+          </button>
+        </div>
+      </div>
+
+      <div className="settings-row">
+        <div className="settings-row-text">
+          <span className="settings-label">Open-source licenses</span>
+          <span className="settings-hint">Workspace is built on open-source engines, including Excalidraw, PDFium and docx-editor.</span>
+        </div>
+        <div className="settings-row-control">
+          <button type="button" className="btn" onClick={() => setPage('licenses')}>
+            View licenses
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
+
+/** Which file types open in Workspace, and a button for each that doesn't. */
+function DefaultAppsRow() {
+  const plugins = usePlugins((s) => s.enabled)
+  const kinds = enabledKinds(plugins)
+  const [status, setStatus] = useState<Record<string, boolean | null>>({})
+  const [busy, setBusy] = useState(false)
+  const key = kinds.map((k) => k.id).join()
+
+  const refresh = () => void defaultStatus(kinds.map((k) => k.id)).then(setStatus, () => {})
+  useEffect(() => {
+    refresh()
+    // Windows: the user picks in Settings, then comes back.
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+
+  const set = async (ids: string[]) => {
+    setBusy(true)
+    try {
+      await makeDefault(ids)
+    } catch (err) {
+      await showError(String(err))
+    } finally {
+      setBusy(false)
+      refresh()
+    }
+  }
+
+  if (!canSetDefaults) return null
+  const missing = kinds.filter((k) => status[k.id] === false).map((k) => k.id)
+  return (
+    <div className="settings-row column">
+      <div className="settings-row-text">
+        <span className="settings-label">Default apps</span>
+        <span className="settings-hint">
+          {isMac ? 'Double-clicking these files in Finder opens them in Workspace.' : 'Windows asks you to confirm each one in Settings › Default apps.'}
+        </span>
+      </div>
+      <div className="default-apps">
+        {kinds.map((k) => (
+          <div key={k.id} className="default-app">
+            <DocBadge kind={k.id} size={22} />
+            <span className="default-app-name">
+              {k.label} <span className="faint">{k.extensions.map((e) => `.${e}`).join(' ')}</span>
+            </span>
+            {status[k.id] ? (
+              <span className="faint">Opens in Workspace</span>
+            ) : (
+              <button type="button" className="btn" disabled={busy || status[k.id] == null} onClick={() => void set([k.id])}>
+                Make default
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      {missing.length > 1 && (
+        <div>
+          <button type="button" className="btn" disabled={busy} onClick={() => void set(missing)}>
+            Make Workspace the default for all
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PluginsPage() {
+  const enabled = usePlugins((s) => s.enabled)
+  const progress = usePlugins((s) => s.progress)
+  const { enable, disable } = usePlugins.getState()
+  const builtIn = PLUGINS.filter(isBuiltIn)
+  const optional = PLUGINS.filter((p) => !isBuiltIn(p))
+  return (
+    <>
+      <p className="settings-intro">Plugins add file types. Built-in ones are always there; turn on others when you need them.</p>
+      <section className="plugin-group">
+        <h4>Optional</h4>
+        {optional.map((p) => (
+          <PluginRow
+            key={p.id}
+            plugin={p}
+            control={
+              progress[p.id] ? (
+                <Spinner size={16} />
+              ) : (
+                <Switch
+                  label={`Use ${p.name}`}
+                  checked={!!enabled[p.id]}
+                  onChange={(on) => void (on ? enable(p.id) : disablePlugin(p.id, disable))}
+                />
+              )
+            }
+          >
+            <button type="button" className="link-btn" onClick={() => void openExternal(p.homepage)}>
+              {p.homepage.replace(/^https:\/\//, '')}
+            </button>
+          </PluginRow>
+        ))}
+      </section>
+      <section className="plugin-group">
+        <h4>Built in</h4>
+        {builtIn.map((p) => (
+          <PluginRow key={p.id} plugin={p} control={<span className="faint">Built in</span>} />
+        ))}
+      </section>
+    </>
+  )
+}
+
+/** Tabs of a plugin's files have to close first. */
+async function disablePlugin(id: string, disable: (id: string) => Promise<void>) {
+  const plugin = PLUGINS.find((p) => p.id === id)!
+  const kinds = new Set(plugin.kinds.map((k) => k.id))
+  const open = useWorkspace.getState().tabs.filter((t) => kinds.has(t.kind))
+  if (open.length) {
+    await showError(`Close the ${open.length === 1 ? 'tab' : `${open.length} tabs`} using ${plugin.name} first (${open.map((t) => `“${t.title}”`).join(', ')}).`)
+    return
+  }
+  await disable(id)
+}
+
 function AutosavePage() {
   const autosave = useSettings((s) => s.autosave)
   const setAutosave = useSettings((s) => s.setAutosave)
+  const plugins = usePlugins((s) => s.enabled)
 
   return (
     <>
@@ -115,14 +310,14 @@ function AutosavePage() {
             <span className="settings-hint">Saving a PDF rewrites the whole file, so PDFs start out off.</span>
           </div>
           <div className="kind-checks">
-            {KIND_OPTIONS.map(({ kind, label }) => (
-              <label key={kind} className="check">
+            {enabledKinds(plugins).map((k) => (
+              <label key={k.id} className="check">
                 <input
                   type="checkbox"
-                  checked={autosave.kinds[kind]}
-                  onChange={(e) => setAutosave({ kinds: { ...autosave.kinds, [kind]: e.currentTarget.checked } })}
+                  checked={autosave.kinds[k.id] !== false}
+                  onChange={(e) => setAutosave({ kinds: { ...autosave.kinds, [k.id]: e.currentTarget.checked } })}
                 />
-                {label}
+                {k.label}
               </label>
             ))}
           </div>

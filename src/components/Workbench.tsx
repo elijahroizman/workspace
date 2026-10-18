@@ -1,4 +1,4 @@
-import { FileCode2, FileText, FileType2, NotepadText, PanelLeft, PanelRight, Presentation, Search, X, ChevronUp, ChevronDown } from 'lucide-react'
+import { FileText, PanelLeft, PanelRight, Search, X, ChevronUp, ChevronDown } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type { DocKind } from '../lib/kinds'
@@ -8,19 +8,8 @@ import { useWorkspace } from '../state/workspace'
 import { IconButton } from './ui'
 
 export function KindIcon({ kind, size = 14 }: { kind: DocKind; size?: number }) {
-  const props = { size, strokeWidth: 1.75 }
-  switch (kind) {
-    case 'docx':
-      return <FileText {...props} />
-    case 'pptx':
-      return <Presentation {...props} />
-    case 'pdf':
-      return <FileType2 {...props} />
-    case 'md':
-      return <FileCode2 {...props} />
-    case 'txt':
-      return <NotepadText {...props} />
-  }
+  const Icon = KINDS[kind]?.icon ?? FileText
+  return <Icon size={size} strokeWidth={1.75} />
 }
 
 export function DocBadge({ kind, size = 22 }: { kind: DocKind; size?: number }) {
