@@ -251,19 +251,53 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Two slides stacked for a transition (slideshow and the inspector preview). */
+/* Two slides stacked for a transition (slideshow and the inspector preview).
+   Perspective and backface-visibility are only on while a transition plays.
+   Left on the resting slide, WebKit flattens the layer and cuts text that
+   sits inside an overflow clip. */
 .slide-swap {
   position: relative;
   width: 100%;
   height: 100%;
   overflow: hidden;
+}
+
+.slide-swap.is-3d {
   perspective: 1600px;
 }
 
 .slide-swap-layer {
   position: absolute;
   inset: 0;
+}
+
+.slide-swap.is-3d .slide-swap-layer {
   backface-visibility: hidden;
+}
+
+/* The show draws a still of the slide, and that still clips every shape.
+   The editor does not, so text that fits on the canvas was sliced once the
+   show scaled up. Let it paint. The slide frame still clips to the canvas. */
+.present [data-static-element-type='shape'],
+.present [data-static-element-type='text'] {
+  overflow: visible;
+}
+
+/* A line is drawn twice. One SVG is placed on the shape. The other is left
+   inline, so it sits on the text baseline. Full screen scales that gap and
+   the rule shows up twice. A block SVG stays in the shape. */
+.slide-preview [data-static-element-type] > svg,
+.deck-stage [data-pptx-element] > svg {
+  display: block;
+}
+
+/* .slide-enlarged is the editor stage or a slide preview whose scale is above
+   1, which is what full screen does to a deck. The text clip is an inset in
+   slide pixels. Under that scale WebKit treats it as a much larger hole and
+   drops whole lines. */
+.slide-enlarged .whitespace-pre-wrap {
+  overflow: visible !important;
+  clip-path: none !important;
 }
 
 /* Speaker notes under the slide. */

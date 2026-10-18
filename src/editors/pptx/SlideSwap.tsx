@@ -30,8 +30,10 @@ export function SlideSwap({ outgoing, incoming, transition, run }: { outgoing: R
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run])
   const anim = active ? resolveSlideTransition(transition) : null
+  // Perspective stays off once the transition has finished. A resting 3D layer
+  // makes WebKit clip the text on the slide.
   return (
-    <div className="slide-swap">
+    <div className={anim ? 'slide-swap is-3d' : 'slide-swap'}>
       {anim && (
         <div key={`out-${run}`} className="slide-swap-layer" style={{ zIndex: anim.outgoingOnTop ? 2 : 0, animation: anim.outgoing !== 'none' ? anim.outgoing : undefined }}>
           {outgoing}
