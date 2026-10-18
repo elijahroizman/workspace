@@ -61,19 +61,31 @@ pub async fn fetch_bytes(url: String) -> Result<Response, String> {
 /// The timeout keeps a stalled download from blocking the video insert, which
 /// waits for the poster.
 pub(crate) fn http_agent() -> &'static ureq::Agent {
-    static AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
-        ureq::Agent::config_builder()
-            .tls_config(
-                ureq::tls::TlsConfig::builder()
-                    .provider(ureq::tls::TlsProvider::NativeTls)
-                    .root_certs(ureq::tls::RootCerts::PlatformVerifier)
-                    .build(),
-            )
-            .timeout_global(Some(Duration::from_secs(15)))
-            .build()
-            .new_agent()
-    });
+    static AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| agent(Some(Duration::from_secs(15)), None));
     &AGENT
+}
+
+/// For large downloads (plugins): 15 s to connect, 30 s for the reply to start, and 15 minutes
+/// for the body, enough for 100 MB on a slow line, so a stalled transfer still ends.
+pub(crate) fn download_agent() -> &'static ureq::Agent {
+    static AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| agent(None, Some(Duration::from_secs(15 * 60))));
+    &AGENT
+}
+
+fn agent(global: Option<Duration>, body: Option<Duration>) -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .tls_config(
+            ureq::tls::TlsConfig::builder()
+                .provider(ureq::tls::TlsProvider::NativeTls)
+                .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+                .build(),
+        )
+        .timeout_global(global)
+        .timeout_connect(Some(Duration::from_secs(15)))
+        .timeout_recv_response(Some(Duration::from_secs(30)))
+        .timeout_recv_body(body)
+        .build()
+        .new_agent()
 }
 
 #[derive(Serialize)]
@@ -119,7 +131,7 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     })
 }
 
-fn percent_decode(input: &str) -> Result<String, String> {
+pub(crate) fn percent_decode(input: &str) -> Result<String, String> {
     let bytes = input.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;

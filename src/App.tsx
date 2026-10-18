@@ -1,13 +1,16 @@
 import { Component, lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
 import type { ComponentType, ErrorInfo, ReactNode } from 'react'
 import { Home } from './components/Home'
+import { NewFilePicker, useNewFile } from './components/NewFile'
 import { TitleBar } from './components/TitleBar'
 import { CenterState } from './components/ui'
 import type { DocKind } from './lib/kinds'
 import * as platform from './lib/platform'
 import { flushAutosave, startAutosave } from './lib/autosave'
 import { installUpdate, openUpdatePanel, startUpdateChecks } from './lib/updater'
+import { startPlugins } from './state/plugins'
 import { useSettings } from './state/settings'
+import { useSetup } from './state/setup'
 import type { Scope } from './state/shortcuts'
 import { keysFromEvent, movedBuiltIn, shortcutFor, syncMenu } from './state/shortcuts'
 import type { DocTab } from './state/workspace'
@@ -19,16 +22,20 @@ export interface EditorProps {
 }
 
 // Each editor (and its heavy engine) loads only when a tab of that type opens,
-// which keeps launch fast.
-const EDITORS: Record<DocKind, React.LazyExoticComponent<ComponentType<EditorProps>>> = {
+// which keeps launch fast. Built-in plugins' editors are part of the app; optional plugins
+// run in PluginEditor (see plugins/api.ts).
+const BUILT_IN_EDITORS: Record<string, React.LazyExoticComponent<ComponentType<EditorProps>>> = {
   md: lazy(() => import('./editors/markdown/MarkdownEditor')),
   txt: lazy(() => import('./editors/text/TextEditor')),
   pdf: lazy(() => import('./editors/pdf/PdfEditor')),
   docx: lazy(() => import('./editors/docx/DocxEditor')),
   pptx: lazy(() => import('./editors/pptx/PptxEditor')),
 }
+const PluginEditor = lazy(() => import('./plugins/PluginEditor'))
+const editorFor = (kind: DocKind) => BUILT_IN_EDITORS[kind] ?? PluginEditor
 
 const SettingsPanel = lazy(() => import('./components/Settings'))
+const SetupScreen = lazy(() => import('./components/Setup'))
 
 class EditorBoundary extends Component<{ name: string; children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null }
@@ -58,7 +65,7 @@ class EditorBoundary extends Component<{ name: string; children: ReactNode }, { 
  * until you look at them. After that it stays loaded, so switching back is instant.
  */
 const EditorSlot = memo(function EditorSlot({ tab, active }: EditorProps) {
-  const Editor = EDITORS[tab.kind]
+  const Editor = editorFor(tab.kind)
   const [shown, setShown] = useState(active)
   if (active && !shown) setShown(true)
   return (
@@ -81,17 +88,8 @@ export async function runCommand(id: string) {
     case 'new-tab':
       ws.activate(HOME_TAB_ID)
       break
-    case 'new-docx':
-      ws.newDocument('docx')
-      break
-    case 'new-pptx':
-      ws.newDocument('pptx')
-      break
-    case 'new-md':
-      ws.newDocument('md')
-      break
-    case 'new-txt':
-      ws.newDocument('txt')
+    case 'new':
+      useNewFile.getState().setOpen(true)
       break
     case 'open':
       await ws.openDialog()
@@ -210,6 +208,9 @@ function editorHandles(command: string) {
   const editor = getEditor(useWorkspace.getState().activeId)
   if (command.startsWith('view-')) return !!editor?.viewMode
   if (command.startsWith('zoom-')) return !!editor?.zoom
+  // A plugin without its own find or print keeps the keys for itself (Excalidraw searches the canvas).
+  if (command === 'find') return !!editor?.find
+  if (command === 'print') return !!editor?.print
   return true
 }
 
@@ -219,6 +220,8 @@ export default function App() {
   const theme = useWorkspace((s) => s.theme)
   const dropHover = useWorkspace((s) => s.dropHover)
   const settingsOpen = useSettings((s) => s.open)
+  const setupOpen = useSetup((s) => s.open)
+  const newFileOpen = useNewFile((s) => s.open)
   const started = useRef(false)
 
   useEffect(() => {
@@ -235,6 +238,8 @@ export default function App() {
     if (!started.current) {
       started.current = true
       void (async () => {
+        // Plugins first: a restored tab may need one.
+        await startPlugins()
         await restoreSession()
         await drainPending()
       })()
@@ -276,7 +281,7 @@ export default function App() {
   useEffect(() => {
     const menuOwnsShortcuts = platform.isTauri && platform.isMac
     const onKey = (e: KeyboardEvent) => {
-      if (useSettings.getState().open) return
+      if (useSettings.getState().open || useSetup.getState().open || useNewFile.getState().open) return
       const mod = platform.isMac ? e.metaKey : e.ctrlKey
       if (mod && (platform.isMac || !e.metaKey) && /^Digit[1-9]$/.test(e.code) && !e.shiftKey && !e.altKey) {
         e.preventDefault()
@@ -358,6 +363,12 @@ export default function App() {
       {settingsOpen && (
         <Suspense fallback={null}>
           <SettingsPanel />
+        </Suspense>
+      )}
+      {newFileOpen && <NewFilePicker />}
+      {setupOpen && (
+        <Suspense fallback={null}>
+          <SetupScreen />
         </Suspense>
       )}
       {dropHover && (

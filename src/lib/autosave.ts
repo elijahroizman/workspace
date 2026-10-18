@@ -30,7 +30,7 @@ const setStatus = (tabId: string, status: AutosaveStatus | null) =>
 /** Why a tab isn't autosaved, or null if it is. */
 export function autosaveBlocker(tab: DocTab, s: AutosaveSettings = useSettings.getState().autosave): string | null {
   if (!s.enabled) return 'Autosave is off.'
-  if (!s.kinds[tab.kind]) return `Autosave is off for ${KINDS[tab.kind].short.toLowerCase()} files.`
+  if (s.kinds[tab.kind] === false) return `Autosave is off for ${KINDS[tab.kind].short.toLowerCase()} files.`
   if (!tab.path) return 'Save this file once. After that, changes autosave.'
   if (tab.path.startsWith('browser:')) return 'Only files saved on this computer can autosave.'
   // Two tabs writing the same file would overwrite each other's changes.

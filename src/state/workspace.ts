@@ -2,6 +2,9 @@ import { create } from 'zustand'
 import type { DocKind } from '../lib/kinds'
 import { KINDS, kindFromPath, stripExtension } from '../lib/kinds'
 import * as platform from '../lib/platform'
+import type { PluginInfo } from '../plugins/catalog'
+import { pluginForKind } from '../plugins/catalog'
+import { enabledKinds, kindEnabled, usePlugins } from './plugins'
 
 export const HOME_TAB_ID = 'home'
 
@@ -115,9 +118,8 @@ function load<T>(key: string, fallback: T): T {
 }
 
 const defaultPanels = {
-  left: { docx: true, pptx: true, pdf: true, md: true, txt: false } as Record<DocKind, boolean>,
-  // Markdown is mostly for reading, so its inspector starts hidden.
-  right: { docx: true, pptx: true, pdf: true, md: false, txt: false } as Record<DocKind, boolean>,
+  left: Object.fromEntries(Object.values(KINDS).map((k) => [k.id, k.panels.left])) as Record<DocKind, boolean>,
+  right: Object.fromEntries(Object.values(KINDS).map((k) => [k.id, k.panels.right])) as Record<DocKind, boolean>,
 }
 
 const savedPanels = load<Partial<typeof defaultPanels>>(STORAGE.panels, {})
@@ -190,6 +192,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     openPaths: async (paths) => {
       const failures: string[] = []
       const opened: DocTab[] = []
+      const needPlugin: string[] = []
       for (const path of paths) {
         const existing = get().tabs.find((t) => t.path === path)
         if (existing) {
@@ -198,7 +201,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         }
         const kind = kindFromPath(path)
         if (!kind) {
-          failures.push(`“${platform.basename(path)}” isn't a file type Workspace opens (Word, PowerPoint, PDF, Markdown or plain text).`)
+          failures.push(`“${platform.basename(path)}” isn't a file type Workspace opens (${openableTypes()}).`)
+          continue
+        }
+        if (!kindEnabled(kind)) {
+          needPlugin.push(path)
           continue
         }
         if (opened.some((t) => t.path === path)) continue
@@ -217,12 +224,23 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         addRecent(tab.path!, tab.kind)
       }
       if (failures.length) void platform.showError(failures.join('\n\n'))
+      if (needPlugin.length) {
+        const ready = await offerPlugins(needPlugin, platform.basename)
+        if (ready.length) await get().openPaths(ready)
+      }
     },
 
     openFiles: (files) => {
+      const needPlugin = files.filter((f) => {
+        const kind = kindFromPath(f.name)
+        return kind && !kindEnabled(kind)
+      })
+      if (needPlugin.length) {
+        void offerPlugins(needPlugin, (f) => f.name).then((ready) => ready.length && get().openFiles(ready))
+      }
       for (const file of files) {
         const kind = kindFromPath(file.name)
-        if (!kind) continue
+        if (!kind || !kindEnabled(kind)) continue
         const existing = get().tabs.find((t) => t.path === file.path)
         if (existing) {
           set({ activeId: existing.id })
@@ -396,6 +414,30 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     setDropHover: (dropHover) => set({ dropHover }),
   }
 })
+
+/** “Word, PowerPoint, PDF, Markdown or plain text”, from the plugins that are on. */
+function openableTypes() {
+  const names = enabledKinds().map((k) => k.prose)
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : names.join('')
+}
+
+/** Files whose plugin is off: offer to turn each plugin on. Resolves to the files that can open now. */
+async function offerPlugins<T>(files: T[], name: (file: T) => string): Promise<T[]> {
+  const ready: T[] = []
+  const byPlugin = new Map<PluginInfo, T[]>()
+  for (const file of files) {
+    const plugin = pluginForKind(kindFromPath(name(file))!)
+    byPlugin.set(plugin, [...(byPlugin.get(plugin) ?? []), file])
+  }
+  for (const [plugin, group] of byPlugin) {
+    const what = group.length === 1 ? `“${name(group[0])}” needs` : `${group.length} files need`
+    const ok = await platform.confirmDialog(`${what} the ${plugin.name} plugin. Turn it on?`, { okLabel: 'Turn On', kind: 'info' })
+    if (!ok) continue
+    if (await usePlugins.getState().enable(plugin.id)) ready.push(...group)
+    else await platform.showError(usePlugins.getState().errors[plugin.id] ?? `Couldn't turn on ${plugin.name}.`)
+  }
+  return ready
+}
 
 function persistPanels() {
   const { leftOpen, rightOpen } = useWorkspace.getState()

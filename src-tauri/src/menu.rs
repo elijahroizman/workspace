@@ -64,13 +64,6 @@ fn build_with<R: Runtime>(app: &AppHandle<R>, keys: &Shortcuts) -> tauri::Result
         .comments(Some("Word, PowerPoint, PDF, Markdown and text files in one tabbed window."))
         .build();
 
-    let new_menu = SubmenuBuilder::new(app, "New")
-        .item(&item(app, keys, "new-docx", "Document", Some("CmdOrCtrl+N"))?)
-        .item(&item(app, keys, "new-pptx", "Presentation", Some("CmdOrCtrl+Shift+N"))?)
-        .item(&item(app, keys, "new-md", "Markdown Note", Some("CmdOrCtrl+Alt+N"))?)
-        .item(&item(app, keys, "new-txt", "Text File", None)?)
-        .build()?;
-
     let reveal_label = if cfg!(target_os = "macos") {
         "Show in Finder"
     } else if cfg!(windows) {
@@ -82,7 +75,8 @@ fn build_with<R: Runtime>(app: &AppHandle<R>, keys: &Shortcuts) -> tauri::Result
     let file_menu = SubmenuBuilder::new(app, "File")
         .item(&item(app, keys, "new-tab", "New Tab", Some("CmdOrCtrl+T"))?)
         .item(&item(app, keys, "duplicate-tab", "Duplicate Tab", Some("CmdOrCtrl+Shift+D"))?)
-        .item(&new_menu)
+        // Asks which kind of file: one per plugin that's on.
+        .item(&item(app, keys, "new", "New…", Some("CmdOrCtrl+N"))?)
         .item(&item(app, keys, "open", "Open…", Some("CmdOrCtrl+O"))?)
         .separator()
         .item(&item(app, keys, "save", "Save", Some("CmdOrCtrl+S"))?)

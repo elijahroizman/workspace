@@ -2,6 +2,7 @@ import { Check, CircleAlert, Copy, FolderOpen, LayoutGrid, Plus, Save, SaveOff, 
 import { useEffect, useRef, useState } from 'react'
 import { autosaveBlocker, useAutosaveStatus } from '../lib/autosave'
 import { isMac, isTauri, revealInFinder, revealLabel, shortcut, tildify } from '../lib/platform'
+import { enabledKinds, usePlugins } from '../state/plugins'
 import { useSettings } from '../state/settings'
 import { HOME_TAB_ID, useWorkspace } from '../state/workspace'
 import { UpdateButton } from './UpdateButton'
@@ -13,6 +14,7 @@ export function TitleBar() {
   const activeId = useWorkspace((s) => s.activeId)
   const { activate, closeTab, moveTab, newDocument, openDialog, duplicateTab, closeOthers } = useWorkspace.getState()
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const plugins = usePlugins((s) => s.enabled)
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; id: string } | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
   const [drag, setDrag] = useState<{ id: string; dx: number } | null>(null)
@@ -163,10 +165,9 @@ export function TitleBar() {
           anchor={menu}
           onClose={() => setMenu(null)}
           items={[
-            { label: 'New Document', icon: <KindIcon kind="docx" />, shortcut: '⌘N', onSelect: () => newDocument('docx') },
-            { label: 'New Presentation', icon: <KindIcon kind="pptx" />, shortcut: '⇧⌘N', onSelect: () => newDocument('pptx') },
-            { label: 'New Markdown Note', icon: <KindIcon kind="md" />, shortcut: '⌥⌘N', onSelect: () => newDocument('md') },
-            { label: 'New Text File', icon: <KindIcon kind="txt" />, onSelect: () => newDocument('txt') },
+            ...enabledKinds(plugins)
+              .filter((k) => k.create)
+              .map((k) => ({ label: k.create!.title.replace(/\b\w/g, (c) => c.toUpperCase()), icon: <KindIcon kind={k.id} />, onSelect: () => newDocument(k.id) })),
             { label: 'Open…', icon: <FolderOpen size={14} />, shortcut: '⌘O', onSelect: () => void openDialog(), separatorBefore: true },
           ]}
         />

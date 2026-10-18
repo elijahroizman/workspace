@@ -28,10 +28,7 @@ export interface ShortcutDef {
 export const SHORTCUTS: ShortcutDef[] = [
   // ── Files and tabs (the menu bar's items)
   { id: 'new-tab', label: 'New tab', group: 'Files and tabs', scope: 'app', keys: '⌘T' },
-  { id: 'new-docx', label: 'New document', group: 'Files and tabs', scope: 'app', keys: '⌘N' },
-  { id: 'new-pptx', label: 'New presentation', group: 'Files and tabs', scope: 'app', keys: '⇧⌘N' },
-  { id: 'new-md', label: 'New Markdown note', group: 'Files and tabs', scope: 'app', keys: '⌥⌘N' },
-  { id: 'new-txt', label: 'New text file', group: 'Files and tabs', scope: 'app', keys: '' },
+  { id: 'new', label: 'New file…', group: 'Files and tabs', scope: 'app', keys: '⌘N' },
   { id: 'open', label: 'Open…', group: 'Files and tabs', scope: 'app', keys: '⌘O' },
   { id: 'save', label: 'Save', group: 'Files and tabs', scope: 'app', keys: '⌘S' },
   { id: 'save-as', label: 'Save as…', group: 'Files and tabs', scope: 'app', keys: '⇧⌘S' },

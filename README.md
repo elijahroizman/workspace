@@ -2,7 +2,9 @@
 
 # Workspace
 
-A small, fast Mac and Windows app for the document types most people actually use: **Word (.docx), PowerPoint (.pptx), PDF, Markdown and plain text (.txt)**. Everything opens as a tab in one window, and each kind of document gets its own sidebar and inspector.
+A small, fast Mac and Windows app for the document types most people actually use: **Word (.docx), PowerPoint (.pptx), PDF, Markdown and plain text (.txt)**, plus optional plugins such as **Excalidraw** drawings. Everything opens as a tab in one window, and each kind of document gets its own sidebar and inspector.
+
+- **Plugins.** Office, PDF, Markdown and text are built in. Others are optional: turn them on in the setup screen that opens the first time you launch Workspace, or later in **Settings › Plugins**. The first optional plugin is [Excalidraw](https://excalidraw.com) for `.excalidraw` drawings. It's about 16 MB, mostly fonts, so Workspace downloads it from this repository's releases when you turn it on and checks its signature before installing it.
 
 - **Tabs across the top.** Open as many files as you like and switch with ⌘1–⌘9 or ⇧⌘[ / ⇧⌘]. Drag tabs to reorder them, and right-click a tab to duplicate it (⇧⌘D), for example to keep a textbook's questions and answers open side by side. Open tabs come back the next time you launch.
 - **Sidebars that fit the document.**
@@ -16,6 +18,7 @@ A small, fast Mac and Windows app for the document types most people actually us
   | Text | None: just the text | None |
 
 - **Fast.** Built on [Tauri](https://tauri.app), so it uses the web view built into the system (WebKit on macOS, WebView2 on Windows) instead of bundling a browser. The app is small and launches quickly. Each editor engine loads only when you first open that kind of file.
+- **New files.** ⌘N asks which kind of file to make, from the plugins you have on. The Home tab has a button for each too.
 - **Autosave.** A file you have already saved is written back to that same place a few seconds after you stop editing. That place can be any folder, including one that iCloud Drive, Dropbox, OneDrive or another sync app already watches. The sync app uploads the file. Workspace does not sign in to anything. A new document is not saved until you use Save. In **Settings** (⌘,) you can turn autosave off, change the delay, or leave PDFs on manual save, because saving a PDF rewrites the whole file.
 - **Works offline, no accounts.** Every document engine runs locally on your computer.
 - **Keeps itself up to date.** New versions download in the background and install when you quit. To install one straight away, click **Restart to Update** in the tab bar.
@@ -61,7 +64,7 @@ It takes about five minutes, most of it compiling. A copy you build yourself doe
 
 4. **First launch.** You built the app yourself, so it isn't signed by Apple. The first time, **right-click Workspace in Applications → Open → Open**. After that it opens normally. If macOS still refuses, run `xattr -cr /Applications/Workspace.app` once.
 
-5. **Optional: make it the default app** for a file type. In Finder, select any `.pdf` (or `.docx`, `.pptx`, `.md`), press ⌘I, choose **Workspace** under *Open with*, then click **Change All…**. Workspace also appears in every *Open With* menu.
+5. **Optional: make it the default app** for a file type. The setup screen asks on first launch, and **Settings › General › Default apps** can do it later. Workspace also appears in every *Open With* menu.
 
 Finder lists every `Workspace.app` it can find. The build left in `src-tauri/target`, a disk image that is still mounted, or an older copy in Downloads shows up beside the installed app with its version after the name, as in "Workspace (0.3.0)" and "Workspace (0.1.0)". Opening the current app removes the other copies from that menu. The files stay where they are.
 
@@ -75,7 +78,7 @@ On Windows, use Ctrl for ⌘, Alt for ⌥ and Shift for ⇧. Ctrl+Tab and Ctrl+S
 
 | | |
 | --- | --- |
-| New document / presentation / note | ⌘N / ⇧⌘N / ⌥⌘N |
+| New file (pick the kind) | ⌘N |
 | Open… | ⌘O |
 | Save / Save As… | ⌘S / ⇧⌘S |
 | Close tab / Reopen closed tab | ⌘W / ⇧⌘T |
@@ -110,6 +113,9 @@ All of these are open source and run locally:
 | New presentations | [PptxGenJS](https://github.com/gitbrent/PptxGenJS) | MIT |
 | PDF viewing, annotation, forms & page operations | [PDFium](https://pdfium.googlesource.com/pdfium/) (Chrome's PDF engine) compiled to WebAssembly by [EmbedPDF](https://github.com/embedpdf/embed-pdf-viewer) | BSD-3-Clause / MIT |
 | Markdown | [markdown-it](https://github.com/markdown-it/markdown-it), [CodeMirror 6](https://codemirror.net), [highlight.js](https://highlightjs.org), [yaml](https://github.com/eemeli/yaml) | MIT / BSD / ISC |
+| Drawings (optional plugin) | [Excalidraw](https://github.com/excalidraw/excalidraw) | MIT |
+
+**Settings › General › Open-source licenses** lists every package in the app, its plugins and the native shell, with their license texts.
 
 ## What it doesn't do (yet)
 
@@ -126,6 +132,7 @@ npm run app:dev        # runs the app with hot reload
 npm run dev            # just the UI in a browser at http://localhost:1420
 VITE_TEST_HOOKS=1 npx vite build && npx vite preview --port 1420   # lighter: a production build in the browser
 npm run typecheck      # type checks with tsc-rs, a Rust port of the TypeScript compiler
+npm run plugins        # builds optional plugins into plugins/<id>/dist; dev and preview serve them at /plugins/<id>/
 cd src-tauri && cargo test
 ```
 
@@ -136,10 +143,16 @@ src/
   App.tsx                 shell: tabs, menu commands, session restore, drag & drop
   state/workspace.ts      open tabs, saving, recents, panel visibility
   lib/platform.ts         native file dialogs and file I/O (browser fallback for dev)
-  components/             title bar + tabs, home screen, three-pane workbench, inspector controls
-  editors/{docx,pptx,pdf,markdown}/   one lazily loaded editor per file type
+  components/             title bar + tabs, home screen, setup screen, settings, three-pane workbench
+  editors/{docx,pptx,pdf,markdown,text}/   built-in editors, each loaded the first time it's needed
+  plugins/catalog.ts      every plugin and the file types it opens
+  plugins/api.ts          the contract an optional plugin's editor implements
+plugins/<id>/             optional plugins, built and released apart from the app (see plugins/README.md)
+scripts/licenses.mjs      collects license texts for Settings (runs in npm run build)
 src-tauri/
   src/lib.rs              app setup, Finder “Open With” handling
+  src/plugins.rs          downloads, checks and serves optional plugins (wsplugin: scheme)
+  src/defaults.rs         makes Workspace the default app for its file types
   src/launch_services.rs  one Workspace entry in Finder's Open With menu
   src/files.rs            raw-bytes file reading and atomic saving
   src/menu.rs             the native menu bar
@@ -148,3 +161,5 @@ src-tauri/
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before you change anything. It covers who can push to `main` and what every pull request must say.
 
 The **Release** workflow (`.github/workflows/release.yml`) builds a Windows x64 installer (`.exe`) and a Mac Apple-silicon `.dmg` on GitHub's runners and attaches both to a GitHub Release. Run it from the Actions tab, or push a tag such as `v0.3.0` after bumping the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. The workflow also signs the update bundles and publishes `latest.json`, the feed installed copies check. The signing key is in the repository's Actions secrets (`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`), and its public half is in `tauri.conf.json`. If the key is lost, installed copies can't verify new versions, and everyone has to reinstall by hand once. On Windows, a local build is `npx tauri build --bundles nsis`.
+
+Optional plugins have their own **Plugins** workflow (`.github/workflows/plugins.yml`): push a tag like `plugin-excalidraw-0.18.1-1` and it builds, zips and signs that plugin with the same key, and attaches it to a pre-release. Do that whenever a plugin's version in `plugins/<id>/plugin.json` changes, before releasing an app version that wants it.

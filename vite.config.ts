@@ -1,6 +1,10 @@
 import { defineConfig } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import { existsSync, readFileSync, statSync } from 'node:fs'
+import { extname, join, normalize } from 'node:path'
+
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }
 
 const host = process.env.TAURI_DEV_HOST
 
@@ -64,8 +68,30 @@ function docxCropLocked(): Plugin {
   }
 }
 
+/**
+ * Optional plugins are built apart from the app (`npm run plugins`, into plugins/<id>/dist) and
+ * the app downloads them. The dev and preview servers serve them at /plugins/<id>/ instead.
+ */
+function servePlugins(): Plugin {
+  const types: Record<string, string> = { '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png' }
+  const middleware = (req: { url?: string }, res: import('node:http').ServerResponse, next: () => void) => {
+    const m = /^\/plugins\/([a-z0-9-]+)\/([^?#]+)/.exec(req.url ?? '')
+    if (!m) return next()
+    const file = join(import.meta.dirname, 'plugins', m[1], 'dist', normalize(decodeURIComponent(m[2])).replace(/^(\.\.[/\\])+/, ''))
+    if (!existsSync(file) || !statSync(file).isFile()) return next()
+    res.setHeader('Content-Type', types[extname(file)] ?? 'application/octet-stream')
+    res.end(readFileSync(file))
+  }
+  return {
+    name: 'workspace:serve-plugins',
+    configureServer: (server) => void server.middlewares.use(middleware),
+    configurePreviewServer: (server) => void server.middlewares.use(middleware),
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), pptxEditSlides(), docxCropLocked()],
+  plugins: [react(), pptxEditSlides(), docxCropLocked(), servePlugins()],
+  define: { __APP_VERSION__: JSON.stringify(version) },
   clearScreen: false,
   server: {
     port: 1420,

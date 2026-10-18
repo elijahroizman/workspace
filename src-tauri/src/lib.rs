@@ -1,9 +1,11 @@
+mod defaults;
 mod files;
 // Helpers below are called from the macOS launch path. Other targets still
 // compile them so the tests run, and nothing else references them.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod launch_services;
 mod menu;
+mod plugins;
 mod update;
 
 use std::sync::Mutex;
@@ -100,6 +102,11 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(PendingOpens(Mutex::new(cli_paths)))
+        // Reading plugin files is disk I/O: answer off the thread that asked.
+        .register_asynchronous_uri_scheme_protocol("wsplugin", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || responder.respond(plugins::serve(&app, &request)));
+        })
         .setup(|app| {
             // A second Workspace.app (an old install, a target/ build, a mounted
             // disk image) shows up in Open With as another version. Unregister
@@ -134,6 +141,11 @@ pub fn run() {
             update::latest_release,
             update::relaunch_in_place,
             menu::set_menu_shortcuts,
+            plugins::installed_plugins,
+            plugins::install_plugin,
+            plugins::remove_plugin,
+            defaults::default_apps,
+            defaults::set_default_apps,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Workspace");

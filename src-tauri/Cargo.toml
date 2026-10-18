@@ -1,6 +1,6 @@
 [package]
 name = "workspace"
-version = "0.5.1"
+version = "0.6.0"
 description = "A fast, tabbed editor for Word, PowerPoint, PDF and Markdown files"
 edition = "2021"
 
@@ -23,6 +23,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # Small blocking HTTP client for fetching video thumbnails; native TLS uses the macOS keychain roots.
 ureq = { version = "3", default-features = false, features = ["native-tls"] }
+# Plugin downloads: unpack the archive and check its signature against the updater key.
+zip = { version = "4", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+minisign-verify = "0.3"
+base64 = "0.22"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSUserDefaults", "NSString", "NSObject"] }
@@ -31,6 +35,8 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39"
 windows-core = "0.62"
+# Registers Workspace's file types with Windows' Default Apps settings.
+windows-registry = "0.6"
 
 [profile.release]
 codegen-units = 1

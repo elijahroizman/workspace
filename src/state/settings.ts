@@ -1,12 +1,12 @@
 import { create } from 'zustand'
-import type { DocKind } from '../lib/kinds'
 
 export interface AutosaveSettings {
   /** When false, nothing autosaves. Files still save with the Save command. */
   enabled: boolean
   /** Seconds to wait after the last edit before saving. */
   delay: number
-  kinds: Record<DocKind, boolean>
+  /** By kind id. A kind not listed here (a plugin's) autosaves. */
+  kinds: Record<string, boolean>
 }
 
 export interface Settings {
@@ -39,7 +39,7 @@ function load(): Settings {
     const defaults = DEFAULT_SETTINGS.autosave
     const kinds = { ...defaults.kinds }
     if (isRecord(old.kinds)) {
-      for (const kind of Object.keys(kinds) as DocKind[]) {
+      for (const kind of Object.keys(old.kinds)) {
         if (typeof old.kinds[kind] === 'boolean') kinds[kind] = old.kinds[kind]
       }
     }
@@ -54,17 +54,24 @@ function load(): Settings {
   }
 }
 
+export type SettingsPage = 'general' | 'plugins' | 'autosave' | 'appearance' | 'shortcuts' | 'licenses'
+
 interface SettingsState extends Settings {
   /** Whether the Settings window is showing. */
   open: boolean
-  setOpen(open: boolean): void
+  /** The page it shows. */
+  page: SettingsPage
+  setOpen(open: boolean, page?: SettingsPage): void
+  setPage(page: SettingsPage): void
   setAutosave(patch: Partial<AutosaveSettings>): void
 }
 
 export const useSettings = create<SettingsState>((set, get) => ({
   ...load(),
   open: false,
-  setOpen: (open) => set({ open }),
+  page: 'general',
+  setOpen: (open, page) => set(page ? { open, page } : { open }),
+  setPage: (page) => set({ page }),
   setAutosave: (patch) => {
     set({ autosave: { ...get().autosave, ...patch } })
     const { autosave } = get()

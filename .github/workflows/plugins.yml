@@ -1,0 +1,69 @@
+name: Plugins
+
+# Publishes an optional plugin that is too big to ship inside the app. Push a tag like
+# plugin-excalidraw-0.18.1-1 (the id and the version in plugins/<id>/plugin.json). The workflow
+# builds the plugin, zips and signs it with the updater key, and attaches both files to a
+# pre-release of that name. The app downloads from there when the plugin is turned on
+# (archiveUrl in src/state/plugins.ts) and installs only what the signature vouches for.
+#
+# Pre-release, so it never becomes the "latest" release the app's updater reads.
+on:
+  push:
+    tags: ['plugin-*']
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Nothing here pushes with git; keep the token away from npm install scripts.
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Which plugin
+        id: plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          rest="${tag#plugin-}"
+          for dir in plugins/*/; do
+            id="$(basename "$dir")"
+            if [[ "$rest" == "$id-"* ]]; then
+              version="$(node -p "require('./plugins/$id/plugin.json').version")"
+              if [ "$rest" != "$id-$version" ]; then
+                echo "Tag $tag doesn't match plugins/$id/plugin.json ($version)" >&2
+                exit 1
+              fi
+              echo "id=$id" >> "$GITHUB_OUTPUT"
+              echo "version=$version" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "No plugin for tag $tag" >&2
+          exit 1
+      - name: Build
+        run: npx vite build --config plugins/${{ steps.plugin.outputs.id }}/vite.config.ts
+      - name: Zip and sign
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: node scripts/pack-plugin.mjs ${{ steps.plugin.outputs.id }}
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ID: ${{ steps.plugin.outputs.id }}
+          VERSION: ${{ steps.plugin.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" "release/$ID-$VERSION.zip" "release/$ID-$VERSION.zip.sig" \
+            --prerelease --latest=false \
+            --title "Plugin: $ID $VERSION" \
+            --notes "Optional plugin for Workspace. Turn it on in Settings › Plugins; Workspace downloads these files and checks their signature. You don't need to download them yourself."

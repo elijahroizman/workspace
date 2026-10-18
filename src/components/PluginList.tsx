@@ -1,0 +1,34 @@
+import type { ReactNode } from 'react'
+import type { PluginInfo } from '../plugins/catalog'
+import { formatSize, usePlugins } from '../state/plugins'
+import { DocBadge } from './Workbench'
+
+/** One plugin: its file types, what it does, and a control (a switch, a checkbox, “Built in”). */
+export function PluginRow({ plugin, control, children }: { plugin: PluginInfo; control: ReactNode; children?: ReactNode }) {
+  const progress = usePlugins((s) => s.progress[plugin.id])
+  const error = usePlugins((s) => s.errors[plugin.id])
+  const meta = [plugin.kinds.map((k) => k.extensions.map((e) => `.${e}`).join(' ')).join(' '), plugin.license]
+  if (plugin.source.type === 'download') meta.push(`${formatSize(plugin.source.size)} download`)
+  return (
+    <div className="plugin-row">
+      <span className="plugin-badges">
+        {plugin.kinds.map((k) => (
+          <DocBadge key={k.id} kind={k.id} size={28} />
+        ))}
+      </span>
+      <span className="plugin-text">
+        <span className="settings-label">{plugin.name}</span>
+        <span className="settings-hint">{plugin.description}</span>
+        <span className="settings-hint plugin-meta">{meta.join(' · ')}</span>
+        {progress && (
+          <span className="plugin-progress" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.received}>
+            <span style={{ width: `${Math.min(100, (100 * progress.received) / Math.max(1, progress.total))}%` }} />
+          </span>
+        )}
+        {error && <span className="plugin-error">{error}</span>}
+        {children}
+      </span>
+      <span className="plugin-control">{control}</span>
+    </div>
+  )
+}

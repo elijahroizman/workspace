@@ -3,3 +3,6 @@ dist
 dev-samples
 *.log
 .DS_Store
+public/licenses.json
+plugins/*/dist
+release
