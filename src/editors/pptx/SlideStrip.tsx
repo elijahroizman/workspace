@@ -1,4 +1,5 @@
 import { Sparkles } from 'lucide-react'
+import { deviceStrokeStageStyle } from 'ooxml-ui/pptx'
 import { SlideLayer } from 'pptx-react-viewer/internals'
 import { memo, useEffect, useRef, useState } from 'react'
 import { isMac } from '../../lib/platform'
@@ -31,10 +32,24 @@ export const SlidePreview = memo(function SlidePreview({
     return () => observer.disconnect()
   }, [lazy])
   const scale = width / canvasSize.width
+  // Above 1× the show's text clip, an inset in slide pixels, drops whole lines
+  // in WebKit. The class turns that clip off.
+  const enlarged = scale > 1.01
   return (
-    <div ref={ref} className="slide-preview" style={{ width, height: canvasSize.height * scale }}>
+    <div ref={ref} className={enlarged ? 'slide-preview slide-enlarged' : 'slide-preview'} style={{ width, height: canvasSize.height * scale }}>
       {visible && (
-        <div style={{ width: canvasSize.width, height: canvasSize.height, transform: `scale(${scale})`, transformOrigin: '0 0', pointerEvents: 'none' }}>
+        <div
+          style={{
+            width: canvasSize.width,
+            height: canvasSize.height,
+            transform: `scale(${scale})`,
+            transformOrigin: '0 0',
+            pointerEvents: 'none',
+            ...deviceStrokeStageStyle(scale),
+            ['--pptx-slide-w' as string]: `${canvasSize.width}px`,
+            ['--pptx-slide-h' as string]: `${canvasSize.height}px`,
+          }}
+        >
           <SlideLayer slide={slide} templateElements={templateElements} canvasSize={canvasSize} />
         </div>
       )}

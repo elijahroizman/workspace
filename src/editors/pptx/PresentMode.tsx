@@ -62,12 +62,24 @@ export function PresentMode({
 
   useEffect(() => {
     void platform.setFullscreen(true)
-    const onResize = () => setBox({ width: window.innerWidth, height: window.innerHeight })
-    window.addEventListener('resize', onResize)
     return () => {
-      window.removeEventListener('resize', onResize)
       void platform.setFullscreen(false)
     }
+  }, [])
+
+  // Measure the stage itself. Full screen changes its box after
+  // window.innerHeight, and a stale size scales the slide past the screen.
+  useEffect(() => {
+    const el = stageRef.current
+    if (!el) return
+    const measure = () => {
+      const rect = el.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) setBox({ width: rect.width, height: rect.height })
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
   }, [])
 
   useEffect(() => {

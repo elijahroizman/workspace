@@ -607,7 +607,7 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
         )
       }
     >
-      <div className={`deck-stage ${crop ? 'cropping' : ''}`} ref={stageRef}>
+      <div className={`deck-stage ${crop ? 'cropping' : ''} ${cv.zoom.editorScale > 1.01 ? 'slide-enlarged' : ''}`} ref={stageRef}>
         {loading ? <CenterState spinner /> : <SlideCanvas {...canvasProps} showRulers={false} />}
       </div>
       {!loading && notesOpen && slides[activeIndex] && <NotesPane key={slides[activeIndex].id} slide={slides[activeIndex]} onChange={(text) => setNotes(slides[activeIndex].id, text)} />}
