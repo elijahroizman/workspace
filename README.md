@@ -2,9 +2,9 @@
 
 # Workspace
 
-A small, fast Mac and Windows app for the document types most people actually use: **Word (.docx), PowerPoint (.pptx), PDF, Markdown and plain text (.txt)**, plus optional plugins such as **Excalidraw** drawings. Everything opens as a tab in one window, and each kind of document gets its own sidebar and inspector.
+A small, fast Mac and Windows app for the document types most people actually use: **Word (.docx), PowerPoint (.pptx), PDF, Markdown and plain text (.txt)**, plus optional plugins such as **Excalidraw** drawings and **EPUB** books. Everything opens as a tab in one window, and each kind of document gets its own sidebar and inspector.
 
-- **Plugins.** Office, PDF, Markdown and text are built in. Others are optional: turn them on in the setup screen that opens the first time you launch Workspace, or later in **Settings › Plugins**. The first optional plugin is [Excalidraw](https://excalidraw.com) for `.excalidraw` drawings. It's about 16 MB, mostly fonts, so Workspace downloads it from this repository's releases when you turn it on and checks its signature before installing it.
+- **Plugins.** Office, PDF, Markdown and text are built in. Others are optional: turn them on in the setup screen that opens the first time you launch Workspace, or later in **Settings › Plugins**. The first optional plugin is [Excalidraw](https://excalidraw.com) for `.excalidraw` drawings. It's about 16 MB, mostly fonts, so Workspace downloads it from this repository's releases when you turn it on and checks its signature before installing it. The EPUB reader is small, so it comes with the app and turns on instantly. It shows a book as one scrolling column with its table of contents in the sidebar, and reopens a book where you left off.
 
 - **Tabs across the top.** Open as many files as you like and switch with ⌘1–⌘9 or ⇧⌘[ / ⇧⌘]. Drag tabs to reorder them, and right-click a tab to duplicate it (⇧⌘D), for example to keep a textbook's questions and answers open side by side. Open tabs come back the next time you launch.
 - **Sidebars that fit the document.**
@@ -114,6 +114,7 @@ All of these are open source and run locally:
 | PDF viewing, annotation, forms & page operations | [PDFium](https://pdfium.googlesource.com/pdfium/) (Chrome's PDF engine) compiled to WebAssembly by [EmbedPDF](https://github.com/embedpdf/embed-pdf-viewer) | BSD-3-Clause / MIT |
 | Markdown | [markdown-it](https://github.com/markdown-it/markdown-it), [CodeMirror 6](https://codemirror.net), [highlight.js](https://highlightjs.org), [yaml](https://github.com/eemeli/yaml) | MIT / BSD / ISC |
 | Drawings (optional plugin) | [Excalidraw](https://github.com/excalidraw/excalidraw) | MIT |
+| Books (optional plugin) | Workspace's own EPUB reader, on [JSZip](https://github.com/Stuk/jszip) and [DOMPurify](https://github.com/cure53/DOMPurify) | MIT / MPL-2.0 or Apache-2.0 |
 
 **Settings › General › Open-source licenses** lists every package in the app, its plugins and the native shell, with their license texts.
 
@@ -122,6 +123,7 @@ All of these are open source and run locally:
 - **PowerPoint:** videos are added as their thumbnail with a link, which is how a link to an online video travels between apps. In Workspace's slideshow they play right on the slide; in PowerPoint or Keynote, clicking one opens the video in the browser. The slideshow plays slide transitions but not object animations.
 - **Word:** tracked changes can’t be accepted or rejected. A comment covers text within one paragraph, and adding or removing comments isn't part of undo. When printing, table borders are left out.
 - **PDF:** text, checkbox, radio and list form fields can be filled; buttons, signature fields and form scripts don't do anything. Forms made only with Adobe's XFA show their placeholder page. Chinese, Japanese or Korean text in a font the PDF doesn't include (some older PDFs) may not show.
+- **EPUB:** books are for reading: no highlights, notes or editing. Pages scroll rather than turn. Books with DRM don't open, and audio narration (Media Overlays) doesn't play.
 - Excel and other formats are intentionally out of scope.
 
 ## Developing

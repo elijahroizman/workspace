@@ -20,6 +20,17 @@ export interface PluginEditorContext {
   openExternal(url: string): void
   /** Print this content (an image or a page of HTML) with the system print dialog. */
   print(content: Node): Promise<void>
+  /**
+   * An element in Workspace's left sidebar to render into (a table of contents, say). Only for
+   * kinds whose catalog entry has `panels.left`; Workspace shows and hides it with ⌘\.
+   */
+  sidebar?: HTMLElement
+}
+
+export interface SearchResult {
+  count: number
+  /** Index of the selected match; -1 for none. */
+  current: number
 }
 
 export interface PluginEditor {
@@ -31,6 +42,11 @@ export interface PluginEditor {
   /** The tab was shown (true) or hidden (false). */
   setActive?(active: boolean): void
   find?(): void
+  /**
+   * Instead of find(): Workspace shows its own find bar and asks for matches. `step` moves the
+   * selection to the next (1) or previous (-1) match; 0 is a new query. An empty query clears.
+   */
+  search?(query: string, step: 1 | -1 | 0): SearchResult
   zoom?(direction: 'in' | 'out' | 'reset'): void
   print?(): Promise<void>
   /** The tab closed: release everything. */

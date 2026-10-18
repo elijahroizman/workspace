@@ -8,9 +8,11 @@ into the element with whatever it likes (it brings its own React), and hands bac
 
 ## Bundled or downloaded
 
-- **Small (under about 1 MB): bundled.** Set `source: { type: 'bundled' }` in the catalog and build
-  its files into the app's `public/plugins/<id>/`. They come with every install, and turning the
-  plugin on is instant.
+- **Small (under about 1 MB): bundled.** Set `source: { type: 'bundled' }` in the catalog and
+  `"bundled": true` in its `plugin.json`, and add its build to the `plugins:bundled` script (the
+  dev server serves it from there). The app's build builds it into `plugins/<id>/dist` and copies
+  that to `/plugins/<id>/`, so it comes with every install and turning it on is instant. EPUB is
+  one.
 - **Bigger: downloaded.** Excalidraw is 16 MB with its fonts, so it's `source: { type: 'download' }`.
   The app fetches `plugin-<id>-<version>/<id>-<version>.zip` from this repository's releases, checks
   its `.sig` against the updater's public key, unpacks it into its data folder and loads it through

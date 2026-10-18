@@ -7,7 +7,7 @@
 // A plugin bigger than about 1 MB should be a download.
 
 import type { ComponentType } from 'react'
-import { FileCode2, FileText, FileType2, NotepadText, Presentation } from 'lucide-react'
+import { BookOpen, FileCode2, FileText, FileType2, NotepadText, Presentation } from 'lucide-react'
 import excalidraw from '../../plugins/excalidraw/plugin.json'
 import { ExcalidrawIcon } from './icons'
 
@@ -24,7 +24,10 @@ export interface KindInfo {
   untitled: string
   /** The Home screen's “New …” card; none means you can't create one from scratch. */
   create?: { title: string; hint: string }
-  /** Whether the sidebar and inspector start open. */
+  /**
+   * Whether the sidebar and inspector start open. An optional plugin's kind has a sidebar (the
+   * editor's `context.sidebar`) only if `left` is true, and never an inspector.
+   */
   panels: { left: boolean; right: boolean }
 }
 
@@ -169,6 +172,27 @@ export const PLUGINS: PluginInfo[] = [
         untitled: 'Untitled Drawing',
         create: { title: 'New drawing', hint: 'Excalidraw (.excalidraw)' },
         panels: { left: false, right: false },
+      },
+    ],
+  },
+  {
+    id: 'epub',
+    name: 'EPUB',
+    description: 'Read EPUB books, with their table of contents. Workspace remembers your place.',
+    homepage: 'https://github.com/elijahroizman/workspace/tree/main/plugins/epub',
+    license: 'MIT, (MPL-2.0 OR Apache-2.0)',
+    source: { type: 'bundled' },
+    kinds: [
+      {
+        id: 'epub',
+        prose: 'EPUB',
+        label: 'EPUB Book',
+        short: 'Book',
+        extensions: ['epub'],
+        color: 'var(--kind-epub)',
+        icon: BookOpen,
+        untitled: 'Untitled Book',
+        panels: { left: true, right: false },
       },
     ],
   },

@@ -14,6 +14,7 @@ const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 /** npm packages each plugin bundles (plugins/<id>/vite.config.ts builds them). */
 const PLUGIN_PACKAGES = {
   Excalidraw: ['@excalidraw/excalidraw', 'react', 'react-dom'],
+  EPUB: ['jszip', 'dompurify'],
 }
 
 /** Copyright holders for packages that name none (no author field, no license file). */
