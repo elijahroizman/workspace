@@ -16,8 +16,14 @@ if (!id || !name || !ext) {
   process.exit(1)
 }
 
-if (!/^[a-z0-9-]+$/.test(id)) {
-  console.error('Plugin id must be lowercase letters, digits, and dashes only')
+// A folder name, and the prefix of CSS variables and class names.
+if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(id)) {
+  console.error('Plugin id must start with a letter and use lowercase letters, digits and single dashes (my-plugin)')
+  process.exit(1)
+}
+
+if (!/^[a-z0-9]+$/i.test(ext)) {
+  console.error('The extension is letters and digits, without the dot (mmd, tex)')
   process.exit(1)
 }
 
@@ -53,7 +59,11 @@ readme = readme.replace(/template/g, id)
 writeFileSync(join(targetDir, 'README.md'), readme)
 
 // Print snippets
-const varName = id.replace(/-([a-z])/g, (_, c) => c.toUpperCase())
+// A valid identifier for any accepted id (3d-view → plugin_3d_view would be fine too).
+const varName = `${id.replace(/-/g, '_')}Plugin`
+// Names go inside '…' in TypeScript and "…" in JSON.
+const ts = (text) => JSON.stringify(text).slice(1, -1).replace(/'/g, "\\'")
+const json = (text) => JSON.stringify(text).slice(1, -1)
 console.log(`\nCreated plugins/${id} from template. Add these snippets:\n`)
 
 console.log('// src/plugins/catalog.ts - add this import at the top:')
@@ -61,7 +71,7 @@ console.log(`import ${varName} from '../../plugins/${id}/plugin.json'`)
 console.log('\n// Then add this to the PLUGINS array:')
 console.log(`{
   id: '${id}',
-  name: '${name}',
+  name: '${ts(name)}',
   description: 'TODO: one-line description',
   homepage: 'TODO: plugin homepage URL',
   license: 'MIT',
@@ -69,14 +79,14 @@ console.log(`{
   kinds: [
     {
       id: '${id}',
-      prose: '${name}',
-      label: '${name} File',
-      short: '${name}',
+      prose: '${ts(name)}',
+      label: '${ts(name)} File',
+      short: '${ts(name)}',
       extensions: ['${ext}'],
       color: 'var(--kind-${id})',
       icon: TODO, // import an icon from lucide-react
-      untitled: 'Untitled ${name}',
-      create: { title: 'New ${name}', hint: '${name} (.${ext})' },
+      untitled: 'Untitled ${ts(name)}',
+      create: { title: 'New ${ts(name)}', hint: '${ts(name)} (.${ext})' },
       panels: { left: true, right: false },
     },
   ],
@@ -88,14 +98,14 @@ console.log(`  --kind-${id}: #TODO;`)
 console.log('\n// src-tauri/tauri.conf.json - add this to bundle.fileAssociations:')
 console.log(`{
   "ext": ["${ext}"],
-  "name": "${name} File",
+  "name": "${json(name)} File",
   "role": "Editor",
   "rank": "Alternate",
   "mimeType": "application/x-${id}"
 },`)
 
 console.log('\n// scripts/licenses.mjs - add this to PLUGIN_PACKAGES:')
-console.log(`  ${name}: ['TODO', 'list', 'npm', 'packages'],`)
+console.log(`  ${JSON.stringify(name)}: ['TODO', 'list', 'npm', 'packages'],`)
 
 console.log('\n// package.json - add this build to the "plugins" script:')
 console.log(`vite build --config plugins/${id}/vite.config.ts`)

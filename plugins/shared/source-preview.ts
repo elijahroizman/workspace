@@ -60,7 +60,8 @@ export function mountSourcePreview(options: SourcePreviewOptions): SourcePreview
     document.head.appendChild(style)
   }
   const { element, context } = options
-  const initial = context.bytes?.length ? decode(context.bytes) : options.blank
+  // null is a new document; an existing empty file stays empty.
+  const initial = context.bytes ? decode(context.bytes) : options.blank
   let timer = 0
   let rendered: string | null = null
 

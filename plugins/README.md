@@ -67,7 +67,7 @@ The `plugins/shared` folder has reusable helpers:
 6. Add your npm packages to `PLUGIN_PACKAGES` in `scripts/licenses.mjs`.
 7. Add your build command to the `plugins` npm script in `package.json`.
 8. Run `npm run typecheck` and `npm run build` to verify.
-9. For downloaded plugins: build it, zip `plugins/<id>/dist` (or run `node scripts/pack-plugin.mjs <id>` with the signing key) and set `size` in `plugin.json` to the zip's size in bytes.
+9. For downloaded plugins: set `size` in `plugin.json` to the size of the zipped `plugins/<id>/dist` in bytes (a plain zip is fine for measuring). The release package must be signed: the Plugins workflow does that when you push the `plugin-<id>-<version>` tag (`scripts/pack-plugin.mjs` with the updater key), and the app refuses an archive without a matching `.sig`.
 10. Test in the browser (`npm run dev`) and the real app (`npm run app:dev`).
 
 ## Checklist

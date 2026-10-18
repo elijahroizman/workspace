@@ -135,6 +135,8 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
   let generation = 0
   /** The SVG markup on screen: the last diagram that drew. */
   let shown: string | null = null
+  /** The source `shown` was drawn from, for exports while the source has an error. */
+  let shownText = ''
   let problem: Problem | null = null
   /** null: fit the pane (never above 100%). */
   let zoom: number | null = null
@@ -166,6 +168,7 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
       canvas.replaceChildren(el('div', 'mm-empty', 'Write a diagram, or start from a template in the sidebar.'))
       shown = null
       setProblem(null)
+      refreshInfo(text)
       return
     }
     try {
@@ -175,6 +178,7 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
       const svg = await renderSvg(text, theme)
       if (mine !== generation || destroyed) return
       shown = svg
+      shownText = text
       canvas.innerHTML = svg // Mermaid's output, sanitized by it (securityLevel: strict)
       applyZoom()
       setProblem(null)
@@ -301,11 +305,12 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
   async function exportPng() {
     if (!shown) return
     try {
-      const svg = standalone(await renderSvg(kit.text(), theme, true))
+      const svg = standalone(await renderSvg(shownText, theme, true))
       const bytes = await toPng(svg, theme === 'dark' ? '#1e1e1e' : '#ffffff')
       await context.saveFile?.({ bytes, name: fileName('png') })
     } catch (err) {
-      setProblem({ message: `Couldn’t export: ${problemFrom(err).message}` })
+      // Not setProblem: that's for the source, which may have its own error showing.
+      info.textContent = `Couldn’t export: ${problemFrom(err).message}`
     } finally {
       configure(theme)
     }

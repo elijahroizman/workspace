@@ -148,7 +148,8 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
     stale = false
     updateStatus()
     try {
-      texStatus ??= await tex.status()
+      // TeX may have been installed since (from Settings, or outside Workspace).
+      if (force || !texStatus?.installed) texStatus = await tex.status()
       if (!texStatus.installed) {
         setEmpty(pdf ? null : 'No PDF yet.')
         showMessage('LaTeX needs TeX to make the PDF, and this computer doesn’t have it.', 'error', { label: 'Install TeX…', run: () => void installTex() })

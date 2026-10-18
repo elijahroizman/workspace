@@ -5,7 +5,7 @@ Copy this folder to `plugins/<your-id>` and follow this checklist to make a real
 ## Checklist
 
 - [ ] Rename the folder to your plugin id (lowercase letters, digits, dashes only)
-- [ ] Update `plugin.json`: set your `id`, bump `version`, and remove `"size": 0` (set after `scripts/pack-plugin.mjs`)
+- [ ] Update `plugin.json`: set your `id` and `version`. Keep `"size": 0` until you've built and zipped the plugin, then replace it with the zip's size in bytes
 - [ ] Decide: bundled (under ~1 MB) or downloaded? Add `"bundled": true` for bundled
 - [ ] Update `vite.config.ts`: add any plugins or config your plugin needs
 - [ ] Replace `index.ts` with your editor implementation

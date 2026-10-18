@@ -4,7 +4,7 @@
 
 import { create } from 'zustand'
 import type { TexResult, TexService, TexStatus } from '../plugins/api'
-import { isMac, isTauri, isWindows } from '../lib/platform'
+import { isMac, isTauri, isWindows, listen } from '../lib/platform'
 
 const invoke = async <T>(cmd: string, args?: Record<string, unknown>) => (await import('@tauri-apps/api/core')).invoke<T>(cmd, args)
 
@@ -53,9 +53,9 @@ export const useTex = create<TexState>((set, get) => ({
   install: async (variant) => {
     if (get().installing) return
     set({ installing: { stage: 'download', received: 0, total: 0 }, error: null })
-    const { listen } = await import('@tauri-apps/api/event')
-    const stop = await listen<InstallProgress>('tex-progress', ({ payload }) => set({ installing: payload }))
+    let stop = () => {}
     try {
+      stop = await listen<InstallProgress>('tex-progress', (payload) => set({ installing: payload }))
       const status = await invoke<TexStatus>('tex_install', { variant })
       set({ status })
       if (status.installed) get().close()

@@ -344,23 +344,23 @@ fn download_to(url: &str, to: &Path, mut progress: impl FnMut(u64, u64)) -> Resu
     Ok(())
 }
 
-/// The newest MiKTeX basic installer's name in CTAN's folder listing.
+/// The MiKTeX installer Workspace offers, and its SHA-256 from miktex.org/download. MiKTeX
+/// doesn't code-sign it, so the checksum is what vouches for it. CTAN keeps old versions, so
+/// this keeps working until an app update moves it on.
 #[cfg_attr(not(windows), allow(dead_code))]
-fn newest_miktex(listing: &str) -> Option<String> {
-    let mut best: Option<(Vec<u32>, String)> = None;
-    for (i, _) in listing.match_indices("basic-miktex-") {
-        let rest = &listing[i + "basic-miktex-".len()..];
-        let Some(end) = rest.find("-x64.exe") else { continue };
-        let version = &rest[..end];
-        if version.is_empty() || !version.bytes().all(|b| b.is_ascii_digit() || b == b'.') {
-            continue;
-        }
-        let parts: Vec<u32> = version.split('.').filter_map(|p| p.parse().ok()).collect();
-        if best.as_ref().is_none_or(|(b, _)| parts > *b) {
-            best = Some((parts, format!("basic-miktex-{version}-x64.exe")));
-        }
-    }
-    best.map(|(_, name)| name)
+const MIKTEX: (&str, &str) = ("basic-miktex-25.12-x64.exe", "14b42dd9f4b4a7813a8bfd69c8f99316c2888cc4ee26f631f397e163d85d6c62");
+
+/// MacTeX's packages are signed by its maintainer's Developer ID (Team ID RBGCY5RJWM).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const MACTEX_SIGNER: &str = "Developer ID Installer: Richard Koch (RBGCY5RJWM)";
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn sha256_hex(path: &Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher).map_err(|e| e.to_string())?;
+    Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
 
 #[cfg(target_os = "macos")]
@@ -375,10 +375,10 @@ fn install(app: &AppHandle<impl Runtime>, variant: &str, dir: &Path) -> Result<(
     };
     download_to(&format!("https://mirror.ctan.org/systems/mac/mactex/{name}"), &pkg, |r, t| emit("download", r, t))?;
     emit("verify", 0, 0);
-    // The package must carry a Developer ID signature that macOS trusts.
+    // A signature macOS trusts, from MacTeX's own Developer ID.
     let check = Command::new("/usr/sbin/pkgutil").arg("--check-signature").arg(&pkg).output().map_err(|e| e.to_string())?;
     let text = String::from_utf8_lossy(&check.stdout);
-    if !check.status.success() || !text.contains("Developer ID Installer") {
+    if !check.status.success() || !text.contains("signed by a developer certificate issued by Apple") || !text.contains(MACTEX_SIGNER) {
         return Err("The TeX installer's signature didn't check out, so it wasn't installed.".into());
     }
     emit("install", 0, 0);
@@ -395,29 +395,16 @@ fn install(app: &AppHandle<impl Runtime>, variant: &str, dir: &Path) -> Result<(
 
 #[cfg(windows)]
 fn install(app: &AppHandle<impl Runtime>, _variant: &str, dir: &Path) -> Result<(), String> {
-    const FOLDER: &str = "https://mirror.ctan.org/systems/win32/miktex/setup/windows-x64/";
     let emit = |stage, received, total| {
         let _ = app.emit("tex-progress", Progress { stage, received, total });
     };
-    let listing = crate::files::download_agent()
-        .get(FOLDER)
-        .header("User-Agent", "Workspace")
-        .call()
-        .map_err(|_| "Couldn't reach CTAN to download MiKTeX.".to_string())?
-        .body_mut()
-        .read_to_string()
-        .map_err(|e| e.to_string())?;
-    let name = newest_miktex(&listing).ok_or("Couldn't find the MiKTeX installer on CTAN.")?;
-    let setup = dir.join(&name);
-    download_to(&format!("{FOLDER}{name}"), &setup, |r, t| emit("download", r, t))?;
+    let (name, sha256) = MIKTEX;
+    let setup = dir.join(name);
+    let url = format!("https://mirror.ctan.org/systems/win32/miktex/setup/windows-x64/{name}");
+    download_to(&url, &setup, |r, t| emit("download", r, t))?;
     emit("verify", 0, 0);
-    let quoted = setup.to_string_lossy().replace('\'', "''");
-    let check = command(Path::new("powershell.exe"))
-        .args(["-NoProfile", "-NonInteractive", "-Command", &format!("(Get-AuthenticodeSignature -LiteralPath '{quoted}').Status")])
-        .output()
-        .map_err(|e| e.to_string())?;
-    if String::from_utf8_lossy(&check.stdout).trim() != "Valid" {
-        return Err("The MiKTeX installer's signature didn't check out, so it wasn't installed.".into());
+    if sha256_hex(&setup)? != sha256 {
+        return Err("The MiKTeX installer didn't match its published checksum, so it wasn't installed.".into());
     }
     emit("install", 0, 0);
     // Just for this user, so Windows doesn't ask for an administrator.
@@ -457,10 +444,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn picks_the_newest_miktex() {
-        let listing = r#"<a href="basic-miktex-24.1-x64.exe">x</a> <a href="basic-miktex-25.12-x64.exe">y</a> <a href="basic-miktex-25.4-x64.exe">z</a> basic-miktex-evil/../-x64.exe"#;
-        assert_eq!(newest_miktex(listing).as_deref(), Some("basic-miktex-25.12-x64.exe"));
-        assert_eq!(newest_miktex("nothing here"), None);
+    fn hashes_files() {
+        let path = std::env::temp_dir().join(format!("ws-sha-{}", std::process::id()));
+        fs::write(&path, b"abc").unwrap();
+        assert_eq!(sha256_hex(&path).unwrap(), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        let _ = fs::remove_file(&path);
     }
 
     #[test]
