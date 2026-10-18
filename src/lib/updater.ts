@@ -45,10 +45,34 @@ let downloaded: Update | null = null
 let checking = false
 
 /**
- * Release builds on a Mac or Windows can download and install. Dev, the browser and Linux (a
- * .deb is installed with apt, which Tauri's updater can't drive) can still read the notes.
+ * Release builds on a Mac or Windows can download and install. On Linux the .deb adds Workspace's
+ * APT repository, and apt installs new versions (see `aptUpdates`). Dev and the browser can still
+ * read the notes.
  */
 export const updatesInstallable = isTauri && !import.meta.env.DEV && !isLinux
+
+const checksUpdates = isTauri && !import.meta.env.DEV
+
+let aptSource: Promise<boolean> | null = null
+/** A Linux install that came with the APT repository, so the Update button can use apt. */
+export function aptUpdates(): Promise<boolean> {
+  if (!isLinux || !checksUpdates) return Promise.resolve(false)
+  aptSource ??= import('@tauri-apps/api/core').then(({ invoke }) => invoke<boolean>('apt_updates')).catch(() => false)
+  return aptSource
+}
+
+/** Whether version `a` is newer than `b` (both like 0.7.2). */
+export function newer(a: string, b: string): boolean {
+  const pa = a.split(/[.-]/).map((n) => parseInt(n, 10) || 0)
+  const pb = b.split(/[.-]/).map((n) => parseInt(n, 10) || 0)
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0)
+  }
+  return false
+}
+
+/** On Linux nothing downloads first: a newer release with the APT repository is ready for apt. */
+let aptReady = false
 
 async function fetchRelease(): Promise<ReleaseNotes> {
   if (isTauri) {
@@ -92,7 +116,7 @@ async function findUpdate(): Promise<Update | null> {
 
 /** Read the latest release notes and, in a release build, download a newer version. */
 export async function checkForUpdates(): Promise<void> {
-  if (checking || downloaded) return
+  if (checking || downloaded || aptReady) return
   checking = true
   useUpdate.setState({ phase: 'checking', error: null })
   try {
@@ -101,6 +125,12 @@ export async function checkForUpdates(): Promise<void> {
     const update = found.status === 'fulfilled' ? found.value : null
     const info = remember(release.status === 'fulfilled' ? release.value : null, update)
     const releaseError = release.status === 'rejected' ? "Couldn't reach GitHub. Check your connection and try again." : null
+
+    if (release.status === 'fulfilled' && newer(release.value.version, __APP_VERSION__) && (await aptUpdates())) {
+      aptReady = true
+      useUpdate.setState({ phase: 'ready', ...info, error: null })
+      return
+    }
 
     if (update) {
       useUpdate.setState({ phase: 'downloading', ...info, error: null })
@@ -143,7 +173,7 @@ export function closeUpdatePanel(): void {
 }
 
 export function startUpdateChecks(): () => void {
-  if (!updatesInstallable) return () => {}
+  if (!checksUpdates) return () => {}
   const first = window.setTimeout(() => void checkForUpdates(), FIRST_CHECK)
   const timer = window.setInterval(() => void checkForUpdates(), CHECK_EVERY)
   return () => {
@@ -158,6 +188,8 @@ export function startUpdateChecks(): () => void {
  * first and open the same bundle once this process is gone.
  */
 export async function installUpdate({ restart }: { restart: boolean }): Promise<void> {
+  // apt asks for a password, so on Linux it only runs when the button is pressed, not on quit.
+  if (aptReady && restart) return installWithApt()
   if (!downloaded) return
   const update = downloaded
   useUpdate.setState({ phase: 'installing', error: null })
@@ -191,4 +223,19 @@ export async function installUpdate({ restart }: { restart: boolean }): Promise<
       error: installed ? 'The update is installed. Quit and reopen Workspace to use it.' : "The update couldn't be installed.",
     })
   }
+}
+
+async function installWithApt(): Promise<void> {
+  useUpdate.setState({ phase: 'installing', error: null })
+  const { invoke } = await import('@tauri-apps/api/core')
+  try {
+    await invoke('apt_upgrade')
+  } catch (err) {
+    console.warn('apt upgrade failed', err)
+    useUpdate.setState({ phase: 'ready', error: String(err) })
+    return
+  }
+  aptReady = false
+  const { relaunch } = await import('@tauri-apps/plugin-process')
+  await relaunch()
 }

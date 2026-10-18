@@ -887,6 +887,33 @@ button {
   padding: 0 8px;
 }
 
+/* Label and value on one row, as in the PDF's Document section. */
+.stats {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 6px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.stats dt {
+  color: var(--fg-muted);
+}
+
+.stats dd {
+  margin: 0;
+  text-align: right;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.stats dd.ellipsis {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .canvas {
   flex: 1;
   min-width: 0;
@@ -2278,6 +2305,10 @@ button {
   text-decoration: underline;
 }
 
+.settings-intro .link-btn {
+  font-size: inherit;
+}
+
 .settings-back {
   display: flex;
   align-items: center;
@@ -2579,6 +2610,93 @@ button {
 
 .tex-install-backdrop {
   z-index: 130;
+}
+
+/* The app's own message boxes (components/Dialogs.tsx), above everything else. */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 18vh;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.dialog {
+  width: min(420px, calc(100% - 32px));
+  padding: 18px 18px 14px;
+  border-radius: 12px;
+  background: var(--raised);
+  box-shadow: var(--shadow-pop);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dialog-body {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.dialog-icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent);
+}
+
+.dialog-warning .dialog-icon {
+  color: #e0a32e;
+}
+
+.dialog-error .dialog-icon {
+  color: var(--danger);
+}
+
+.dialog-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dialog-text h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.dialog-text p {
+  margin: 0;
+  color: var(--fg-muted);
+  line-height: 1.45;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dialog-actions .btn {
+  min-width: 76px;
+}
+
+/* “Don’t Save” stands apart from Cancel and Save. */
+.dialog-actions .btn.danger:not(.primary):first-child:not(:nth-last-child(2)) {
+  margin-right: auto;
+}
+
+.btn.primary.danger {
+  background: var(--danger);
+  color: #fff;
 }
 
 .tex-install {

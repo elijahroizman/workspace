@@ -65,8 +65,8 @@ export function TexInstall() {
         )}
         {error && <p className="plugin-error">{error}</p>}
         <div className="tex-install-actions">
-          <button type="button" className="btn" onClick={close} disabled={!!installing}>
-            {error ? 'Close' : 'Not now'}
+          <button type="button" className="btn" onClick={close}>
+            {installing ? 'Hide' : error ? 'Close' : 'Not now'}
           </button>
         </div>
       </div>
@@ -96,12 +96,25 @@ export function TexRemove() {
     <div className="new-file-backdrop tex-install-backdrop" onMouseDown={(e) => e.target === e.currentTarget && void answerTurnOff(false, false)}>
       <div className="tex-install" role="dialog" aria-modal="true" aria-labelledby="tex-remove-title">
         <h2 id="tex-remove-title">Turn off LaTeX?</h2>
-        <p className="muted">LaTeX files stop opening in Workspace. The TeX on this computer isn’t part of Workspace, so it stays unless you remove it too.</p>
-        <label className="check">
-          <input type="checkbox" checked={remove} disabled={removal.busy || !!removal.error} onChange={(e) => setRemove(e.currentTarget.checked)} />
-          Also remove TeX from this computer
-        </label>
-        <p className="settings-hint">Uninstalls it with {removal.method}. Other programs that use TeX lose it too, and putting it back means downloading it again.</p>
+        <p className="muted">
+          LaTeX files stop opening in Workspace. The TeX on this computer isn’t part of Workspace, so it stays
+          {removal.method ? ' unless you remove it too.' : '.'}
+        </p>
+        {removal.checking && (
+          <div className="tex-install-progress settings-hint">
+            <Spinner size={14} />
+            <span>Checking how TeX was installed…</span>
+          </div>
+        )}
+        {removal.method && (
+          <>
+            <label className="check">
+              <input type="checkbox" checked={remove} disabled={removal.busy || !!removal.error} onChange={(e) => setRemove(e.currentTarget.checked)} />
+              Also remove TeX from this computer
+            </label>
+            <p className="settings-hint">Uninstalls it with {removal.method}. Other programs that use TeX lose it too, and putting it back means downloading it again.</p>
+          </>
+        )}
         {removal.busy && (
           <div className="tex-install-progress">
             <Spinner size={16} />
@@ -114,7 +127,7 @@ export function TexRemove() {
             Cancel
           </button>
           <button type="button" className="btn primary" disabled={removal.busy} onClick={() => void answerTurnOff(true, remove)}>
-            {removal.error ? 'Turn off anyway' : remove ? 'Turn off and remove TeX' : 'Turn off'}
+            {removal.error ? 'Turn off anyway' : remove && removal.method ? 'Turn off and remove TeX' : 'Turn off'}
           </button>
         </div>
       </div>

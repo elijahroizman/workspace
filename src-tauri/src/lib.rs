@@ -1,5 +1,6 @@
 mod defaults;
 mod files;
+mod fonts;
 // Helpers below are called from the macOS launch path. Other targets still
 // compile them so the tests run, and nothing else references them.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -141,6 +142,8 @@ pub fn run() {
             quit_app,
             update::latest_release,
             update::relaunch_in_place,
+            update::apt_updates,
+            update::apt_upgrade,
             menu::set_menu_shortcuts,
             plugins::installed_plugins,
             plugins::install_plugin,
@@ -151,6 +154,10 @@ pub fn run() {
             tex::tex_install,
             tex::tex_uninstall_method,
             tex::tex_uninstall,
+            fonts::installed_fonts,
+            fonts::install_font,
+            fonts::remove_font,
+            fonts::font_file,
             defaults::default_apps,
             defaults::set_default_apps,
         ])

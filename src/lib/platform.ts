@@ -4,6 +4,7 @@
 
 import type { DocKind } from './kinds'
 import { KINDS, kindFromPath } from './kinds'
+import { showDialog } from './dialogs'
 
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 export const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform || navigator.userAgent)
@@ -213,27 +214,32 @@ export async function pickSavePath(suggestedName: string, kind: DocKind): Promis
   return kindFromPath(path) ? path : `${path}.${ext}`
 }
 
+/** Asks a yes-or-no question in the app's own dialog. Resolves true for the OK button. */
 export async function confirmDialog(
   message: string,
-  opts: { title?: string; okLabel?: string; cancelLabel?: string; kind?: 'warning' | 'info' } = {},
+  opts: { title?: string; okLabel?: string; cancelLabel?: string; kind?: 'warning' | 'info'; danger?: boolean } = {},
 ): Promise<boolean> {
-  if (!isTauri) return window.confirm(message)
-  const { ask } = await dialog()
-  return ask(message, {
-    title: opts.title ?? 'Workspace',
+  const answer = await showDialog({
     kind: opts.kind ?? 'warning',
-    okLabel: opts.okLabel,
-    cancelLabel: opts.cancelLabel,
+    title: opts.title ?? message,
+    message: opts.title ? message : undefined,
+    buttons: [
+      { label: opts.cancelLabel ?? 'Cancel', value: 'cancel' },
+      { label: opts.okLabel ?? 'OK', value: 'ok', primary: true, danger: opts.danger },
+    ],
+    cancelValue: 'cancel',
   })
+  return answer === 'ok'
 }
 
-export async function showError(message: string): Promise<void> {
-  if (!isTauri) {
-    window.alert(message)
-    return
-  }
-  const { message: show } = await dialog()
-  await show(message, { title: 'Workspace', kind: 'error' })
+export async function showError(message: string, title?: string): Promise<void> {
+  await showDialog({
+    kind: 'error',
+    title: title ?? message,
+    message: title ? message : undefined,
+    buttons: [{ label: 'OK', value: 'ok', primary: true }],
+    cancelValue: 'ok',
+  })
 }
 
 export async function openExternal(url: string): Promise<void> {
@@ -297,22 +303,20 @@ export async function onCloseRequested(shouldClose: () => Promise<boolean>): Pro
   })
 }
 
-/** The standard macOS “Do you want to save the changes…?” sheet. */
+/** “Do you want to save the changes…?”, asked before a document with unsaved changes closes. */
 export async function askSaveChanges(name: string): Promise<'save' | 'discard' | 'cancel'> {
-  const text = `Do you want to save the changes you made to “${name}”?`
-  if (!isTauri) {
-    if (window.confirm(`${text}\n\nOK saves, Cancel discards.`)) return 'save'
-    return 'discard'
-  }
-  const { message } = await dialog()
-  const result = await message(`${text}\n\nYour changes will be lost if you don’t save them.`, {
-    title: 'Workspace',
+  const answer = await showDialog({
     kind: 'warning',
-    buttons: { yes: 'Save', no: 'Don’t Save', cancel: 'Cancel' },
+    title: `Do you want to save the changes you made to “${name}”?`,
+    message: 'Your changes will be lost if you don’t save them.',
+    buttons: [
+      { label: 'Don’t Save', value: 'discard', danger: true },
+      { label: 'Cancel', value: 'cancel' },
+      { label: 'Save', value: 'save', primary: true },
+    ],
+    cancelValue: 'cancel',
   })
-  if (result === 'Save' || result === 'Yes') return 'save'
-  if (result === 'Don’t Save' || result === 'No') return 'discard'
-  return 'cancel'
+  return answer as 'save' | 'discard' | 'cancel'
 }
 
 export async function setFullscreen(on: boolean): Promise<void> {

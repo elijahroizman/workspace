@@ -2,7 +2,7 @@ import { Rocket } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { isLinux, isMac, openExternal } from '../lib/platform'
-import { checkForUpdates, closeUpdatePanel, toggleUpdatePanel, updatesInstallable, useUpdate, type UpdatePhase } from '../lib/updater'
+import { checkForUpdates, closeUpdatePanel, newer, toggleUpdatePanel, updatesInstallable, useUpdate, type UpdatePhase } from '../lib/updater'
 import { runCommand } from '../App'
 import { Spinner } from './ui'
 
@@ -33,9 +33,11 @@ function detail(phase: UpdatePhase, error: string | null, publishedAt: string | 
   if (phase === 'error') return error ?? "Couldn't check for updates."
   if (phase === 'checking') return 'Looking at the latest GitHub release'
   if (phase === 'downloading') return 'Downloading the update'
-  if (phase === 'installing') return isMac ? 'Workspace will quit and reopen' : 'The installer will restart Workspace'
+  if (phase === 'installing') return isMac ? 'Workspace will quit and reopen' : isLinux ? 'Installing with apt, then Workspace reopens' : 'The installer will restart Workspace'
+  if (phase === 'ready' && error) return error
+  if (phase === 'ready' && isLinux) return 'Installs with apt after asking for your password'
   if (phase === 'ready') return date ? `Ready to install · ${date}` : 'Ready to install'
-  if (isLinux && version && version !== __APP_VERSION__) return `Workspace ${version} is out. Download the new .deb from GitHub.`
+  if (isLinux && version && newer(version, __APP_VERSION__)) return `Workspace ${version} is out. Install the new .deb from GitHub, and later versions come through apt.`
   if (!updatesInstallable) return date ? `Latest GitHub release · ${date}` : 'Latest GitHub release'
   return date ? `This is the newest release · ${date}` : 'This is the newest release'
 }

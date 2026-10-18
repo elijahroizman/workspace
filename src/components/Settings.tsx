@@ -2,13 +2,14 @@ import { ArrowLeft, Blocks, Copy, Keyboard, Monitor, Moon, Palette, Pencil, Plus
 import type { ReactNode } from 'react'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { canSetDefaults, defaultStatus, makeDefault } from '../lib/defaults'
-import { isLinux, isMac, openExternal, shortcut, showError } from '../lib/platform'
+import { confirmDialog, isLinux, isMac, isTauri, openExternal, shortcut, showError } from '../lib/platform'
+import { EXTRA_FONTS, useExtraFonts } from '../state/fonts'
 import type { Appearance, ThemeDef } from '../lib/themes'
 import { isHex, orbBackground } from '../lib/themes'
 import { openUpdatePanel } from '../lib/updater'
 import { PLUGINS, isBuiltIn } from '../plugins/catalog'
 import { allThemes, useAppearance } from '../state/appearance'
-import { enabledKinds, usePlugins } from '../state/plugins'
+import { enabledKinds, formatSize, usePlugins } from '../state/plugins'
 import type { SettingsPage } from '../state/settings'
 import { PREVIEW_DELAYS, useSettings } from '../state/settings'
 import { INSTALL_CHOICES, useTex } from '../state/tex'
@@ -116,7 +117,7 @@ function GeneralPage() {
       <div className="settings-row">
         <div className="settings-row-text">
           <span className="settings-label">Workspace {__APP_VERSION__}</span>
-          <span className="settings-hint">{isLinux ? 'Download new versions from GitHub. Check for updates shows whether a new one is out.' : 'Updates download by themselves and install when you quit.'}</span>
+          <span className="settings-hint">{isLinux ? 'New versions come through apt, with your system’s other updates, or from Check for updates.' : 'Updates download by themselves and install when you quit.'}</span>
         </div>
         <div className="settings-row-control">
           <button type="button" className="btn" onClick={() => (setOpen(false), openUpdatePanel())}>
@@ -128,6 +129,8 @@ function GeneralPage() {
       <DefaultAppsRow />
 
       <RecentFilesRow />
+
+      <ExtraFontRows />
 
       <div className="settings-row">
         <div className="settings-row-text">
@@ -152,6 +155,47 @@ function GeneralPage() {
           </button>
         </div>
       </div>
+    </>
+  )
+}
+
+/** Fonts Workspace downloads from their makers (state/fonts.ts), for Word and PowerPoint. */
+function ExtraFontRows() {
+  const installed = useExtraFonts((s) => s.installed)
+  const busy = useExtraFonts((s) => s.busy)
+  const errors = useExtraFonts((s) => s.errors)
+  const { install, remove } = useExtraFonts.getState()
+  if (!isTauri) return null
+  return (
+    <>
+      {EXTRA_FONTS.map((f) => (
+        <div key={f.id} className="settings-row">
+          <div className="settings-row-text">
+            <span className="settings-label" style={{ fontFamily: installed[f.id] ? `'${f.family}', serif` : undefined }}>
+              {f.family} font <span className="faint">· {f.maker}</span>
+            </span>
+            <span className="settings-hint">
+              {installed[f.id] ? 'In the font menus for Word and PowerPoint.' : `${f.about} ${formatSize(f.size)}.`}{' '}
+              <button type="button" className="link-btn" onClick={() => void openExternal(f.licenseUrl)}>
+                {f.maker}’s license
+              </button>
+            </span>
+            {errors[f.id] && <span className="plugin-error">{errors[f.id]}</span>}
+          </div>
+          <div className="settings-row-control">
+            {installed[f.id] ? (
+              <button type="button" className="btn" onClick={() => void remove(f.id)}>
+                Remove
+              </button>
+            ) : (
+              <button type="button" className="btn" disabled={busy[f.id]} onClick={() => void install(f.id)}>
+                {busy[f.id] ? <Spinner size={13} /> : null}
+                {busy[f.id] ? 'Downloading…' : 'Download'}
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
     </>
   )
 }
@@ -308,16 +352,26 @@ function TexSettings() {
     <div className="plugin-extra">
       <div className="plugin-extra-row">
         <span className="settings-hint">
-          {!status
+          {installing
+            ? 'Installing TeX…'
+            : !status
             ? 'Looking for TeX…'
             : status.installed
               ? `Compiles with ${status.distribution ?? 'TeX'} (${status.engines.join(', ')}).`
               : 'TeX isn’t installed, so documents can’t compile.'}
         </span>
-        {status && !status.installed && INSTALL_CHOICES.length > 0 && (
-          <button type="button" className="btn" disabled={!!installing} onClick={() => void useTex.getState().offerInstall()}>
-            Install TeX…
+        {installing ? (
+          <button type="button" className="btn" onClick={() => useTex.setState({ offer: true })}>
+            Show progress
           </button>
+        ) : (
+          status &&
+          !status.installed &&
+          INSTALL_CHOICES.length > 0 && (
+            <button type="button" className="btn" onClick={() => void useTex.getState().offerInstall()}>
+              Install TeX…
+            </button>
+          )
         )}
       </div>
       <div className="plugin-extra-row">
@@ -338,8 +392,13 @@ async function disablePlugin(id: string, disable: (id: string) => Promise<void>)
   const kinds = new Set(plugin.kinds.map((k) => k.id))
   const open = useWorkspace.getState().tabs.filter((t) => kinds.has(t.kind))
   if (open.length) {
-    await showError(`Close the ${open.length === 1 ? 'tab' : `${open.length} tabs`} using ${plugin.name} first (${open.map((t) => `“${t.title}”`).join(', ')}).`)
-    return
+    const tabs = open.length === 1 ? `“${open[0].title}”` : `${open.length} tabs`
+    const ok = await confirmDialog(`${plugin.name} can’t turn off while ${tabs} ${open.length === 1 ? 'is' : 'are'} open. Workspace asks before closing anything with unsaved changes.`, {
+      title: `Close ${tabs} and turn off ${plugin.name}?`,
+      okLabel: open.length === 1 ? 'Close Tab' : 'Close Tabs',
+    })
+    if (!ok) return
+    for (const tab of open) if (!(await useWorkspace.getState().closeTab(tab.id))) return
   }
   // LaTeX uses the computer's own TeX; offer to remove that too (unticked unless they choose).
   if (plugin.services?.includes('tex') && !(await useTex.getState().confirmTurnOff())) return
@@ -468,7 +527,13 @@ function AppearancePage() {
                     <IconButton label="Edit theme" size="sm" onClick={() => setEditing({ ...t })}>
                       <Pencil size={13} />
                     </IconButton>
-                    <IconButton label="Delete theme" size="sm" onClick={() => remove(t.id)}>
+                    <IconButton
+                      label="Delete theme"
+                      size="sm"
+                      onClick={() =>
+                        void confirmDialog('You can’t undo this.', { title: `Delete the theme “${t.name}”?`, okLabel: 'Delete', danger: true }).then((ok) => ok && remove(t.id))
+                      }
+                    >
                       <Trash2 size={13} />
                     </IconButton>
                   </>

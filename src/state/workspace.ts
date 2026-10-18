@@ -357,6 +357,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       if (tab.dirty) {
         const ok = await platform.confirmDialog(`Revert “${tab.title}” to the last saved version? Your unsaved changes will be lost.`, {
           okLabel: 'Revert',
+          danger: true,
         })
         if (!ok) return
       }

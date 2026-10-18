@@ -71,6 +71,44 @@ fn fetch_latest_release() -> Result<ReleaseNotes, String> {
     Ok(notes_from_release(release))
 }
 
+/// Where the .deb's install script puts Workspace's APT repository (src-tauri/linux/postinst).
+#[cfg(target_os = "linux")]
+const APT_SOURCES: &str = "/etc/apt/sources.list.d/workspace.list";
+
+/// Whether this copy came with Workspace's APT repository, so apt can install new versions.
+#[tauri::command]
+pub fn apt_updates() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::path::Path::new(APT_SOURCES).is_file() && std::path::Path::new("/usr/bin/apt-get").is_file()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
+/// Installs the newest Workspace from its APT repository, after polkit asks for the password.
+/// Only Workspace's own source is refreshed, so a broken or slow mirror elsewhere can't stop it.
+#[tauri::command]
+pub async fn apt_upgrade() -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        tauri::async_runtime::spawn_blocking(|| {
+            let line = format!(
+                "export DEBIAN_FRONTEND=noninteractive; apt-get update -o Dir::Etc::sourcelist={APT_SOURCES} -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0 && apt-get install -y --only-upgrade workspace"
+            );
+            crate::tex::pkexec(&line, "Updating Workspace")
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Err("Updates through apt are for Linux.".into())
+    }
+}
+
 /// Quote `path` as one shell word.
 #[cfg(any(target_os = "macos", test))]
 fn sh_quote(path: &std::path::Path) -> String {

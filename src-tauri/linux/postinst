@@ -1,0 +1,18 @@
+#!/bin/sh
+# Adds Workspace's APT repository, so new versions arrive with the system's other updates
+# (Software Updater, apt upgrade) and the app's Update button can install them. The repository is
+# the assets of the GitHub release tagged "apt", signed with the key this package installs. Once the
+# sources file exists it's left alone, so commenting its line out turns the updates off for good.
+set -e
+
+SOURCES=/etc/apt/sources.list.d/workspace.list
+KEYRING=/usr/share/keyrings/workspace-archive-keyring.gpg
+
+if [ "$1" = configure ] && [ ! -e "$SOURCES" ] && [ -d /etc/apt/sources.list.d ] && [ -r "$KEYRING" ]; then
+  cat > "$SOURCES" <<LIST
+# Workspace updates (https://github.com/elijahroizman/workspace). Put a # before the deb line to stop them.
+deb [arch=amd64 signed-by=$KEYRING] https://github.com/elijahroizman/workspace/releases/download/apt/ ./
+LIST
+fi
+
+exit 0

@@ -3,6 +3,7 @@ import type { ComponentType, ErrorInfo, ReactNode } from 'react'
 import { Home } from './components/Home'
 import { NewFilePicker, useNewFile } from './components/NewFile'
 import { TexInstall, TexRemove } from './components/TexInstall'
+import { Dialogs } from './components/Dialogs'
 import { TitleBar } from './components/TitleBar'
 import { CenterState } from './components/ui'
 import type { DocKind } from './lib/kinds'
@@ -10,6 +11,7 @@ import * as platform from './lib/platform'
 import { flushAutosave, startAutosave } from './lib/autosave'
 import { installUpdate, openUpdatePanel, startUpdateChecks } from './lib/updater'
 import { startPlugins } from './state/plugins'
+import { useExtraFonts } from './state/fonts'
 import { useSettings } from './state/settings'
 import { useSetup } from './state/setup'
 import { useTex } from './state/tex'
@@ -237,8 +239,8 @@ export default function App() {
     if (!started.current) {
       started.current = true
       void (async () => {
-        // Plugins first: a restored tab may need one.
-        await startPlugins()
+        // Plugins (and downloaded fonts) first: a restored tab may need one.
+        await Promise.all([startPlugins(), useExtraFonts.getState().refresh()])
         await restoreSession()
         await drainPending()
       })()
@@ -372,6 +374,7 @@ export default function App() {
       )}
       {texOffer && <TexInstall />}
       {texRemoval && <TexRemove />}
+      <Dialogs />
       {dropHover && (
         <div className="drop-overlay">
           <div className="pill">Drop to open</div>
