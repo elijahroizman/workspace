@@ -32,16 +32,25 @@ const OPS = 'http://www.idpf.org/2007/ops'
 /** Font obfuscation (IDPF's and Adobe's): common in books without DRM. */
 const FONT_OBFUSCATION = ['http://www.idpf.org/2008/embedding', 'http://ns.adobe.com/pdf/enc#RC']
 
+/** decodeURIComponent that leaves text with a malformed escape (`100%.xhtml`) as it is. */
+export function safeDecode(text: string): string {
+  try {
+    return decodeURIComponent(text)
+  } catch {
+    return text
+  }
+}
+
 /** Resolves `href` against the zip path `base`, dropping any fragment. */
 export function resolvePath(base: string, href: string): string {
   const url = new URL(href, `https://book.invalid/${base}`)
-  return decodeURIComponent(url.pathname.slice(1))
+  return safeDecode(url.pathname.slice(1))
 }
 
 /** `href` resolved against `base`, keeping its fragment: `OEBPS/ch1.xhtml#note-3`. */
 export function resolveHref(base: string, href: string): string {
   const url = new URL(href, `https://book.invalid/${base}`)
-  return decodeURIComponent(url.pathname.slice(1)) + url.hash
+  return safeDecode(url.pathname.slice(1)) + url.hash
 }
 
 /** Whether a link leaves the book (https:, mailto:…). */

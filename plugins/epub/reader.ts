@@ -5,10 +5,10 @@
 import DOMPurify from 'dompurify'
 import type { PluginEditor, PluginEditorContext, SearchResult, Theme } from '../../src/plugins/api'
 import type { Book, TocEntry } from './book'
-import { isExternal, openBook, parseMarkup, readText, resolveHref, resolvePath } from './book'
+import { isExternal, openBook, parseMarkup, readText, resolveHref, resolvePath, safeDecode } from './book'
 import bookCss from './book.css?inline'
 import readerCss from './reader.css?inline'
-import { Resources, Styles } from './styles'
+import { Resources, Styles, withoutUrls } from './styles'
 
 const [BASE_CSS, OVERRIDE_CSS] = bookCss.split('/* @overrides */')
 const XLINK = 'http://www.w3.org/1999/xlink'
@@ -77,8 +77,6 @@ const savedScale = () => {
 }
 
 /** An inline style without its url()s, which would load from the app or the web, not the book. */
-const withoutUrls = (style: string) => style.replace(/url\([^)]*\)/gi, 'none')
-
 const settle = (promise: Promise<unknown>, ms: number) => Promise.race([promise.catch(() => {}), new Promise((resolve) => setTimeout(resolve, ms))])
 
 export async function mountReader(element: HTMLElement, context: PluginEditorContext): Promise<PluginEditor> {
@@ -189,6 +187,7 @@ async function show(element: HTMLElement, context: PluginEditorContext, book: Bo
     if (view.page) fitPage(view)
     mediaObserver.observe(view.host)
     resizeObserver.observe(view.host)
+    searchNewSection(i)
   }
 
   /** Keeps the attributes that matter for styling (class, lang, dir, style) when html and body become divs. */
@@ -223,7 +222,8 @@ async function show(element: HTMLElement, context: PluginEditorContext, book: Bo
       node.removeAttributeNS(XLINK, 'href')
       node.removeAttribute('href')
     }
-    for (const node of Array.from(root.querySelectorAll<HTMLElement>('[style*="url("]'))) node.setAttribute('style', withoutUrls(node.getAttribute('style')!))
+    // Every style attribute: an escaped `u\72l(` doesn't contain "url(".
+    for (const node of Array.from(root.querySelectorAll<HTMLElement>('[style]'))) node.setAttribute('style', withoutUrls(node.getAttribute('style')!))
     for (const link of Array.from(root.querySelectorAll('a[href]'))) {
       const href = link.getAttribute('href')!
       if (!isExternal(href)) link.setAttribute('data-epub-link', resolveHref(base, href))
@@ -336,7 +336,7 @@ async function show(element: HTMLElement, context: PluginEditorContext, book: Bo
     let offset = section === 0 ? -view.host.offsetTop : -16
     if ('fraction' in target) offset = target.fraction ? target.fraction * view.host.offsetHeight : offset
     else if (target.fragment && view.root) {
-      const id = decodeURIComponent(target.fragment)
+      const id = safeDecode(target.fragment)
       const node = view.root.getElementById(id) ?? view.root.querySelector(`[name="${CSS.escape(id)}"]`)
       if (node) offset = node.getBoundingClientRect().top - view.host.getBoundingClientRect().top - 16
     }
@@ -417,7 +417,7 @@ async function show(element: HTMLElement, context: PluginEditorContext, book: Bo
       if (item.section > section) break
       if (item.section === section && item.fragment) {
         const view = views[section]
-        const node = view.root?.getElementById(decodeURIComponent(item.fragment))
+        const node = view.root?.getElementById(safeDecode(item.fragment))
         if (node && node.getBoundingClientRect().top - view.host.getBoundingClientRect().top > reach) continue
       }
       current = item
@@ -497,36 +497,57 @@ async function show(element: HTMLElement, context: PluginEditorContext, book: Bo
     current = -1
   }
 
+  /** Which section each mark is in, to keep marks in reading order as sections arrive. */
+  const markSections = new WeakMap<HTMLElement, number>()
+
   function markMatches(text: string) {
+    for (let i = 0; i < views.length && marks.length < MAX_MATCHES; i++) marks.push(...markSection(i, text, MAX_MATCHES - marks.length))
+  }
+
+  function markSection(i: number, text: string, limit: number): HTMLElement[] {
+    const root = views[i].root
+    const found: HTMLElement[] = []
+    if (!root || limit <= 0) return found
     const needle = text.toLocaleLowerCase()
-    for (const view of views) {
-      if (!view.root || marks.length >= MAX_MATCHES) continue
-      const walker = document.createTreeWalker(view.root, NodeFilter.SHOW_TEXT)
-      const nodes: Text[] = []
-      while (walker.nextNode()) {
-        const node = walker.currentNode as Text
-        if (node.parentElement?.closest('style')) continue
-        if (node.data.toLocaleLowerCase().includes(needle)) nodes.push(node)
-      }
-      for (const node of nodes) {
-        const haystack = node.data.toLocaleLowerCase()
-        const starts: number[] = []
-        for (let at = haystack.indexOf(needle); at >= 0; at = haystack.indexOf(needle, at + needle.length)) starts.push(at)
-        // Split from the end so earlier offsets stay right.
-        const found: HTMLElement[] = []
-        for (const start of starts.reverse()) {
-          const match = node.splitText(start)
-          match.splitText(needle.length)
-          const mark = document.createElement('mark')
-          mark.className = 'epub-find'
-          match.parentNode!.replaceChild(mark, match)
-          mark.appendChild(match)
-          found.unshift(mark)
-        }
-        marks.push(...found)
-        if (marks.length >= MAX_MATCHES) break
-      }
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    const nodes: Text[] = []
+    while (walker.nextNode()) {
+      const node = walker.currentNode as Text
+      if (node.parentElement?.closest('style')) continue
+      if (node.data.toLocaleLowerCase().includes(needle)) nodes.push(node)
     }
+    for (const node of nodes) {
+      const haystack = node.data.toLocaleLowerCase()
+      const starts: number[] = []
+      for (let at = haystack.indexOf(needle); at >= 0; at = haystack.indexOf(needle, at + needle.length)) starts.push(at)
+      // Split from the end so earlier offsets stay right.
+      const inNode: HTMLElement[] = []
+      for (const start of starts.reverse()) {
+        const match = node.splitText(start)
+        match.splitText(needle.length)
+        const mark = document.createElement('mark')
+        mark.className = 'epub-find'
+        match.parentNode!.replaceChild(mark, match)
+        mark.appendChild(match)
+        markSections.set(mark, i)
+        inNode.unshift(mark)
+      }
+      found.push(...inNode)
+      if (found.length >= limit) break
+    }
+    return found
+  }
+
+  /** A section rendered while a search was open: adds its matches and tells the find bar. */
+  function searchNewSection(i: number) {
+    if (!query || marks.length >= MAX_MATCHES) return
+    const found = markSection(i, query, MAX_MATCHES - marks.length)
+    if (!found.length) return
+    let at = marks.findIndex((mark) => markSections.get(mark)! > i)
+    if (at < 0) at = marks.length
+    marks.splice(at, 0, ...found)
+    if (current >= at) current += found.length
+    context.searchChanged?.({ count: marks.length, current })
   }
 
   function select(index: number) {

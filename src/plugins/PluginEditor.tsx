@@ -73,6 +73,7 @@ export default function PluginEditor({ tab, active }: EditorProps) {
           onChange: () => useWorkspace.getState().markDirty(tab.id, true),
           openExternal: (url) => void openExternal(url),
           sidebar: sidebar ?? undefined,
+          searchChanged: (result) => setFound(result),
           print: async (content) => {
             const root = document.getElementById('print-root')!
             const page = document.createElement('div')

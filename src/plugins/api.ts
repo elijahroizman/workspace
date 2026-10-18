@@ -25,6 +25,8 @@ export interface PluginEditorContext {
    * kinds whose catalog entry has `panels.left`; Workspace shows and hides it with ⌘\.
    */
   sidebar?: HTMLElement
+  /** For editors with search(): the matches changed without a new query (more content loaded). */
+  searchChanged?(result: SearchResult): void
 }
 
 export interface SearchResult {
