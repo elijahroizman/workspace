@@ -149,6 +149,8 @@ pub fn run() {
             tex::tex_compile,
             tex::tex_forget,
             tex::tex_install,
+            tex::tex_uninstall_method,
+            tex::tex_uninstall,
             defaults::default_apps,
             defaults::set_default_apps,
         ])

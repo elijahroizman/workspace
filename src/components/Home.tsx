@@ -18,9 +18,12 @@ export function Home() {
   const [menu, setMenu] = useState<{ x: number; y: number; file: RecentFile } | null>(null)
   const plugins = usePlugins((s) => s.enabled)
   const kinds = enabledKinds(plugins)
-  const filters = kinds.map((k) => k.id)
+  const recentTabs = useSettings((s) => s.recentTabs)
+  // Settings › General picks which file types get a tab. All always lists everything.
+  const filters = kinds.filter((k) => recentTabs[k.id] !== false).map((k) => k.id)
+  const shownFilter = filter === 'all' || filters.includes(filter) ? filter : 'all'
 
-  const shown = useMemo(() => recents.filter((r) => filter === 'all' || r.kind === filter), [recents, filter])
+  const shown = useMemo(() => recents.filter((r) => shownFilter === 'all' || r.kind === shownFilter), [recents, shownFilter])
 
   return (
     <div className="home">
@@ -28,7 +31,6 @@ export function Home() {
         <header className="home-header">
           <div>
             <h1>Workspace</h1>
-            <p className="muted">Open, edit and create {listOf(kinds.map((k) => k.prose))} files.</p>
           </div>
           <div className="home-header-actions">
             <IconButton label={shortcut(theme === 'dark' ? 'Light appearance (⇧⌘L)' : 'Dark appearance (⇧⌘L)')} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
@@ -69,7 +71,7 @@ export function Home() {
             <h2>Recent</h2>
             <div className="home-filter" role="tablist">
               {(['all', ...filters] as const).map((k) => (
-                <button key={k} type="button" role="tab" aria-selected={filter === k} className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>
+                <button key={k} type="button" role="tab" aria-selected={shownFilter === k} className={shownFilter === k ? 'on' : ''} onClick={() => setFilter(k)}>
                   {k === 'all' ? 'All' : KINDS[k].short}
                 </button>
               ))}
@@ -80,7 +82,7 @@ export function Home() {
             <div className="home-empty">
               {recents.length === 0
                 ? 'Files you open will show up here.'
-                : `No recent ${filter === 'all' ? '' : KINDS[filter as DocKind].short.toLowerCase() + ' '}files.`}
+                : `No recent ${shownFilter === 'all' ? '' : KINDS[shownFilter as DocKind].short.toLowerCase() + ' '}files.`}
             </div>
           ) : (
             <ul className="recent-list">
@@ -133,11 +135,6 @@ export function Home() {
       )}
     </div>
   )
-}
-
-/** “Word, PowerPoint and PDF” */
-function listOf(items: string[]) {
-  return items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}` : items.join('')
 }
 
 function prettyDir(path: string) {

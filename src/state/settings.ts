@@ -13,6 +13,8 @@ export interface Settings {
   autosave: AutosaveSettings
   /** Seconds after typing stops before a slow preview (a LaTeX compile) rebuilds. */
   previewDelay: number
+  /** By kind id: whether Home's Recent list has a tab for it. Every file is still under All. */
+  recentTabs: Record<string, boolean>
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -23,6 +25,7 @@ export const DEFAULT_SETTINGS: Settings = {
     kinds: { docx: true, pptx: true, md: true, txt: true, pdf: false },
   },
   previewDelay: 3,
+  recentTabs: {},
 }
 
 const KEY = 'workspace.settings'
@@ -40,7 +43,11 @@ function load(): Settings {
     const parsed: unknown = JSON.parse(localStorage.getItem(KEY) || '{}')
     if (!isRecord(parsed)) return DEFAULT_SETTINGS
     const previewDelay = typeof parsed.previewDelay === 'number' && PREVIEW_DELAYS.includes(parsed.previewDelay) ? parsed.previewDelay : DEFAULT_SETTINGS.previewDelay
-    if (!isRecord(parsed.autosave)) return { ...DEFAULT_SETTINGS, previewDelay }
+    const recentTabs: Record<string, boolean> = {}
+    if (isRecord(parsed.recentTabs)) {
+      for (const [kind, on] of Object.entries(parsed.recentTabs)) if (typeof on === 'boolean') recentTabs[kind] = on
+    }
+    if (!isRecord(parsed.autosave)) return { ...DEFAULT_SETTINGS, previewDelay, recentTabs }
     const old = parsed.autosave
     const defaults = DEFAULT_SETTINGS.autosave
     const kinds = { ...defaults.kinds }
@@ -54,7 +61,7 @@ function load(): Settings {
     let enabled = defaults.enabled
     if (typeof old.enabled === 'boolean') enabled = old.enabled
     else if ('root' in old) enabled = typeof old.root === 'string' && old.root.length > 0
-    return { autosave: { enabled, delay, kinds }, previewDelay }
+    return { autosave: { enabled, delay, kinds }, previewDelay, recentTabs }
   } catch {
     return DEFAULT_SETTINGS
   }
@@ -71,18 +78,20 @@ interface SettingsState extends Settings {
   setPage(page: SettingsPage): void
   setAutosave(patch: Partial<AutosaveSettings>): void
   setPreviewDelay(seconds: number): void
+  setRecentTab(kind: string, on: boolean): void
 }
 
 const persist = () => {
-  const { autosave, previewDelay } = useSettings.getState()
-  localStorage.setItem(KEY, JSON.stringify({ autosave, previewDelay } satisfies Settings))
+  const { autosave, previewDelay, recentTabs } = useSettings.getState()
+  localStorage.setItem(KEY, JSON.stringify({ autosave, previewDelay, recentTabs } satisfies Settings))
 }
 
 export const useSettings = create<SettingsState>((set, get) => ({
   ...load(),
   open: false,
   page: 'general',
-  setOpen: (open, page) => set(page ? { open, page } : { open }),
+  // Settings always opens on General, wherever it was left.
+  setOpen: (open, page) => set(open ? { open, page: page ?? 'general' } : { open }),
   setPage: (page) => set({ page }),
   setAutosave: (patch) => {
     set({ autosave: { ...get().autosave, ...patch } })
@@ -90,6 +99,10 @@ export const useSettings = create<SettingsState>((set, get) => ({
   },
   setPreviewDelay: (previewDelay) => {
     set({ previewDelay })
+    persist()
+  },
+  setRecentTab: (kind, on) => {
+    set({ recentTabs: { ...get().recentTabs, [kind]: on } })
     persist()
   },
 }))

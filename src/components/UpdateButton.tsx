@@ -1,7 +1,7 @@
 import { Rocket } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { isMac, openExternal } from '../lib/platform'
+import { isLinux, isMac, openExternal } from '../lib/platform'
 import { checkForUpdates, closeUpdatePanel, toggleUpdatePanel, updatesInstallable, useUpdate, type UpdatePhase } from '../lib/updater'
 import { runCommand } from '../App'
 import { Spinner } from './ui'
@@ -28,13 +28,14 @@ function heading(phase: UpdatePhase, version: string | null): string {
   return version ? `Workspace ${version}` : 'Updates'
 }
 
-function detail(phase: UpdatePhase, error: string | null, publishedAt: string | null): string {
+function detail(phase: UpdatePhase, error: string | null, publishedAt: string | null, version: string | null): string {
   const date = formatDate(publishedAt)
   if (phase === 'error') return error ?? "Couldn't check for updates."
   if (phase === 'checking') return 'Looking at the latest GitHub release'
   if (phase === 'downloading') return 'Downloading the update'
   if (phase === 'installing') return isMac ? 'Workspace will quit and reopen' : 'The installer will restart Workspace'
   if (phase === 'ready') return date ? `Ready to install · ${date}` : 'Ready to install'
+  if (isLinux && version && version !== __APP_VERSION__) return `Workspace ${version} is out. Download the new .deb from GitHub.`
   if (!updatesInstallable) return date ? `Latest GitHub release · ${date}` : 'Latest GitHub release'
   return date ? `This is the newest release · ${date}` : 'This is the newest release'
 }
@@ -154,7 +155,7 @@ export function UpdateButton() {
           >
             <header className="update-panel-head">
               <h2 id="update-title">{heading(phase, version)}</h2>
-              <p>{detail(phase, error, publishedAt)}</p>
+              <p>{detail(phase, error, publishedAt, version)}</p>
             </header>
             <div
               className="update-notes"

@@ -39,12 +39,20 @@ interface Props {
   onZoomChange(zoom: number): void
   /** Layers drawn over each page (text, links, annotations, tools). */
   renderPage(slot: PageSlot): ReactNode
+  /**
+   * Remembers where the view was under this key, and goes back there when a viewer with the
+   * same key mounts again (a PDF reloaded in place, like a LaTeX build opened in its own tab).
+   */
+  positionKey?: string
 }
 
 type Anchor = { index: number; u: number; v: number; px: number; py: number }
 
+/** The page at the top of the view, how far down it, and the zoom, by `positionKey`. */
+const positions = new Map<string, { index: number; v: number; zoom: number }>()
+
 /** Scrolling, virtualized list of pages with pinch zoom. Only pages near the window exist in the DOM. */
-export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer({ store, pages, awake, className, onPageChange, onZoomChange, renderPage }, ref) {
+export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer({ store, pages, awake, className, onPageChange, onZoomChange, renderPage, positionKey }, ref) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const [viewport, setViewport] = useState({ width: 0, height: 0 })
@@ -64,6 +72,8 @@ export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer({ store, p
   const currentRef = useRef(0)
   /** A page the user just edited stays current until they scroll or click. */
   const held = useRef(false)
+  /** A position from an earlier viewer to go back to, once there is a layout to put it in. */
+  const restore = useRef(positionKey ? positions.get(positionKey) : undefined)
 
   useEffect(() => onZoomChange(zoom), [zoom, onZoomChange])
 
@@ -85,8 +95,10 @@ export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer({ store, p
     }
     const i = pageAt(l, top + 1)
     topAnchor.current = { index: i, u: 0.5, v: (top - l.tops[i]) / l.heights[i], px: el.clientWidth / 2, py: 0 }
+    // Until the old position is back, scrolling hasn't started from it, so don't overwrite it.
+    if (positionKey && !restore.current) positions.set(positionKey, { index: i, v: topAnchor.current.v, zoom: l.zoom })
     for (const fn of listeners.current) fn()
-  }, [onPageChange])
+  }, [onPageChange, positionKey])
 
   useEffect(() => {
     const el = scrollRef.current!
@@ -122,8 +134,20 @@ export const Viewer = forwardRef<ViewerHandle, Props>(function Viewer({ store, p
     const content = contentRef.current!
     content.style.transform = ''
     content.style.transformOrigin = ''
-    const a = pendingAnchor.current
+    let a = pendingAnchor.current
     pendingAnchor.current = null
+    const back = restore.current
+    if (back && layout.tops.length && viewport.width) {
+      restore.current = undefined
+      const i = Math.min(back.index, layout.tops.length - 1)
+      const anchor = { index: i, u: 0.5, v: back.v, px: el.clientWidth / 2, py: 0 }
+      if (Math.abs(back.zoom - layout.zoom) < 1e-6) a = anchor
+      else {
+        // The zoom comes first; the next layout puts the spot back.
+        pendingAnchor.current = anchor
+        setZoomState({ zoom: clampZoom(back.zoom), mode: null, fitIndex: i })
+      }
+    }
     if (a && layout.tops.length) {
       const i = Math.min(a.index, layout.tops.length - 1)
       el.scrollLeft = pageLeft(layout, i) + a.u * layout.widths[i] - a.px

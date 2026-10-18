@@ -39,6 +39,12 @@ export interface PluginEditorContext {
   previewDelay?(): number
   /** Open a document in a tab of its own, of the kind its name's extension says (a compiled PDF). */
   openDocument?(document: { bytes: Uint8Array; name: string }): void
+  /**
+   * Replaces the contents of the tab `openDocument` opened, without switching to it. Returns
+   * false once that tab is closed, saved or edited (it's the user's now), and the plugin should
+   * stop updating it.
+   */
+  updateDocument?(document: { bytes: Uint8Array; name: string }): boolean
   /** Save bytes to a file the user picks (an export). Resolves false if they cancel. */
   saveFile?(file: { bytes: Uint8Array; name: string }): Promise<boolean>
   /** A read-only view of a PDF in `element`, drawn by Workspace's own PDF engine. */

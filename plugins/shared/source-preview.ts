@@ -149,15 +149,22 @@ export function decode(bytes: Uint8Array) {
 
 export const encode = (text: string) => new TextEncoder().encode(text)
 
-/** A section in the plugin's sidebar, styled like Workspace's own. */
-export function sidebarSection(sidebar: HTMLElement, title: string): HTMLElement {
+/**
+ * A section in the plugin's sidebar, built from the same classes as Workspace's own (a bold
+ * title, a divider between sections). Buttons and text go in as they are; pass `list` for rows
+ * made with sidebarItem, which sit closer to the edge.
+ */
+export function sidebarSection(sidebar: HTMLElement, title: string, options: { list?: boolean } = {}): HTMLElement {
   const section = document.createElement('section')
-  section.className = 'sp-side-section'
-  const heading = document.createElement('h4')
-  heading.className = 'sp-side-title'
-  heading.textContent = title
+  section.className = 'section'
+  const heading = document.createElement('header')
+  heading.className = 'section-header'
+  const name = document.createElement('span')
+  name.className = 'section-title'
+  name.textContent = title
+  heading.appendChild(name)
   const body = document.createElement('div')
-  body.className = 'sp-side-body'
+  body.className = options.list ? 'section-body flush sp-list' : 'section-body'
   section.append(heading, body)
   sidebar.appendChild(section)
   return body
@@ -172,6 +179,8 @@ export function sidebarItem(label: string, options: { indent?: number; detail?: 
   const text = document.createElement('span')
   text.className = 'label'
   text.textContent = label
+  // The whole message is the label; a long one wraps instead of being cut off.
+  item.title = label
   item.appendChild(text)
   if (options.detail) {
     const detail = document.createElement('span')

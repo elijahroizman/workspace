@@ -363,16 +363,97 @@ fn sha256_hex(path: &Path) -> Result<String, String> {
     Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
 
+// Package managers come first (Homebrew, winget, apt): they verify what they download, and the
+// system can update or remove the result later. Without one, a Mac gets MacTeX's own signed
+// installer and Windows gets MiKTeX's.
+
+/// Runs a program to completion with its output captured; the error is the tail of what it said.
+fn run_captured(mut cmd: Command, what: &str) -> Result<String, String> {
+    let output = cmd.stdin(Stdio::null()).output().map_err(|e| format!("Couldn't start {what}: {e}"))?;
+    let out = String::from_utf8_lossy(&output.stdout).into_owned();
+    if output.status.success() {
+        return Ok(out);
+    }
+    let said = format!("{}\n{}", String::from_utf8_lossy(&output.stderr), out);
+    let tail: Vec<&str> = said.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let tail = tail[tail.len().saturating_sub(4)..].join(" ");
+    Err(format!("{what} failed: {}", if tail.is_empty() { "no details" } else { tail.as_str() }))
+}
+
+/// Whether a program answers `--version` (winget is an app alias, so it's found by running it).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn runs(program: &str, arg: &str) -> bool {
+    command(Path::new(program)).arg(arg).stdin(Stdio::null()).output().is_ok_and(|o| o.status.success())
+}
+
+#[cfg(target_os = "macos")]
+mod mac {
+    use super::*;
+
+    pub const CASKS: [&str; 3] = ["mactex-no-gui", "mactex", "basictex"];
+
+    pub fn brew() -> Option<PathBuf> {
+        ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"].iter().map(PathBuf::from).find(|p| p.is_file())
+    }
+
+    /// Homebrew asks for the administrator password through SUDO_ASKPASS when it has no terminal.
+    pub fn brew_command(brew: &Path, dir: &Path) -> Result<Command, String> {
+        use std::os::unix::fs::PermissionsExt;
+        let askpass = dir.join("askpass.sh");
+        let script = "#!/bin/sh\nexec /usr/bin/osascript -e 'text returned of (display dialog \"Workspace needs your password to change TeX.\" default answer \"\" with hidden answer with title \"Workspace\")'\n";
+        fs::write(&askpass, script).map_err(|e| e.to_string())?;
+        fs::set_permissions(&askpass, fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
+        let mut cmd = command(brew);
+        cmd.env("SUDO_ASKPASS", &askpass)
+            .env("NONINTERACTIVE", "1")
+            .env("HOMEBREW_NO_AUTO_UPDATE", "1")
+            .env("HOMEBREW_NO_ANALYTICS", "1")
+            .env("HOMEBREW_NO_INSTALL_CLEANUP", "1");
+        Ok(cmd)
+    }
+
+    /// The cask Homebrew installed TeX from, if it did.
+    pub fn installed_cask(brew: &Path) -> Option<&'static str> {
+        let out = command(brew).args(["list", "--cask", "-1"]).stdin(Stdio::null()).output().ok()?;
+        let list = String::from_utf8_lossy(&out.stdout);
+        CASKS.into_iter().find(|c| list.lines().any(|l| l.trim() == *c))
+    }
+
+    /// MacTeX's own installer leaves receipts named org.tug.mactex.*.
+    pub fn has_mactex_receipt() -> bool {
+        Command::new("/usr/sbin/pkgutil").arg("--pkgs").output().is_ok_and(|o| String::from_utf8_lossy(&o.stdout).lines().any(|l| l.starts_with("org.tug.mactex")))
+    }
+
+    /// Runs shell commands as an administrator, after macOS asks for the password.
+    pub fn admin(shell: &str) -> Result<(), String> {
+        let escaped = shell.replace('\\', "\\\\").replace('"', "\\\"");
+        let script = format!("do shell script \"{escaped}\" with administrator privileges");
+        let output = Command::new("/usr/bin/osascript").arg("-e").arg(script).output().map_err(|e| e.to_string())?;
+        if output.status.success() {
+            return Ok(());
+        }
+        let err = String::from_utf8_lossy(&output.stderr);
+        Err(if err.contains("-128") { "Cancelled.".into() } else { format!("{}", err.trim()) })
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn install(app: &AppHandle<impl Runtime>, variant: &str, dir: &Path) -> Result<(), String> {
+    let emit = |stage, received, total| {
+        let _ = app.emit("tex-progress", Progress { stage, received, total });
+    };
+    if let Some(brew) = mac::brew() {
+        emit("install", 0, 0);
+        let cask = if variant == "basictex" { "basictex" } else { "mactex-no-gui" };
+        let mut cmd = mac::brew_command(&brew, dir)?;
+        cmd.args(["install", "--cask", cask]);
+        return run_captured(cmd, "Homebrew").map(|_| ());
+    }
     let name = match variant {
         "basictex" => "BasicTeX.pkg",
         _ => "MacTeX.pkg",
     };
     let pkg = dir.join(name);
-    let emit = |stage, received, total| {
-        let _ = app.emit("tex-progress", Progress { stage, received, total });
-    };
     download_to(&format!("https://mirror.ctan.org/systems/mac/mactex/{name}"), &pkg, |r, t| emit("download", r, t))?;
     emit("verify", 0, 0);
     // A signature macOS trusts, from MacTeX's own Developer ID.
@@ -383,14 +464,8 @@ fn install(app: &AppHandle<impl Runtime>, variant: &str, dir: &Path) -> Result<(
     }
     emit("install", 0, 0);
     // macOS asks for an administrator's password, then installs it without its wizard.
-    let path = pkg.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"");
-    let script = format!("do shell script \"/usr/sbin/installer -pkg \" & quoted form of \"{path}\" & \" -target /\" with administrator privileges");
-    let output = Command::new("/usr/bin/osascript").arg("-e").arg(script).output().map_err(|e| e.to_string())?;
-    if !output.status.success() {
-        let err = String::from_utf8_lossy(&output.stderr);
-        return Err(if err.contains("-128") { "Installing TeX was cancelled.".into() } else { format!("Installing TeX failed: {}", err.trim()) });
-    }
-    Ok(())
+    let path = pkg.to_string_lossy().replace('\'', "'\\''");
+    mac::admin(&format!("/usr/sbin/installer -pkg '{path}' -target /")).map_err(|e| if e == "Cancelled." { "Installing TeX was cancelled.".into() } else { format!("Installing TeX failed: {e}") })
 }
 
 #[cfg(windows)]
@@ -398,6 +473,21 @@ fn install(app: &AppHandle<impl Runtime>, _variant: &str, dir: &Path) -> Result<
     let emit = |stage, received, total| {
         let _ = app.emit("tex-progress", Progress { stage, received, total });
     };
+    let configure = || {
+        // Missing packages install as a document needs them, without a dialog each time.
+        if let Some(initexmf) = find("initexmf") {
+            let _ = command(&initexmf).arg("--set-config-value=[MPM]AutoInstall=1").status();
+        }
+    };
+    if runs("winget", "--version") {
+        emit("install", 0, 0);
+        let mut cmd = command(Path::new("winget"));
+        // Just for this user, so Windows doesn't ask for an administrator.
+        cmd.args(["install", "--id", "MiKTeX.MiKTeX", "-e", "--scope", "user", "--silent", "--disable-interactivity", "--accept-package-agreements", "--accept-source-agreements"]);
+        run_captured(cmd, "winget")?;
+        configure();
+        return Ok(());
+    }
     let (name, sha256) = MIKTEX;
     let setup = dir.join(name);
     let url = format!("https://mirror.ctan.org/systems/win32/miktex/setup/windows-x64/{name}");
@@ -412,25 +502,150 @@ fn install(app: &AppHandle<impl Runtime>, _variant: &str, dir: &Path) -> Result<
     if !status.success() {
         return Err("The MiKTeX installer didn't finish.".into());
     }
-    // Missing packages install as a document needs them, without a dialog each time.
-    if let Some(initexmf) = find("initexmf") {
-        let _ = command(&initexmf).arg("--set-config-value=[MPM]AutoInstall=1").status();
-    }
+    configure();
     Ok(())
 }
 
-#[cfg(not(any(target_os = "macos", windows)))]
+/// What `apt` installs for each choice in the dialog: all of what documents commonly need, or the basics.
+#[cfg(target_os = "linux")]
+fn apt_packages(variant: &str) -> &'static str {
+    match variant {
+        "texlive-basic" => "texlive-latex-base texlive-latex-recommended texlive-fonts-recommended",
+        _ => "texlive-latex-base texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended texlive-xetex texlive-luatex biber",
+    }
+}
+
+/// Runs a shell line as root through polkit's own password prompt.
+#[cfg(target_os = "linux")]
+fn pkexec(line: &str, what: &str) -> Result<(), String> {
+    let mut cmd = Command::new("pkexec");
+    cmd.args(["/bin/sh", "-c", line]);
+    let output = cmd.stdin(Stdio::null()).output().map_err(|_| "Workspace needs pkexec (polkit) to ask for your password. Install TeX with apt instead.".to_string())?;
+    match output.status.code() {
+        Some(0) => Ok(()),
+        Some(126) | Some(127) => Err(format!("{what} was cancelled.")),
+        _ => {
+            let err = String::from_utf8_lossy(&output.stderr);
+            let tail: Vec<&str> = err.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+            Err(format!("{what} failed: {}", tail[tail.len().saturating_sub(3)..].join(" ")))
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn install(app: &AppHandle<impl Runtime>, variant: &str, _dir: &Path) -> Result<(), String> {
+    if !Path::new("/usr/bin/apt-get").is_file() {
+        return Err("Workspace installs TeX with apt, which this system doesn't have. Install TeX Live with your package manager.".into());
+    }
+    let _ = app.emit("tex-progress", Progress { stage: "install", received: 0, total: 0 });
+    let line = format!("export DEBIAN_FRONTEND=noninteractive; apt-get update && apt-get install -y {}", apt_packages(variant));
+    pkexec(&line, "Installing TeX")
+}
+
+#[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
 fn install(_app: &AppHandle<impl Runtime>, _variant: &str, _dir: &Path) -> Result<(), String> {
     Err("Install TeX Live with your package manager (for example, texlive-latex-extra).".into())
 }
 
-/// Downloads and installs TeX: `mactex` or `basictex` on a Mac, MiKTeX on Windows.
+/// Downloads and installs TeX: `mactex` or `basictex` on a Mac, MiKTeX on Windows, `texlive` or
+/// `texlive-basic` on Debian and Ubuntu.
 #[tauri::command]
 pub async fn tex_install<R: Runtime>(app: AppHandle<R>, variant: String) -> Result<TexStatus, String> {
     let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("tex-installer");
     tauri::async_runtime::spawn_blocking(move || {
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let result = install(&app, &variant, &dir);
+        let _ = fs::remove_dir_all(&dir);
+        result?;
+        Ok(status())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ── Uninstalling: only what Workspace knows how to take away cleanly.
+
+/// How TeX would be removed from this computer ("Homebrew", "winget", "apt", "MacTeX's installer"),
+/// or none if it isn't there or wasn't put there by something Workspace can undo.
+fn uninstall_method() -> Option<&'static str> {
+    if !status().installed {
+        return None;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if mac::brew().is_some_and(|b| mac::installed_cask(&b).is_some()) {
+            return Some("Homebrew");
+        }
+        if mac::has_mactex_receipt() {
+            return Some("MacTeX’s installer");
+        }
+    }
+    #[cfg(windows)]
+    {
+        let listed = command(Path::new("winget")).args(["list", "--name", "MiKTeX", "--accept-source-agreements"]).stdin(Stdio::null()).output();
+        if listed.is_ok_and(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).contains("MiKTeX")) {
+            return Some("winget");
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let installed = Command::new("dpkg-query").args(["-W", "-f=${Status}", "texlive-binaries"]).output();
+        if installed.is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("install ok installed")) && Path::new("/usr/bin/apt-get").is_file() {
+            return Some("apt");
+        }
+    }
+    None
+}
+
+#[tauri::command]
+pub async fn tex_uninstall_method() -> Option<&'static str> {
+    tauri::async_runtime::spawn_blocking(uninstall_method).await.ok().flatten()
+}
+
+fn uninstall(app: &AppHandle<impl Runtime>, dir: &Path) -> Result<(), String> {
+    let _ = app.emit("tex-progress", Progress { stage: "install", received: 0, total: 0 });
+    match uninstall_method() {
+        #[cfg(target_os = "macos")]
+        Some("Homebrew") => {
+            let brew = mac::brew().ok_or("Homebrew isn't installed.")?;
+            let cask = mac::installed_cask(&brew).ok_or("Homebrew didn't install this TeX.")?;
+            let mut cmd = mac::brew_command(&brew, dir)?;
+            cmd.args(["uninstall", "--cask", cask]);
+            run_captured(cmd, "Homebrew").map(|_| ())
+        }
+        #[cfg(target_os = "macos")]
+        Some("MacTeX’s installer") => {
+            let _ = dir;
+            mac::admin("/bin/rm -rf /usr/local/texlive /Library/TeX /Applications/TeX; for p in $(/usr/sbin/pkgutil --pkgs | /usr/bin/grep '^org.tug.mactex'); do /usr/sbin/pkgutil --forget $p; done")
+                .map_err(|e| if e == "Cancelled." { "Removing TeX was cancelled.".into() } else { format!("Removing TeX failed: {e}") })
+        }
+        #[cfg(windows)]
+        Some("winget") => {
+            let _ = dir;
+            let mut cmd = command(Path::new("winget"));
+            cmd.args(["uninstall", "--name", "MiKTeX", "--silent", "--disable-interactivity", "--accept-source-agreements"]);
+            run_captured(cmd, "winget").map(|_| ())
+        }
+        #[cfg(target_os = "linux")]
+        Some("apt") => {
+            let _ = dir;
+            // Removing the base takes every TeX Live package that needs it along.
+            pkexec("export DEBIAN_FRONTEND=noninteractive; apt-get remove -y texlive-base texlive-binaries texlive-latex-base", "Removing TeX")
+        }
+        _ => {
+            let _ = dir;
+            Err("Workspace can't remove this TeX. Use the program that installed it.".into())
+        }
+    }
+}
+
+/// Removes TeX by the same means as `uninstall_method` says.
+#[tauri::command]
+pub async fn tex_uninstall<R: Runtime>(app: AppHandle<R>) -> Result<TexStatus, String> {
+    let dir = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("tex-installer");
+    tauri::async_runtime::spawn_blocking(move || {
+        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let result = uninstall(&app, &dir);
         let _ = fs::remove_dir_all(&dir);
         result?;
         Ok(status())

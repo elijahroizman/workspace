@@ -6,7 +6,7 @@ import { create } from 'zustand'
 const KEY = 'workspace.setupDone'
 
 /** Anything an earlier version saves on every launch. */
-const EARLIER_STATE = ['workspace.session', 'workspace.recents', 'workspace.theme', 'workspace.settings', 'workspace.panels']
+const EARLIER_STATE = ['workspace.session', 'workspace.recents', 'workspace.theme', 'workspace.themeMode', 'workspace.settings', 'workspace.panels']
 
 function firstRun(): boolean {
   try {

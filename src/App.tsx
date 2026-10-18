@@ -2,7 +2,7 @@ import { Component, lazy, memo, Suspense, useEffect, useRef, useState } from 're
 import type { ComponentType, ErrorInfo, ReactNode } from 'react'
 import { Home } from './components/Home'
 import { NewFilePicker, useNewFile } from './components/NewFile'
-import { TexInstall } from './components/TexInstall'
+import { TexInstall, TexRemove } from './components/TexInstall'
 import { TitleBar } from './components/TitleBar'
 import { CenterState } from './components/ui'
 import type { DocKind } from './lib/kinds'
@@ -219,17 +219,13 @@ function editorHandles(command: string) {
 export default function App() {
   const tabs = useWorkspace((s) => s.tabs)
   const activeId = useWorkspace((s) => s.activeId)
-  const theme = useWorkspace((s) => s.theme)
   const dropHover = useWorkspace((s) => s.dropHover)
   const settingsOpen = useSettings((s) => s.open)
   const setupOpen = useSetup((s) => s.open)
   const newFileOpen = useNewFile((s) => s.open)
   const texOffer = useTex((s) => s.offer)
+  const texRemoval = useTex((s) => !!s.removal)
   const started = useRef(false)
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme
-  }, [theme])
 
   // Startup: restore last session, then open anything Finder handed us.
   useEffect(() => {
@@ -375,6 +371,7 @@ export default function App() {
         </Suspense>
       )}
       {texOffer && <TexInstall />}
+      {texRemoval && <TexRemove />}
       {dropHover && (
         <div className="drop-overlay">
           <div className="pill">Drop to open</div>

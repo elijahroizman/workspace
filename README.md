@@ -29,8 +29,9 @@ Download the latest build from [Releases](https://github.com/elijahroizman/works
 
 - **Mac (Apple silicon):** open `Workspace_…_aarch64.dmg` and drag Workspace to Applications.
 - **Windows (x64):** run `Workspace_…_x64-setup.exe`. Windows may say "Windows protected your PC" because the app isn't signed. Click **More info** → **Run anyway**.
+- **Debian, Ubuntu (x64):** run `sudo apt install ./Workspace_…_amd64.deb`. Needs Ubuntu 22.04 or Debian 12 or newer.
 
-After that, updates install themselves.
+On Mac and Windows, updates install themselves. On Linux, the update button shows the latest release's notes; install each new `.deb` the same way.
 
 ## Build it yourself on a Mac
 
@@ -166,6 +167,6 @@ src-tauri/
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before you change anything. It covers who can push to `main` and what every pull request must say.
 
-The **Release** workflow (`.github/workflows/release.yml`) builds a Windows x64 installer (`.exe`) and a Mac Apple-silicon `.dmg` on GitHub's runners and attaches both to a GitHub Release. Run it from the Actions tab, or push a tag such as `v0.3.0` after bumping the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. The workflow also signs the update bundles and publishes `latest.json`, the feed installed copies check. The signing key is in the repository's Actions secrets (`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`), and its public half is in `tauri.conf.json`. If the key is lost, installed copies can't verify new versions, and everyone has to reinstall by hand once. On Windows, a local build is `npx tauri build --bundles nsis`.
+The **Release** workflow (`.github/workflows/release.yml`) builds a Windows x64 installer (`.exe`), a Mac Apple-silicon `.dmg` and a Debian/Ubuntu x64 `.deb` on GitHub's runners and attaches them to a GitHub Release. Run it from the Actions tab, or push a tag such as `v0.3.0` after bumping the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`. The workflow also signs the update bundles and publishes `latest.json`, the feed installed copies check (the `.deb` has no update bundle, so the Linux job doesn't touch it). The signing key is in the repository's Actions secrets (`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`), and its public half is in `tauri.conf.json`. If the key is lost, installed copies can't verify new versions, and everyone has to reinstall by hand once. On Windows, a local build is `npx tauri build --bundles nsis`; on Debian or Ubuntu it's `npx tauri build --bundles deb` (needs `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `libxdo-dev` and `patchelf`).
 
 Optional plugins have their own **Plugins** workflow (`.github/workflows/plugins.yml`): push a tag like `plugin-excalidraw-0.18.1-1` and it builds, zips and signs that plugin with the same key, and attaches it to a pre-release. Do that whenever a plugin's version in `plugins/<id>/plugin.json` changes, before releasing an app version that wants it.

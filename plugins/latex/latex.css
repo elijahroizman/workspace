@@ -27,7 +27,7 @@
 .tex-status {
   font-size: 12px;
   color: var(--fg-muted);
-  padding: 2px 0 4px;
+  padding: 0;
 }
 
 .tex-status.busy::before {
