@@ -4,7 +4,7 @@
   "version": "0.6.0",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/licenses.mjs",
+    "predev": "node scripts/licenses.mjs && npm run plugins:bundled",
     "dev": "vite",
     "build": "node scripts/licenses.mjs && tsc-rs --noEmit -p . && tsc-rs --noEmit -p plugins && vite build",
     "preview": "vite preview",
@@ -13,7 +13,8 @@
     "app:dev": "tauri dev",
     "app:build": "tauri build --bundles app,dmg",
     "licenses": "node scripts/licenses.mjs",
-    "plugins": "vite build --config plugins/excalidraw/vite.config.ts"
+    "plugins": "npm run plugins:bundled && vite build --config plugins/excalidraw/vite.config.ts",
+    "plugins:bundled": "vite build --config plugins/epub/vite.config.ts"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import type { EditorProps } from '../App'
 import { CenterState } from '../components/ui'
+import { FindBar, Workbench } from '../components/Workbench'
+import { KINDS } from '../lib/kinds'
 import { openExternal } from '../lib/platform'
 import { installSettled, pluginBaseUrl } from '../state/plugins'
 import { useSettings } from '../state/settings'
 import { registerEditor, useWorkspace } from '../state/workspace'
-import type { PluginEditor as Instance, PluginModule } from './api'
+import type { PluginEditor as Instance, PluginModule, SearchResult } from './api'
 import { PLUGIN_API_VERSION } from './api'
 import { pluginForKind } from './catalog'
 
@@ -30,28 +32,48 @@ function loadModule(kind: string): Promise<PluginModule> {
   return module
 }
 
+/** Puts the plugin's sidebar element into Workspace's sidebar while that is open. */
+function SidebarSlot({ element }: { element: HTMLElement }) {
+  const slot = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    slot.current!.appendChild(element)
+    return () => element.remove()
+  }, [element])
+  return <div ref={slot} />
+}
+
 /** Hosts an optional plugin's editor: the plugin renders into a plain element and talks through plugins/api.ts. */
 export default function PluginEditor({ tab, active }: EditorProps) {
   const host = useRef<HTMLDivElement>(null)
   const instance = useRef<Instance | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  /** `start`: the plugin didn't load. `open`: it did, but couldn't open this file. */
+  const [error, setError] = useState<{ stage: 'start' | 'open'; message: string } | null>(null)
   const [ready, setReady] = useState(false)
+  const [findOpen, setFindOpen] = useState(false)
+  const [found, setFound] = useState<SearchResult | null>(null)
+  const findQuery = useRef('')
   const theme = useWorkspace((s) => s.theme)
   const plugin = pluginForKind(tab.kind)
+  // Kinds with a sidebar get an element in it that outlives the sidebar being hidden.
+  const [sidebar] = useState(() => (KINDS[tab.kind].panels.left ? document.createElement('div') : null))
 
   useEffect(() => {
     let cancelled = false
     let mounted: Instance | null = null
     void (async () => {
+      let stage: 'start' | 'open' = 'start'
       try {
         const module = await loadModule(tab.kind)
         if (cancelled || !host.current) return
+        stage = 'open'
         mounted = await module.mount(host.current, {
           bytes: tab.bytes,
           title: tab.title,
           theme: useWorkspace.getState().theme,
           onChange: () => useWorkspace.getState().markDirty(tab.id, true),
           openExternal: (url) => void openExternal(url),
+          sidebar: sidebar ?? undefined,
+          searchChanged: (result) => setFound(result),
           print: async (content) => {
             const root = document.getElementById('print-root')!
             const page = document.createElement('div')
@@ -65,7 +87,7 @@ export default function PluginEditor({ tab, active }: EditorProps) {
         instance.current = mounted
         setReady(true)
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (!cancelled) setError({ stage, message: err instanceof Error ? err.message : String(err) })
       }
     })()
     return () => {
@@ -91,23 +113,35 @@ export default function PluginEditor({ tab, active }: EditorProps) {
     return registerEditor(tab.id, {
       getBytes: () => it.getBytes(),
       markSaved: it.markSaved && (() => it.markSaved!()),
-      find: it.find && (() => it.find!()),
+      find: it.search ? () => setFindOpen(true) : it.find && (() => it.find!()),
       zoom: it.zoom && ((direction) => it.zoom!(direction)),
       print: it.print && (() => it.print!()),
     })
   }, [tab.id, ready])
 
+  const search = (step: 1 | -1 | 0) => {
+    const it = instance.current
+    if (it?.search) setFound(it.search(findQuery.current, step))
+  }
+
+  if (error?.stage === 'open') {
+    return (
+      <CenterState title={`Couldn’t open “${tab.title}”`}>
+        <p className="muted">{error.message}</p>
+      </CenterState>
+    )
+  }
   if (error) {
     return (
       <CenterState title={`Couldn’t start ${plugin.name}`}>
-        <p className="muted">{error}</p>
+        <p className="muted">{error.message}</p>
         <button type="button" className="btn" onClick={() => useSettings.getState().setOpen(true, 'plugins')}>
           Open Plugins settings
         </button>
       </CenterState>
     )
   }
-  return (
+  const editor = (
     <div className="plugin-editor">
       {/* The plugin owns this element and everything in it. */}
       <div className="plugin-editor-host" ref={host} />
@@ -116,6 +150,29 @@ export default function PluginEditor({ tab, active }: EditorProps) {
           <CenterState spinner />
         </div>
       )}
+      <FindBar
+        open={findOpen}
+        onClose={() => {
+          setFindOpen(false)
+          // The bar keeps the query for next time; the highlights go.
+          instance.current?.search?.('', 0)
+          setFound(null)
+        }}
+        onQuery={(query) => {
+          findQuery.current = query
+          search(0)
+        }}
+        onNext={() => search(1)}
+        onPrev={() => search(-1)}
+        count={found?.count ?? null}
+        current={found ? Math.max(0, found.current) : null}
+      />
     </div>
+  )
+  if (!sidebar) return editor
+  return (
+    <Workbench tab={tab} left={<SidebarSlot element={sidebar} />}>
+      {editor}
+    </Workbench>
   )
 }

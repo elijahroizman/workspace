@@ -121,6 +121,15 @@
             "public.json"
           ]
         }
+      },
+      {
+        "ext": [
+          "epub"
+        ],
+        "name": "EPUB Book",
+        "role": "Viewer",
+        "rank": "Alternate",
+        "mimeType": "application/epub+zip"
       }
     ],
     "macOS": {
