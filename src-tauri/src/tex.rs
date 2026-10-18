@@ -424,6 +424,15 @@ mod mac {
         Command::new("/usr/sbin/pkgutil").arg("--pkgs").output().is_ok_and(|o| String::from_utf8_lossy(&o.stdout).lines().any(|l| l.starts_with("org.tug.mactex")))
     }
 
+    /// The one `/usr/local/texlive/<year>` folder the TeX in use lives in (what /Library/TeX/texbin
+    /// points into), and its year. Other years and texmf-local are someone else's to keep.
+    pub fn texlive_year_dir() -> Option<(PathBuf, String)> {
+        let bin = fs::canonicalize("/Library/TeX/texbin").ok()?;
+        let year_dir = bin.ancestors().find(|p| p.parent() == Some(Path::new("/usr/local/texlive")))?;
+        let year = year_dir.file_name()?.to_str()?.to_string();
+        (year.len() == 4 && year.bytes().all(|b| b.is_ascii_digit())).then(|| (year_dir.to_path_buf(), year))
+    }
+
     /// Runs shell commands as an administrator, after macOS asks for the password.
     pub fn admin(shell: &str) -> Result<(), String> {
         let escaped = shell.replace('\\', "\\\\").replace('"', "\\\"");
@@ -523,11 +532,13 @@ fn pkexec(line: &str, what: &str) -> Result<(), String> {
     let output = cmd.stdin(Stdio::null()).output().map_err(|_| "Workspace needs pkexec (polkit) to ask for your password. Install TeX with apt instead.".to_string())?;
     match output.status.code() {
         Some(0) => Ok(()),
-        Some(126) | Some(127) => Err(format!("{what} was cancelled.")),
+        // 126 is polkit's "the password dialog was dismissed"; 127 is an error.
+        Some(126) => Err(format!("{what} was cancelled.")),
         _ => {
             let err = String::from_utf8_lossy(&output.stderr);
             let tail: Vec<&str> = err.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
-            Err(format!("{what} failed: {}", tail[tail.len().saturating_sub(3)..].join(" ")))
+            let tail = tail[tail.len().saturating_sub(3)..].join(" ");
+            Err(format!("{what} failed: {}", if tail.is_empty() { "pkexec couldn't authorize or run the command" } else { tail.as_str() }))
         }
     }
 }
@@ -576,13 +587,14 @@ fn uninstall_method() -> Option<&'static str> {
         if mac::brew().is_some_and(|b| mac::installed_cask(&b).is_some()) {
             return Some("Homebrew");
         }
-        if mac::has_mactex_receipt() {
+        if mac::has_mactex_receipt() && mac::texlive_year_dir().is_some() {
             return Some("MacTeX’s installer");
         }
     }
     #[cfg(windows)]
     {
-        let listed = command(Path::new("winget")).args(["list", "--name", "MiKTeX", "--accept-source-agreements"]).stdin(Stdio::null()).output();
+        // Only a MiKTeX winget itself knows by id: one from MiKTeX's own installer may not match.
+        let listed = command(Path::new("winget")).args(["list", "--id", "MiKTeX.MiKTeX", "--exact", "--accept-source-agreements"]).stdin(Stdio::null()).output();
         if listed.is_ok_and(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).contains("MiKTeX")) {
             return Some("winget");
         }
@@ -616,14 +628,17 @@ fn uninstall(app: &AppHandle<impl Runtime>, dir: &Path) -> Result<(), String> {
         #[cfg(target_os = "macos")]
         Some("MacTeX’s installer") => {
             let _ = dir;
-            mac::admin("/bin/rm -rf /usr/local/texlive /Library/TeX /Applications/TeX; for p in $(/usr/sbin/pkgutil --pkgs | /usr/bin/grep '^org.tug.mactex'); do /usr/sbin/pkgutil --forget $p; done")
+            // Just the year in use (and the links and apps MacTeX adds); other years and texmf-local stay.
+            let (year_dir, year) = mac::texlive_year_dir().ok_or("Workspace couldn't tell which TeX Live folder MacTeX installed.")?;
+            let year_dir = year_dir.to_string_lossy().replace('\'', "'\\''");
+            mac::admin(&format!("/bin/rm -rf '{year_dir}' /Library/TeX /Applications/TeX; for p in $(/usr/sbin/pkgutil --pkgs | /usr/bin/grep '^org.tug.mactex.*{year}'); do /usr/sbin/pkgutil --forget $p; done"))
                 .map_err(|e| if e == "Cancelled." { "Removing TeX was cancelled.".into() } else { format!("Removing TeX failed: {e}") })
         }
         #[cfg(windows)]
         Some("winget") => {
             let _ = dir;
             let mut cmd = command(Path::new("winget"));
-            cmd.args(["uninstall", "--name", "MiKTeX", "--silent", "--disable-interactivity", "--accept-source-agreements"]);
+            cmd.args(["uninstall", "--id", "MiKTeX.MiKTeX", "--exact", "--silent", "--disable-interactivity", "--accept-source-agreements"]);
             run_captured(cmd, "winget").map(|_| ())
         }
         #[cfg(target_os = "linux")]

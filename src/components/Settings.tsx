@@ -116,7 +116,7 @@ function GeneralPage() {
       <div className="settings-row">
         <div className="settings-row-text">
           <span className="settings-label">Workspace {__APP_VERSION__}</span>
-          <span className="settings-hint">{isLinux ? 'Download new versions from GitHub; Workspace tells you when one is out.' : 'Updates download by themselves and install when you quit.'}</span>
+          <span className="settings-hint">{isLinux ? 'Download new versions from GitHub. Check for updates shows whether a new one is out.' : 'Updates download by themselves and install when you quit.'}</span>
         </div>
         <div className="settings-row-control">
           <button type="button" className="btn" onClick={() => (setOpen(false), openUpdatePanel())}>
