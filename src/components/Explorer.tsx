@@ -5,8 +5,9 @@ import type { DirEntry } from '../lib/platform'
 import { basename, dirname, isTauri, listDir, revealInFinder, revealLabel, walkDir } from '../lib/platform'
 import { folderName, useFolder } from '../state/folder'
 import { addPaletteSource } from './CommandPalette'
+import { keysFor } from '../state/shortcuts'
 import { useWorkspace } from '../state/workspace'
-import { KindIcon } from './Workbench'
+import { KindIcon, Resizer } from './Workbench'
 import type { MenuEntry } from './ui'
 import { IconButton, PopoverMenu } from './ui'
 
@@ -68,57 +69,58 @@ export function Explorer() {
   ]
 
   return (
-    <aside className="explorer" aria-label="Folder">
-      <div className="explorer-header">
-        <span className="explorer-title" title={root}>
+    <aside className="pane explorer" aria-label="Folder">
+      <div className="sidebar-header">
+        <span className="doc-icon folder-badge">
+          <Folder size={14} strokeWidth={1.75} />
+        </span>
+        <span className="title" title={root}>
           {folderName(root)}
         </span>
-        <IconButton label="Refresh" size="sm" onClick={refresh}>
-          <RotateCw size={13} />
-        </IconButton>
-        <IconButton label="Collapse folders" size="sm" onClick={collapseAll}>
-          <ChevronsDownUp size={13} />
-        </IconButton>
         <IconButton
-          label="More"
-          size="sm"
+          label="Folder options"
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect()
             setMore({ x: r.left, y: r.bottom + 4 })
           }}
         >
-          <MoreHorizontal size={14} />
+          <MoreHorizontal size={16} />
         </IconButton>
       </div>
-      <label className="explorer-filter">
-        <Search size={13} className="faint" />
-        <input
-          value={filter}
-          placeholder="Find a file"
-          spellCheck={false}
-          onChange={(e) => setFilter(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setFilter('')
-          }}
-        />
-        {filter && (
-          <button type="button" className="explorer-clear" aria-label="Clear" onClick={() => setFilter('')}>
-            <X size={12} />
-          </button>
-        )}
-      </label>
-      <div className="explorer-tree" role="tree">
+      <div className="explorer-filter">
+        <label className="field">
+          <Search size={13} className="faint" />
+          <input
+            value={filter}
+            placeholder="Find a file"
+            spellCheck={false}
+            onChange={(e) => setFilter(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setFilter('')
+            }}
+          />
+          {filter && (
+            <button type="button" className="explorer-clear" aria-label="Clear" onClick={() => setFilter('')}>
+              <X size={12} />
+            </button>
+          )}
+        </label>
+      </div>
+      <div className="sidebar-scroll explorer-tree" role="tree">
         {filter.trim() ? <Matches root={root} query={filter.trim()} rev={rev} onMenu={setMenu} /> : <DirChildren path={root} depth={0} showAll={showAll} onMenu={setMenu} />}
       </div>
+      <Resizer side="explorer" />
       {menu && <PopoverMenu anchor={menu} onClose={() => setMenu(null)} items={menuItems(menu.entry)} />}
       {more && (
         <PopoverMenu
           anchor={more}
           onClose={() => setMore(null)}
           items={[
-            { label: showAll ? 'Show Only Documents' : 'Show All Files', onSelect: () => setShowAll(!showAll) },
+            { label: 'Refresh', icon: <RotateCw size={14} />, onSelect: refresh },
+            { label: 'Collapse All Folders', icon: <ChevronsDownUp size={14} />, onSelect: collapseAll },
+            { label: showAll ? 'Show Only Documents' : 'Show All Files', separatorBefore: true, onSelect: () => setShowAll(!showAll) },
             ...(isTauri ? [{ label: revealLabel, icon: <FolderOpen size={14} />, onSelect: () => void revealInFinder(root) }] : []),
-            { label: 'Hide Sidebar', separatorBefore: true, onSelect: toggleVisible },
+            { label: 'Hide Folder Sidebar', shortcut: keysFor('toggle-explorer'), separatorBefore: true, onSelect: toggleVisible },
             { label: 'Close Folder', onSelect: close },
           ]}
         />
@@ -242,7 +244,7 @@ function relativeDir(root: string, path: string) {
   return dir.length > root.length ? dir.slice(root.length + 1) : ''
 }
 
-/** The open folder's documents in the command palette (⇧⌘P), read in the background. */
+/** The open folder's documents in the command palette (⌘K), read in the background. */
 export function startFolderPalette() {
   let files: string[] = []
   let root: string | null = null
@@ -263,6 +265,7 @@ export function startFolderPalette() {
           label: basename(path),
           detail: relativeDir(root!, path) || folderName(root!),
           group: 'Folder' as const,
+          path,
           icon: kindFromPath(path) ? <KindIcon kind={kindFromPath(path)!} /> : <File size={14} />,
           run: () => useWorkspace.getState().openPaths([path]),
         }))

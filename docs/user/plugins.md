@@ -20,7 +20,7 @@ A book shows as one scrolling column, with its table of contents in the sidebar.
 
 A plain viewer for PNG, JPEG and HEIC, made with Mermaid exports in mind but fine for photos. Pinch or ⌘-scroll to zoom, double-click to switch between fitting the window and 100%, and drag to move around.
 
-The toolbar has a few touch-ups: **highlight**, **draw**, **box**, **select** (to crop, or to copy part of the picture), and **turn** left or right. Hold Shift while highlighting or drawing for a straight line. ⌘Z undoes, ⌘C copies the picture (or the selection). Changes save into the same file and format; a file you haven't changed is saved back exactly as it was. **⋯** saves a copy as PNG or JPEG, or prints.
+The toolbar has a few touch-ups: **highlight**, **draw**, **line**, **arrow**, **box**, **select** (to crop, or to copy part of the picture), and **turn** left or right. Hold Shift while highlighting or drawing for a straight line, or while drawing a line or arrow to keep it level, upright or at 45°. ⌘Z undoes, ⌘C copies the picture (or the selection). Changes save into the same file and format; a file you haven't changed is saved back exactly as it was. **⋯** saves a copy as PNG or JPEG, or prints.
 
 Workspace can read HEIC photos but can't write them, so they open for viewing. **Edit a JPEG copy** opens a copy in a new tab to mark up and save. Outside Safari's engine on recent Macs, HEIC is decoded by [libheif](https://github.com/strukturag/libheif) (LGPL-3.0), loaded the first time you open one.
 

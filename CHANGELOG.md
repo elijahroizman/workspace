@@ -2,6 +2,39 @@
 
 Every release's notes. The release workflow copies a version's section into its GitHub release, and the app's update panel shows it.
 
+## 0.9.0 — 2026-10-19
+
+### Command palette
+- **⌘K** opens one search box for everything: commands with their shortcuts, open tabs, recent files and the open folder's documents. Start with `>` for commands only.
+- In Word, a link is now **⇧⌘K**, since ⌘K opens the palette. Settings › Keyboard Shortcuts can swap them back.
+
+### Folders
+- **File › Open Folder…** (⇧⌘O) shows a folder's documents in a sidebar beside the tabs, with search. ⇧⌘E hides it. Its **⋯** menu has Refresh, Collapse All Folders, Show All Files and Close Folder.
+- Recent folders are in Home's Recent list, under All and their own Folders tab.
+
+### Recent files expire
+- Files and folders leave Home's Recent list 3 days after you last opened them. Pick 1, 7 or 30 days in **Settings › General**.
+
+### Split view for Word and PDF
+- **⇧⌘\** puts two Word documents or PDFs side by side, and asks which one goes beside the document in front: an open tab, a recent file, one from the open folder, any file, or a second copy of the same one.
+- Each pane starts without its sidebar and inspector; the buttons at its corners show them. Markdown, Mermaid and LaTeX keep their own source-and-preview split, which ⇧⌘\ switches to.
+
+### Version history
+- Every save keeps a copy. **File › Version History…** (or right-click a tab) lists them by day, compares any version with now or with the save before it, and restores or opens a copy. Name a version to keep it for good. Settings › Autosave turns it off or clears it.
+
+### PDF signing and forms
+- **Sign** in a PDF's inspector places a saved signature or initials (drawn, typed or from a picture), the date or a check mark. PDF form fields can be filled, with a count and **Next empty**. **Save flattened copy…** bakes answers and marks into the page.
+
+### Focus mode and typewriter scrolling
+- **⌥⌘F** hides everything but the document and fades all but the paragraph you're writing. **⌥⌘T** keeps the line you're typing at the same height on screen.
+
+### The workspace command
+- `workspace .` opens the folder you're in, `workspace notes.md` a file. Install it on a Mac from **Settings › General › Command line**; the Linux package already has it.
+- Opening a file or folder from the command line or Finder closes Settings (and the palette or version history) so you see it.
+
+### Images
+- **Line** and **arrow** tools. Hold Shift to keep one level, upright or at 45°.
+
 ## 0.8.0 — 2026-10-19
 
 ### Images

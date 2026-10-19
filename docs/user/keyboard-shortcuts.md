@@ -6,7 +6,7 @@ On Windows and Linux, use Ctrl for ⌘, Alt for ⌥ and Shift for ⇧. Ctrl+Tab 
 
 | | |
 | --- | --- |
-| Command palette: search commands, open tabs and recent files | ⇧⌘P |
+| Command palette: search commands, open tabs and recent files | ⌘K |
 | New file (pick the kind) | ⌘N |
 | Open… | ⌘O |
 | Open folder… / show or hide the folder | ⇧⌘O / ⇧⌘E |
@@ -24,6 +24,7 @@ On Windows and Linux, use Ctrl for ⌘, Alt for ⌥ and Shift for ⇧. Ctrl+Tab 
 | Zoom (Word, PowerPoint, PDF) | Pinch on the trackpad, or ⌘ + scroll |
 | Focus mode / typewriter scrolling | ⌥⌘F / ⌥⌘T |
 | Light / dark appearance | ⇧⌘L |
+| Word: add a link to the selected text | ⇧⌘K (⌘K opens the command palette) |
 | Word: add comment | ⌥⌘A (Ctrl+Alt+M on Windows) |
 | Word: open a link in the browser | ⌘-click (Ctrl+click on Windows) |
 | PowerPoint: bring to front / send to back | ⇧⌘F / ⇧⌘B |

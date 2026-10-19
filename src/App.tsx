@@ -1,6 +1,8 @@
 import { Component, lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
 import type { ComponentType, ErrorInfo, ReactNode } from 'react'
-import { CommandPalette, usePalette } from './components/CommandPalette'
+import type { PaletteItem } from './components/CommandPalette'
+import { CommandPalette, recentItems, sourceItems, usePalette } from './components/CommandPalette'
+import { KindIcon } from './components/Workbench'
 import { FocusMode } from './components/FocusMode'
 import { Explorer, startFolderPalette } from './components/Explorer'
 import { Home } from './components/Home'
@@ -11,6 +13,7 @@ import { Dialogs } from './components/Dialogs'
 import { TitleBar } from './components/TitleBar'
 import { CenterState } from './components/ui'
 import type { DocKind } from './lib/kinds'
+import { kindFromPath } from './lib/kinds'
 import * as platform from './lib/platform'
 import { flushAutosave, startAutosave } from './lib/autosave'
 import { installUpdate, openUpdatePanel, startUpdateChecks } from './lib/updater'
@@ -22,9 +25,9 @@ import { useSettings } from './state/settings'
 import { useSetup } from './state/setup'
 import { useTex } from './state/tex'
 import type { Scope } from './state/shortcuts'
-import { keysFor, keysFromEvent, movedBuiltIn, shortcutFor, syncMenu } from './state/shortcuts'
+import { engineKeysOf, keysFor, keysFromEvent, movedBuiltIn, shortcutFor, syncMenu } from './state/shortcuts'
 import type { DocTab } from './state/workspace'
-import { getEditor, HOME_TAB_ID, persistSession, restoreSession, useWorkspace } from './state/workspace'
+import { getEditor, HOME_TAB_ID, persistSession, pruneRecents, restoreSession, SPLIT_KINDS, useWorkspace } from './state/workspace'
 
 export interface EditorProps {
   tab: DocTab
@@ -130,14 +133,81 @@ function SplitDivider() {
   )
 }
 
-/** ⇧⌘\: split with the tab to the right (or left), or a copy of this one; again to go back to one pane. */
+/**
+ * ⇧⌘\: pick the Word document or PDF to show beside this one; again to go back to one pane.
+ * Markdown, Mermaid and LaTeX switch to their own source-and-preview split instead.
+ */
 async function toggleSplit() {
   const ws = useWorkspace.getState()
   if (ws.split) return ws.splitWith(null)
-  const i = ws.tabs.findIndex((t) => t.id === ws.activeId)
-  if (i === -1) return
-  const neighbour = ws.tabs[i + 1] ?? ws.tabs[i - 1]
-  await ws.splitWith(neighbour?.id ?? ws.activeId)
+  const tab = ws.tabs.find((t) => t.id === ws.activeId)
+  if (!tab) return
+  if (!SPLIT_KINDS.has(tab.kind)) {
+    const editor = getEditor(tab.id)
+    if (editor?.viewMode) editor.viewMode('split')
+    else await platform.showMessage('Split view shows two Word documents or PDFs side by side.', 'Split view')
+    return
+  }
+  pickSplit(tab.id)
+}
+
+/** The palette, listing the Word documents and PDFs that can go beside `leftId`. */
+export function pickSplit(leftId: string) {
+  const left = useWorkspace.getState().tabs.find((t) => t.id === leftId)
+  if (!left) return
+  usePalette.getState().pick({ placeholder: `Show beside “${left.title}”: a Word document or PDF`, items: () => splitChoices(leftId) })
+}
+
+function splitChoices(leftId: string): PaletteItem[] {
+  const ws = useWorkspace.getState()
+  const left = ws.tabs.find((t) => t.id === leftId)!
+  const fits = (path?: string) => {
+    const kind = path ? kindFromPath(path) : null
+    return !!kind && SPLIT_KINDS.has(kind)
+  }
+  const beside = async (rightId: string | null) => {
+    if (!rightId || rightId === leftId) return
+    const now = useWorkspace.getState()
+    if (!SPLIT_KINDS.has(now.tabs.find((t) => t.id === rightId)?.kind as DocKind)) return
+    now.activate(leftId)
+    await now.splitWith(rightId)
+  }
+  const besidePath = async (path: string) => {
+    await useWorkspace.getState().openPaths([path])
+    await beside(useWorkspace.getState().tabs.find((t) => t.path === path)?.id ?? null)
+  }
+  const open = new Set(ws.tabs.map((t) => t.path))
+  const items: PaletteItem[] = ws.tabs
+    .filter((t) => t.id !== leftId && SPLIT_KINDS.has(t.kind))
+    .map((t) => ({
+      id: `tab:${t.id}`,
+      label: t.title,
+      detail: t.path && !t.path.startsWith('browser:') ? platform.tildify(platform.dirname(t.path)) : undefined,
+      group: 'Tabs',
+      icon: <KindIcon kind={t.kind} />,
+      run: () => beside(t.id),
+    }))
+  items.push({
+    id: 'copy',
+    label: `${left.title} (a second copy)`,
+    detail: 'Each side scrolls on its own',
+    group: 'Tabs',
+    icon: <KindIcon kind={left.kind} />,
+    run: () => useWorkspace.getState().splitWith(leftId),
+  })
+  for (const item of [...recentItems(), ...sourceItems()]) {
+    if (fits(item.path) && !open.has(item.path!)) items.push({ ...item, run: () => besidePath(item.path!) })
+  }
+  items.push({
+    id: 'choose',
+    label: 'Choose a file…',
+    group: 'Open',
+    run: async () => {
+      await useWorkspace.getState().openDialog()
+      await beside(useWorkspace.getState().activeId)
+    },
+  })
+  return items
 }
 
 export async function runCommand(id: string) {
@@ -321,8 +391,9 @@ export function commandAvailable(command: string) {
     case 'install-update':
       return false
     case 'version-history':
-    case 'split-view':
       return !!tab
+    case 'split-view':
+      return !!ws.split || (!!tab && SPLIT_KINDS.has(tab.kind))
     case 'close-folder':
       return !!useFolder.getState().root
     case 'install-cli':
@@ -366,7 +437,13 @@ export default function App() {
     const unlisteners: Promise<() => void>[] = []
     const drainPending = async () => {
       const paths = await platform.takePendingOpens()
-      if (paths.length) await useWorkspace.getState().openPaths(paths)
+      if (!paths.length) return
+      // Opened from Finder or the command line: show it, not whatever was covering the window.
+      useSettings.getState().setOpen(false)
+      usePalette.getState().setOpen(false)
+      useNewFile.getState().setOpen(false)
+      useVersionHistory.getState().show(null)
+      await useWorkspace.getState().openPaths(paths)
     }
     if (!started.current) {
       started.current = true
@@ -397,7 +474,13 @@ export default function App() {
     const stopUpdateChecks = startUpdateChecks()
     const stopAutosave = startAutosave()
     const stopFolderPalette = startFolderPalette()
+    // Recent files and folders expire after the days Settings › General allows.
+    pruneRecents()
+    const pruneTimer = window.setInterval(pruneRecents, 3_600_000)
+    const stopPruneOnChange = useSettings.subscribe((s, prev) => s.recentDays !== prev.recentDays && pruneRecents())
     return () => {
+      window.clearInterval(pruneTimer)
+      stopPruneOnChange()
       stopUpdateChecks()
       stopAutosave()
       stopFolderPalette()
@@ -436,7 +519,12 @@ export default function App() {
         e.stopPropagation()
       }
       if (def?.scope === 'app') {
-        if (menuOwnsShortcuts || !editorHandles(def.id)) return
+        // The Mac menu runs it. If an engine has its own use for these keys (⌘K, a link in Word), keep them from it.
+        if (menuOwnsShortcuts) {
+          if (movedBuiltIn(keys, scope)) e.stopPropagation()
+          return
+        }
+        if (!editorHandles(def.id)) return
         stop()
         void runCommand(def.id)
         return
@@ -445,7 +533,7 @@ export default function App() {
       if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select')) return
       const editor = getEditor(ws.activeId)
       // An engine shortcut still on its own keys: the engine does it.
-      if (def && !(def.builtIn && def.keys === keys)) {
+      if (def && engineKeysOf(def) !== keys) {
         const action = editor?.actions?.[def.id]
         if (action && action() !== false) stop()
         return

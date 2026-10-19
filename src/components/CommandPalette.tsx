@@ -1,4 +1,4 @@
-import { ArrowRight, Clock, Command, FileText } from 'lucide-react'
+import { ArrowRight, Clock, Command, FileText, FolderOpen } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { create } from 'zustand'
@@ -14,21 +14,37 @@ import { getEditor, HOME_TAB_ID, useWorkspace } from '../state/workspace'
 import { KindIcon } from './Workbench'
 
 /**
- * ⇧⌘P: one box to find anything. Type to search commands, open tabs and recent files; start
+ * ⌘K: one box to find anything. Type to search commands, open tabs and recent files; start
  * with “>” for commands only. Arrows and return pick, esc closes.
  */
-export const usePalette = create<{ open: boolean; query: string; setOpen(open: boolean, query?: string): void }>((set) => ({
+export const usePalette = create<{
+  open: boolean
+  query: string
+  /** Picking one thing (split view's other document) instead of searching everything. */
+  picker: Picker | null
+  setOpen(open: boolean, query?: string): void
+  pick(picker: Picker): void
+}>((set) => ({
   open: false,
   query: '',
-  setOpen: (open, query = '') => set({ open, query }),
+  picker: null,
+  setOpen: (open, query = '') => set({ open, query, picker: null }),
+  pick: (picker) => set({ open: true, query: '', picker }),
 }))
+
+export interface Picker {
+  placeholder: string
+  items(): PaletteItem[]
+}
 
 export interface PaletteItem {
   id: string
   label: string
   /** Shown faintly after the label: a folder, a hint. */
   detail?: string
-  group: 'Tabs' | 'Recent' | 'Folder' | 'Commands'
+  group: 'Tabs' | 'Recent' | 'Folder' | 'Open' | 'Commands'
+  /** The file it opens, for a recent or folder file. */
+  path?: string
   icon?: ReactNode
   keys?: string
   /** More words that should find it (“dark” finds Light or dark). */
@@ -116,7 +132,7 @@ function tabItems(): PaletteItem[] {
   return items.filter((i) => i.id !== `tab:${ws.activeId}`)
 }
 
-function recentItems(): PaletteItem[] {
+export function recentItems(): PaletteItem[] {
   const ws = useWorkspace.getState()
   const open = new Set(ws.tabs.map((t) => t.path))
   return ws.recents
@@ -126,6 +142,7 @@ function recentItems(): PaletteItem[] {
       label: basename(r.path),
       detail: tildify(dirname(r.path)),
       group: 'Recent' as const,
+      path: r.path,
       icon: KINDS[r.kind] ? <KindIcon kind={r.kind} /> : <FileText size={14} />,
       run: () => ws.openPaths([r.path]),
     }))
@@ -133,6 +150,7 @@ function recentItems(): PaletteItem[] {
 
 /** Extra items other parts of the app add (a folder's files). Read each time the palette opens. */
 const sources: (() => PaletteItem[])[] = []
+export const sourceItems = () => sources.flatMap((s) => s())
 export function addPaletteSource(source: () => PaletteItem[]) {
   sources.push(source)
   return () => {
@@ -194,10 +212,11 @@ function Highlight({ text, at }: { text: string; at: number[] }) {
   return <>{parts}</>
 }
 
-const GROUP_ICON = { Tabs: <ArrowRight size={14} />, Recent: <Clock size={14} />, Folder: <FileText size={14} />, Commands: <Command size={14} /> }
+const GROUP_ICON = { Tabs: <ArrowRight size={14} />, Recent: <Clock size={14} />, Folder: <FileText size={14} />, Open: <FolderOpen size={14} />, Commands: <Command size={14} /> }
 
 export function CommandPalette() {
   const initial = usePalette((s) => s.query)
+  const picker = usePalette((s) => s.picker)
   const [query, setQuery] = useState(initial)
   const [index, setIndex] = useState(0)
   const input = useRef<HTMLInputElement>(null)
@@ -205,16 +224,19 @@ export function CommandPalette() {
   const close = () => usePalette.getState().setOpen(false)
 
   // Gathered once per opening: what's open and possible doesn't change while you type.
-  const all = useMemo(() => [...tabItems(), ...recentItems(), ...sources.flatMap((s) => s()), ...commandItems()], [])
+  const all = useMemo(() => (picker ? picker.items() : [...tabItems(), ...recentItems(), ...sourceItems(), ...commandItems()]), [picker])
 
-  const onlyCommands = query.startsWith('>')
+  const onlyCommands = !picker && query.startsWith('>')
   const q = (onlyCommands ? query.slice(1) : query).trim()
   const shown = useMemo(() => {
     const pool = onlyCommands ? all.filter((i) => i.group === 'Commands') : all
     if (!q) {
-      // Nothing typed: tabs, then a few recent files, then every command (a folder's files wait for a search).
+      // Nothing typed: tabs, then a few recent files, then every command (a folder's files wait for a search, except when picking).
       let recent = 0
-      return pool.filter((i) => i.group !== 'Folder' && (i.group !== 'Recent' || recent++ < 5)).map((item) => ({ item, at: [] as number[] }))
+      let folder = 0
+      return pool
+        .filter((i) => (i.group === 'Folder' ? !!picker && folder++ < 8 : i.group !== 'Recent' || recent++ < 5))
+        .map((item) => ({ item, at: [] as number[] }))
     }
     const scored: { item: PaletteItem; at: number[]; score: number }[] = []
     for (const item of pool) {
@@ -228,7 +250,7 @@ export function CommandPalette() {
       }
     }
     return scored.sort((a, b) => b.score - a.score).slice(0, 80)
-  }, [all, q, onlyCommands])
+  }, [all, q, onlyCommands, picker])
 
   useEffect(() => {
     input.current?.focus()
@@ -264,12 +286,12 @@ export function CommandPalette() {
 
   return (
     <div className="palette-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+      <div className="palette" role="dialog" aria-modal="true" aria-label={picker ? picker.placeholder : 'Command palette'}>
         <input
           ref={input}
           className="palette-input"
           value={query}
-          placeholder="Search tabs, recent files and commands (> for commands only)"
+          placeholder={picker?.placeholder ?? 'Search tabs, recent files and commands (> for commands only)'}
           spellCheck={false}
           role="combobox"
           aria-expanded="true"

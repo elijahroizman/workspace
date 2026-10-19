@@ -24,9 +24,11 @@ Placing a signature puts a picture of it on the page. It isn't a cryptographic (
 
 Open as many files as you like and switch with ⌘1–⌘9 or ⇧⌘[ / ⇧⌘]. Drag tabs to reorder them. Right-click a tab to duplicate it (⇧⌘D), for example to keep a textbook's questions and answers side by side. Open tabs come back the next time you launch. A restored tab loads its document the first time you look at it.
 
+The Home tab's **Recent** list has the files and folders you've opened. Each drops off a few days after you last opened it: 3 days unless you pick 1, 7 or 30 in **Settings › General**.
+
 ## Command palette
 
-⇧⌘P opens a search box for everything: commands (with their shortcuts), open tabs and recent files. Type a few letters of what you want (“dark”, “new note”, “rotate”) and press return. Start with `>` to search commands only. Commands for the document in front of you, such as Word's Add comment or PowerPoint's Play from start, are listed while that tab is active. It's also in the View menu.
+⌘K opens a search box for everything: commands (with their shortcuts), open tabs and recent files. Type a few letters of what you want (“dark”, “new note”, “rotate”) and press return. Start with `>` to search commands only. Commands for the document in front of you, such as Word's Add comment or PowerPoint's Play from start, are listed while that tab is active. It's also in the View menu.
 
 ## Focus mode and typewriter scrolling
 
@@ -38,13 +40,13 @@ Open as many files as you like and switch with ⌘1–⌘9 or ⇧⌘[ / ⇧⌘].
 
 **File › Open Folder…** (⇧⌘O) opens a folder in a sidebar to the left of everything, like a project in a code editor. It lists the folder's documents, with subfolders you can expand; click a file to open it in a tab. Files Workspace can't open are hidden unless you pick **Show All Files** from the sidebar's **⋯** menu. Hidden files and folders such as `.git` and `node_modules` are always left out.
 
-Type in **Find a file** to search every document under the folder by name. ⇧⌘E hides and shows the sidebar. The folder (and which subfolders were expanded) comes back the next time you open Workspace, and Home lists recent folders. Dropping a folder on the window opens it too. The list refreshes when you come back to Workspace from another app, or with the refresh button.
+Type in **Find a file** to search every document under the folder by name. ⇧⌘E hides and shows the sidebar. The folder (and which subfolders were expanded) comes back the next time you open Workspace, and Home's Recent list has the folders you've opened, under All and Folders. Dropping a folder on the window opens it too. The list refreshes when you come back to Workspace from another app; the **⋯** menu also has **Refresh**, **Collapse All Folders** and **Close Folder**. Drag the sidebar's edge to make it wider.
 
 ## Split view
 
-**View › Split View** (⇧⌘\) shows two tabs side by side: the one in front and the tab next to it. With only one document open, the second pane is a copy of it, so you can keep a textbook's questions on one side and its answers on the other. Right-click a tab and pick **Open to the Side** to choose which.
+**View › Split View** (⇧⌘\) shows two Word documents or PDFs side by side. It asks what goes beside the one in front: another open tab, a recent file, a file from the open folder, **Choose a file…**, or a second copy of the same document, so you can keep a textbook's questions on one side and its answers on the other. Right-click a tab and pick **Open to the Side…** to put it beside the document you were looking at. Markdown, Mermaid and LaTeX have their own source-and-preview split instead (⌥⌘2), which ⇧⌘\ switches to.
 
-Click in a pane to work in it: a blue line along its top shows which one, and Save, Find, Zoom and the other commands go to it. Clicking another tab in the tab bar puts it in that pane. Drag the line between the panes to resize them (double-click it for half and half). In split view the left sidebars are hidden, and only the pane you're working in shows its inspector. ⇧⌘\ again, or closing either tab, goes back to one pane.
+Click in a pane to work in it: a blue line along its top shows which one, and Save, Find, Zoom and the other commands go to it. Clicking another Word or PDF tab in the tab bar puts it in that pane; any other tab goes back to one pane. Drag the line between the panes to resize them (double-click it for half and half). Each pane starts without its sidebar and inspector, to leave room for both documents; the buttons at its top corners show them in that pane. ⇧⌘\ again, or closing either tab, goes back to one pane, with the sidebars as they were.
 
 ## New files
 

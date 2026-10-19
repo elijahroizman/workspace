@@ -1,5 +1,5 @@
-// A small viewer for PNG, JPEG and HEIC, with a few touch-ups: highlight, draw, box, crop and
-// rotate, and copy to the clipboard. Edits are a list replayed over the decoded picture, so undo
+// A small viewer for PNG, JPEG and HEIC, with a few touch-ups: highlight, draw, lines and arrows,
+// box, crop and rotate, and copy to the clipboard. Edits are a list replayed over the decoded picture, so undo
 // is exact and saving re-encodes once from the original pixels. An unedited file is saved back
 // byte for byte. HEIC can't be written, so HEIC photos open for viewing, with a button that makes
 // a JPEG copy to mark up.
@@ -10,11 +10,14 @@ import { icon } from './icons'
 import css from './images.css?inline'
 
 type Format = 'png' | 'jpeg' | 'heic'
-type Tool = 'pan' | 'highlight' | 'pen' | 'box' | 'crop'
+type Tool = 'pan' | 'highlight' | 'pen' | 'line' | 'arrow' | 'box' | 'crop'
+/** The tools that draw in a colour. */
+type Marker = 'highlight' | 'pen' | 'line' | 'arrow' | 'box'
 type Point = { x: number; y: number }
 type Rect = { x: number; y: number; w: number; h: number }
 type Edit =
   | { type: 'stroke'; tool: 'highlight' | 'pen'; color: string; width: number; points: Point[] }
+  | { type: 'line'; arrow: boolean; color: string; width: number; from: Point; to: Point }
   | { type: 'box'; color: string; width: number; rect: Rect }
   | { type: 'crop'; rect: Rect }
   | { type: 'rotate'; turns: 1 | -1 }
@@ -27,7 +30,7 @@ const COLORS = [
   { value: '#1c1c1e', name: 'Black' },
 ]
 /** Marks are this many screen pixels wide at the zoom they're drawn at. */
-const WIDTHS = { highlight: 18, pen: 3, box: 3 }
+const WIDTHS: Record<Marker, number> = { highlight: 18, pen: 3, line: 3, arrow: 3, box: 3 }
 const HIGHLIGHT_ALPHA = 0.38
 const MIN_ZOOM = 0.02
 const MAX_ZOOM = 16
@@ -106,13 +109,39 @@ function encode(c: HTMLCanvasElement, format: 'png' | 'jpeg'): Promise<Uint8Arra
   })
 }
 
-function drawEdit(ctx: CanvasRenderingContext2D, edit: Extract<Edit, { type: 'stroke' | 'box' }>) {
+type Mark = Extract<Edit, { type: 'stroke' | 'line' | 'box' }>
+
+function drawEdit(ctx: CanvasRenderingContext2D, edit: Mark) {
   ctx.save()
   ctx.strokeStyle = edit.color
+  ctx.fillStyle = edit.color
   ctx.lineWidth = edit.width
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
-  if (edit.type === 'box') {
+  if (edit.type === 'line') {
+    const { from, to, width } = edit
+    const angle = Math.atan2(to.y - from.y, to.x - from.x)
+    const length = Math.hypot(to.x - from.x, to.y - from.y)
+    // The head grows with the line's width but never outgrows a short arrow.
+    const head = edit.arrow ? Math.min(width * 4.5, length * 0.6) : 0
+    // The shaft stops inside the head, so its round end doesn't poke through the point.
+    const end = { x: to.x - Math.cos(angle) * head * 0.7, y: to.y - Math.sin(angle) * head * 0.7 }
+    ctx.beginPath()
+    ctx.moveTo(from.x, from.y)
+    ctx.lineTo(end.x, end.y)
+    ctx.stroke()
+    if (edit.arrow && head > 0) {
+      const spread = Math.PI / 7
+      ctx.beginPath()
+      ctx.moveTo(to.x, to.y)
+      ctx.lineTo(to.x - Math.cos(angle - spread) * head, to.y - Math.sin(angle - spread) * head)
+      ctx.lineTo(to.x - Math.cos(angle + spread) * head, to.y - Math.sin(angle + spread) * head)
+      ctx.closePath()
+      ctx.lineWidth = width / 2
+      ctx.fill()
+      ctx.stroke()
+    }
+  } else if (edit.type === 'box') {
     const { x, y, w, h } = edit.rect
     ctx.strokeRect(x, y, w, h)
   } else {
@@ -132,7 +161,7 @@ function drawEdit(ctx: CanvasRenderingContext2D, edit: Extract<Edit, { type: 'st
 
 /** `c` with one edit made: marks draw onto it, crops and turns make a new canvas. */
 function apply(c: HTMLCanvasElement, edit: Edit): HTMLCanvasElement {
-  if (edit.type === 'stroke' || edit.type === 'box') {
+  if (edit.type === 'stroke' || edit.type === 'line' || edit.type === 'box') {
     drawEdit(context2d(c), edit)
     return c
   }
@@ -148,6 +177,16 @@ function apply(c: HTMLCanvasElement, edit: Edit): HTMLCanvasElement {
   ctx.drawImage(c, -c.width / 2, -c.height / 2)
   return out
 }
+
+/** `to`, moved onto the nearest 45° line through `from` (Shift while drawing a line). */
+function snap(from: Point, to: Point): Point {
+  const step = Math.PI / 4
+  const angle = Math.round(Math.atan2(to.y - from.y, to.x - from.x) / step) * step
+  const length = Math.hypot(to.x - from.x, to.y - from.y)
+  return { x: from.x + Math.cos(angle) * length, y: from.y + Math.sin(angle) * length }
+}
+
+const isMarker = (t: Tool): t is Marker => t !== 'pan' && t !== 'crop'
 
 function normalize(a: Point, b: Point): Rect {
   return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) }
@@ -190,7 +229,7 @@ export function mountViewer(element: HTMLElement, context: PluginEditorContext):
   const edits: Edit[] = []
   const undone: Edit[] = []
   let tool: Tool = 'pan'
-  const colors: Record<'highlight' | 'pen' | 'box', string> = { highlight: COLORS[0].value, pen: COLORS[1].value, box: COLORS[1].value }
+  const colors: Record<Marker, string> = { highlight: COLORS[0].value, pen: COLORS[1].value, line: COLORS[1].value, arrow: COLORS[1].value, box: COLORS[1].value }
   /** Null: fit the window. */
   let zoom: number | null = null
   let scale = 1
@@ -349,6 +388,9 @@ export function mountViewer(element: HTMLElement, context: PluginEditorContext):
     return { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale }
   }
 
+  /** A line or arrow drawn now, as wide on screen as the other marks. */
+  const lineEdit = (t: 'line' | 'arrow', from: Point, to: Point): Edit & { type: 'line' } => ({ type: 'line', arrow: t === 'arrow', color: colors[t], width: WIDTHS[t] / scale, from, to })
+
   let drag:
     | { kind: 'pan'; x: number; y: number; left: number; top: number }
     | { kind: 'stroke'; edit: Extract<Edit, { type: 'stroke' }> }
@@ -386,7 +428,8 @@ export function mountViewer(element: HTMLElement, context: PluginEditorContext):
       if (e.shiftKey) drag.edit.points = [pts[0], at]
       else pts.push(at)
     } else {
-      drag.to = at
+      // Shift keeps a line or arrow level, upright or at 45°.
+      drag.to = e.shiftKey && (tool === 'line' || tool === 'arrow') ? snap(drag.from, at) : at
       if (tool === 'crop') selection = normalize(drag.from, drag.to)
     }
     drawOverlay()
@@ -398,7 +441,10 @@ export function mountViewer(element: HTMLElement, context: PluginEditorContext):
     stage.classList.remove('panning')
     if (!done || done.kind === 'pan') return
     if (done.kind === 'stroke') commit(done.edit)
-    else if (tool === 'box') {
+    else if (tool === 'line' || tool === 'arrow') {
+      const line = lineEdit(tool, done.from, done.to)
+      if (Math.hypot(line.to.x - line.from.x, line.to.y - line.from.y) * scale > 3) commit(line)
+    } else if (tool === 'box') {
       const rect = normalize(done.from, done.to)
       if (rect.w * scale > 3 && rect.h * scale > 3) commit({ type: 'box', color: colors.box, width: WIDTHS.box / scale, rect })
     } else if (tool === 'crop' && selection && work) {
@@ -420,6 +466,7 @@ export function mountViewer(element: HTMLElement, context: PluginEditorContext):
     const k = (window.devicePixelRatio || 1) * scale
     ctx.setTransform(k, 0, 0, k, 0, 0)
     if (drag?.kind === 'stroke') drawEdit(ctx, drag.edit)
+    if (drag?.kind === 'rect' && (tool === 'line' || tool === 'arrow')) drawEdit(ctx, lineEdit(tool, drag.from, drag.to))
     if (drag?.kind === 'rect' && tool === 'box') drawEdit(ctx, { type: 'box', color: colors.box, width: WIDTHS.box / scale, rect: normalize(drag.from, drag.to) })
     if (selection) {
       const { x, y, w, h } = selection
@@ -483,6 +530,8 @@ export function mountViewer(element: HTMLElement, context: PluginEditorContext):
     { id: 'pan', icon: 'hand', label: 'Move around (drag), double-click to zoom' },
     { id: 'highlight', icon: 'highlighter', label: 'Highlight (hold Shift for a straight line)' },
     { id: 'pen', icon: 'pen', label: 'Draw (hold Shift for a straight line)' },
+    { id: 'line', icon: 'line', label: 'Line (hold Shift to keep it level or at 45°)' },
+    { id: 'arrow', icon: 'arrow', label: 'Arrow (hold Shift to keep it level or at 45°)' },
     { id: 'box', icon: 'box', label: 'Box' },
     { id: 'crop', icon: 'crop', label: 'Select, to crop or copy part of the picture' },
   ]
@@ -546,7 +595,7 @@ export function mountViewer(element: HTMLElement, context: PluginEditorContext):
     swatch.style.setProperty('--swatch', c.value)
     swatch.dataset.color = c.value
     swatch.addEventListener('click', () => {
-      if (tool === 'highlight' || tool === 'pen' || tool === 'box') colors[tool] = c.value
+      if (isMarker(tool)) colors[tool] = c.value
       refreshToolbar()
     })
     swatches.appendChild(swatch)
@@ -566,9 +615,9 @@ export function mountViewer(element: HTMLElement, context: PluginEditorContext):
     const redoButton = buttons.get('redo')
     if (undoButton) undoButton.disabled = !edits.length
     if (redoButton) redoButton.disabled = !undone.length
-    const marking = tool === 'highlight' || tool === 'pen' || tool === 'box'
+    const marking = isMarker(tool)
     swatches.hidden = !marking
-    for (const s of swatches.children as HTMLCollectionOf<HTMLElement>) s.classList.toggle('on', marking && colors[tool as 'pen'] === s.dataset.color)
+    for (const s of swatches.children as HTMLCollectionOf<HTMLElement>) s.classList.toggle('on', marking && colors[tool as Marker] === s.dataset.color)
     cropBar.hidden = !(tool === 'crop' && selection)
   }
 

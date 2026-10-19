@@ -4,7 +4,9 @@ import { autosaveBlocker, useAutosaveStatus } from '../lib/autosave'
 import { isMac, isTauri, revealInFinder, revealLabel, shortcut, tildify } from '../lib/platform'
 import { enabledKinds, usePlugins } from '../state/plugins'
 import { useSettings } from '../state/settings'
-import { HOME_TAB_ID, useWorkspace } from '../state/workspace'
+import { HOME_TAB_ID, SPLIT_KINDS, useWorkspace } from '../state/workspace'
+import type { DocKind } from '../lib/kinds'
+import { pickSplit } from '../App'
 import { UpdateButton } from './UpdateButton'
 import { showVersionHistory } from './VersionHistory'
 import { KindIcon } from './Workbench'
@@ -155,9 +157,11 @@ export function TitleBar() {
           onClose={() => setTabMenu(null)}
           items={[
             { label: 'Duplicate Tab', icon: <Copy size={14} />, shortcut: '⇧⌘D', onSelect: () => void duplicateTab(tabMenu.id) },
-            split?.includes(tabMenu.id)
-              ? { label: 'Close Split View', icon: <Columns2 size={14} />, onSelect: () => void splitWith(null) }
-              : { label: 'Open to the Side', icon: <Columns2 size={14} />, onSelect: () => void openBeside(tabMenu.id) },
+            ...(split?.includes(tabMenu.id)
+              ? [{ label: 'Close Split View', icon: <Columns2 size={14} />, onSelect: () => void splitWith(null) }]
+              : SPLIT_KINDS.has(tabs.find((t) => t.id === tabMenu.id)?.kind as DocKind)
+                ? [{ label: 'Open to the Side…', icon: <Columns2 size={14} />, onSelect: () => void openBeside(tabMenu.id) }]
+                : []),
             ...(isTauri && tabs.find((t) => t.id === tabMenu.id)?.path
               ? [
                   { label: revealLabel, icon: <FolderOpen size={14} />, onSelect: () => void revealInFinder(tabs.find((t) => t.id === tabMenu.id)!.path!) },
@@ -191,12 +195,20 @@ useWorkspace.subscribe((s, prev) => {
   if (s.activeId !== prev.activeId) previousActive = prev.activeId
 })
 
-/** Split view with this tab on the right of the one that was in front (a copy of it, if it's the same). */
+/**
+ * Split view with this tab on the right of the Word document or PDF that was in front. With
+ * nothing like that to go beside, pick what goes beside it.
+ */
 async function openBeside(id: string) {
   const ws = useWorkspace.getState()
-  const left = previousActive && previousActive !== id && ws.tabs.some((t) => t.id === previousActive) ? previousActive : id
-  ws.activate(left)
-  await ws.splitWith(id)
+  const prev = previousActive && previousActive !== id ? ws.tabs.find((t) => t.id === previousActive) : undefined
+  if (prev && SPLIT_KINDS.has(prev.kind)) {
+    ws.activate(prev.id)
+    await ws.splitWith(id)
+    return
+  }
+  ws.activate(id)
+  pickSplit(id)
 }
 
 /** Where the active tab autosaves to, and how the last autosave went. Just a status: clicking it does nothing. */

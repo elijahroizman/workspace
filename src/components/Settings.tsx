@@ -13,11 +13,12 @@ import { PLUGINS, isBuiltIn } from '../plugins/catalog'
 import { allThemes, useAppearance } from '../state/appearance'
 import { enabledKinds, formatSize, usePlugins } from '../state/plugins'
 import type { SettingsPage } from '../state/settings'
-import { PREVIEW_DELAYS, useSettings } from '../state/settings'
+import { PREVIEW_DELAYS, RECENT_DAYS, useSettings } from '../state/settings'
 import { INSTALL_CHOICES, useTex } from '../state/tex'
 import { useSetup } from '../state/setup'
 import type { ShortcutDef } from '../state/shortcuts'
 import { SHORTCUTS, isValidKeys, keysFor, keysFromEvent, syncMenu, useShortcuts } from '../state/shortcuts'
+import { useFolder } from '../state/folder'
 import { useWorkspace } from '../state/workspace'
 import { PluginRow } from './PluginList'
 import { formatSize as formatVersionSize } from './VersionHistory'
@@ -204,17 +205,25 @@ function CommandLineRow() {
   )
 }
 
-/** Home's Recent list: which file types get a tab, and clearing the history. */
+/** Home's Recent list: how long things stay, which file types get a tab, and clearing it. */
 function RecentFilesRow() {
   const plugins = usePlugins((s) => s.enabled)
   const recentTabs = useSettings((s) => s.recentTabs)
   const setRecentTab = useSettings((s) => s.setRecentTab)
-  const count = useWorkspace((s) => s.recents.length)
+  const recentDays = useSettings((s) => s.recentDays)
+  const setRecentDays = useSettings((s) => s.setRecentDays)
+  const files = useWorkspace((s) => s.recents.length)
+  const folders = useFolder((s) => s.recent.length)
+  const count = files + folders
   return (
     <div className="settings-row column">
       <div className="settings-row-text">
-        <span className="settings-label">Recent files</span>
-        <span className="settings-hint">Every file you open is under All. Choose which types also get a tab of their own on Home.</span>
+        <span className="settings-label">Recent files and folders</span>
+        <span className="settings-hint">Every file and folder you open is under All. Choose which types also get a tab of their own on Home.</span>
+      </div>
+      <div className="settings-inline">
+        <span className="settings-hint">Keep them in Recent for</span>
+        <Segmented value={String(recentDays)} options={RECENT_DAYS.map((d) => ({ value: String(d), label: d === 1 ? '1 day' : `${d} days` }))} onChange={(v) => setRecentDays(Number(v))} />
       </div>
       <div className="kind-checks">
         {enabledKinds(plugins).map((k) => (
@@ -228,7 +237,7 @@ function RecentFilesRow() {
         <button type="button" className="btn" disabled={!count} onClick={() => useWorkspace.getState().clearRecents()}>
           Clear file history
         </button>
-        <span className="settings-hint">{count ? `Forgets the ${count === 1 ? 'file' : `${count} files`} on Home. The files themselves stay where they are.` : 'There’s nothing in the history.'}</span>
+        <span className="settings-hint">{count ? `Forgets the ${count === 1 ? (files ? 'file' : 'folder') : `${count} ${folders ? 'files and folders' : 'files'}`} on Home. The files themselves stay where they are.` : 'There’s nothing in the history.'}</span>
       </div>
     </div>
   )

@@ -10,6 +10,12 @@ import { useSettings } from './settings'
 
 export const HOME_TAB_ID = 'home'
 
+/**
+ * The kinds that open side by side in split view. Markdown, Mermaid and LaTeX have their own
+ * source-and-preview split instead.
+ */
+export const SPLIT_KINDS: ReadonlySet<DocKind> = new Set<DocKind>(['docx', 'pdf'])
+
 export interface DocTab {
   id: string
   kind: DocKind
@@ -80,6 +86,8 @@ interface WorkspaceState {
    * tab is `activeId`; commands (save, find, zoom) go to it.
    */
   split: [string, string] | null
+  /** In split view each pane's sidebar and inspector start hidden; showing one only lasts while it's split. By tab id. */
+  splitPanels: Record<string, { left: boolean; right: boolean }>
   recents: RecentFile[]
   closedPaths: string[]
   /** The appearance in use: `themeMode`, with 'system' resolved. */
@@ -90,7 +98,7 @@ interface WorkspaceState {
   dropHover: boolean
 
   activate(id: string): void
-  /** Show `id` beside the tab in front (a copy of it if they're the same), or leave split view with null. */
+  /** Show `id` beside the tab in front (a copy of it if they're the same), or leave split view with null. Word and PDF only. */
   splitWith(id: string | null): Promise<void>
   /** Drag the line between the panes: the left pane's share, 0.2–0.8. */
   setSplitRatio(ratio: number): void
@@ -135,8 +143,9 @@ interface WorkspaceState {
   closeOthers(id: string): Promise<void>
   removeRecent(path: string): void
   clearRecents(): void
-  toggleLeft(kind?: DocKind): void
-  toggleRight(kind?: DocKind): void
+  /** Show or hide a kind's sidebar; in split view only that pane's (`tabId`, or the focused one). */
+  toggleLeft(kind?: DocKind, tabId?: string): void
+  toggleRight(kind?: DocKind, tabId?: string): void
   /** Switch between light and dark (⇧⌘L): a fixed choice from then on. */
   setTheme(theme: Theme): void
   setThemeMode(mode: ThemeMode): void
@@ -207,10 +216,20 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     get().activate(tab.id)
   }
 
+  /** In split view, show or hide one pane's panel. False when not split, for the normal toggle. */
+  const toggleSplitPanel = (side: 'left' | 'right', tabId = get().activeId) => {
+    const { split, splitPanels } = get()
+    if (!split?.includes(tabId)) return false
+    const now = splitPanels[tabId] ?? { left: false, right: false }
+    set({ splitPanels: { ...splitPanels, [tabId]: { ...now, [side]: !now[side] } } })
+    return true
+  }
+
   return {
     tabs: [],
     activeId: HOME_TAB_ID,
     split: null,
+    splitPanels: {},
     splitRatio: 0.5,
     recents: load<RecentFile[]>(STORAGE.recents, []),
     closedPaths: [],
@@ -221,10 +240,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     dropHover: false,
 
     activate: (id) => {
-      const { split, activeId } = get()
-      // In split view a tab that isn't showing takes the focused pane's place.
+      const { split, activeId, tabs } = get()
+      // In split view another Word or PDF tab takes the focused pane's place; anything else leaves split view.
       if (split && !split.includes(id)) {
-        if (id === HOME_TAB_ID) set({ split: null })
+        const kind = tabs.find((t) => t.id === id)?.kind
+        if (!kind || !SPLIT_KINDS.has(kind)) set({ split: null, splitPanels: {} })
         else set({ split: split[0] === activeId ? [id, split[1]] : [split[0], id] })
       }
       set({ activeId: id })
@@ -232,8 +252,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
 
     splitWith: async (id) => {
       const { activeId, tabs } = get()
-      if (id === null || activeId === HOME_TAB_ID) {
-        set({ split: null })
+      const kindOf = (tabId: string) => tabs.find((t) => t.id === tabId)?.kind
+      if (id === null || activeId === HOME_TAB_ID || !SPLIT_KINDS.has(kindOf(activeId)!) || (id !== activeId && !SPLIT_KINDS.has(kindOf(id)!))) {
+        set({ split: null, splitPanels: {} })
         return
       }
       let other = id
@@ -243,7 +264,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         other = get().activeId
         set({ activeId })
       } else if (!tabs.some((t) => t.id === other)) return
-      set({ split: [activeId, other], activeId: other })
+      set({ split: [activeId, other], activeId: other, splitPanels: {} })
     },
 
     setSplitRatio: (ratio) => set({ splitRatio: Math.min(0.8, Math.max(0.2, ratio)) }),
@@ -465,7 +486,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       if (split?.includes(tabId)) {
         // Closing one side of a split leaves the other.
         nextActive = split[0] === tabId ? split[1] : split[0]
-        set({ split: null })
+        set({ split: null, splitPanels: {} })
       } else if (activeId === tabId) {
         const neighbour = remaining[index] ?? remaining[index - 1]
         nextActive = neighbour?.id ?? HOME_TAB_ID
@@ -504,7 +525,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       for (const tab of get().tabs.filter((t) => t.id !== id)) {
         if (!(await get().closeTab(tab.id))) return
       }
-      set({ activeId: id, split: null })
+      set({ activeId: id, split: null, splitPanels: {} })
     },
 
     reopenClosed: async () => {
@@ -523,16 +544,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     clearRecents: () => {
       set({ recents: [], closedPaths: [] })
       localStorage.setItem(STORAGE.recents, '[]')
+      useFolder.getState().pruneRecent()
     },
 
-    toggleLeft: (kind) => {
+    toggleLeft: (kind, tabId) => {
+      if (toggleSplitPanel('left', tabId)) return
       const k = kind ?? activeDoc()?.kind
       if (!k) return
       set({ leftOpen: { ...get().leftOpen, [k]: !get().leftOpen[k] } })
       persistPanels()
     },
 
-    toggleRight: (kind) => {
+    toggleRight: (kind, tabId) => {
+      if (toggleSplitPanel('right', tabId)) return
       const k = kind ?? activeDoc()?.kind
       if (!k) return
       set({ rightOpen: { ...get().rightOpen, [k]: !get().rightOpen[k] } })
@@ -590,6 +614,21 @@ function persistPanels() {
 // Read once at startup, before anything can overwrite it.
 const initialSession = load<{ paths: string[]; active: string | null }>(STORAGE.session, { paths: [], active: null })
 let sessionRestored = false
+
+/**
+ * Forget files and folders last opened longer ago than Settings › General allows (1, 3, 7 or 30
+ * days). Runs at launch, every hour and when the setting changes.
+ */
+export function pruneRecents() {
+  const before = Date.now() - useSettings.getState().recentDays * 86_400_000
+  const ws = useWorkspace.getState()
+  const recents = ws.recents.filter((r) => r.openedAt >= before)
+  if (recents.length !== ws.recents.length) {
+    useWorkspace.setState({ recents })
+    localStorage.setItem(STORAGE.recents, JSON.stringify(recents))
+  }
+  useFolder.getState().pruneRecent(before)
+}
 
 /** Remember which files were open so the next launch picks up where you left off. */
 export function persistSession() {

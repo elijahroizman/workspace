@@ -23,15 +23,17 @@ export function DocBadge({ kind, size = 22 }: { kind: DocKind; size?: number }) 
 const WIDTH_KEY = 'workspace.sidebarWidths'
 const savedWidths = (() => {
   try {
-    return JSON.parse(localStorage.getItem(WIDTH_KEY) || '{}') as { left?: number; right?: number }
+    return JSON.parse(localStorage.getItem(WIDTH_KEY) || '{}') as { left?: number; right?: number; explorer?: number }
   } catch {
     return {}
   }
 })()
 if (savedWidths.left) document.documentElement.style.setProperty('--left-w', `${savedWidths.left}px`)
 if (savedWidths.right) document.documentElement.style.setProperty('--right-w', `${savedWidths.right}px`)
+if (savedWidths.explorer) document.documentElement.style.setProperty('--explorer-w', `${savedWidths.explorer}px`)
 
-function Resizer({ side }: { side: 'left' | 'right' }) {
+/** The drag handle on a sidebar's inner edge. `explorer` is the open folder's sidebar, at the far left. */
+export function Resizer({ side }: { side: 'left' | 'right' | 'explorer' }) {
   const [dragging, setDragging] = useState(false)
   return (
     <div
@@ -44,7 +46,7 @@ function Resizer({ side }: { side: 'left' | 'right' }) {
         const startX = e.clientX
         const startW = (el.parentElement as HTMLElement).getBoundingClientRect().width
         const onMove = (ev: PointerEvent) => {
-          const delta = side === 'left' ? ev.clientX - startX : startX - ev.clientX
+          const delta = side === 'right' ? startX - ev.clientX : ev.clientX - startX
           const w = Math.round(Math.min(440, Math.max(200, startW + delta)))
           document.documentElement.style.setProperty(`--${side}-w`, `${w}px`)
         }
@@ -86,10 +88,14 @@ export function Workbench({
   right?: ReactNode
   children: ReactNode
 }) {
-  const leftOpen = useWorkspace((s) => s.leftOpen[tab.kind]) && left != null
-  const rightOpen = useWorkspace((s) => s.rightOpen[tab.kind]) && right != null
-  const toggleLeft = useWorkspace((s) => s.toggleLeft)
-  const toggleRight = useWorkspace((s) => s.toggleRight)
+  // In split view the panels start hidden, to leave room for both documents.
+  const split = useWorkspace((s) => (s.split?.includes(tab.id) ? (s.splitPanels[tab.id] ?? NO_PANELS) : null))
+  const leftShown = useWorkspace((s) => s.leftOpen[tab.kind])
+  const rightShown = useWorkspace((s) => s.rightOpen[tab.kind])
+  const leftOpen = left != null && (split ? split.left : leftShown)
+  const rightOpen = right != null && (split ? split.right : rightShown)
+  const toggleLeft = (kind: DocKind) => useWorkspace.getState().toggleLeft(kind, tab.id)
+  const toggleRight = (kind: DocKind) => useWorkspace.getState().toggleRight(kind, tab.id)
 
   return (
     <div className="workbench">
@@ -137,6 +143,8 @@ export function Workbench({
     </div>
   )
 }
+
+const NO_PANELS = { left: false, right: false }
 
 /** Inspector header row with the panel toggle, mirroring the left sidebar header. */
 export function InspectorHeader({ kind, children }: { kind: DocKind; children?: ReactNode }) {

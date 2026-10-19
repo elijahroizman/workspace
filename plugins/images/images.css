@@ -28,6 +28,8 @@
 
 .img-stage.tool-highlight,
 .img-stage.tool-pen,
+.img-stage.tool-line,
+.img-stage.tool-arrow,
 .img-stage.tool-box,
 .img-stage.tool-crop {
   cursor: crosshair;

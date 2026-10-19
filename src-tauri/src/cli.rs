@@ -158,7 +158,8 @@ fn shell_quote(s: &str) -> String {
 }
 
 /// Paths a second launch was given (`workspace notes.md` on Windows or Linux), made absolute
-/// against the directory it was started in.
+/// against the directory it was started in. (A Mac hands paths to the running app itself.)
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub fn paths_from_args(args: &[String], cwd: &str) -> Vec<String> {
     args.iter()
         .skip(1)

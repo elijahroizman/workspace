@@ -2805,7 +2805,7 @@ button {
   flex-wrap: wrap;
 }
 
-/* Command palette (⇧⌘P) */
+/* Command palette (⌘K) */
 .palette-backdrop {
   position: fixed;
   inset: 0;
@@ -3045,104 +3045,42 @@ button {
   background: var(--line);
 }
 
-/* Version history */
-.history-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(0, 0, 0, 0.3);
+/* Version history: the Settings dialog's layout, versions in its sidebar. */
+.settings.history {
+  grid-template-columns: 248px 1fr;
+  width: min(1000px, 100%);
+  height: min(680px, 100%);
 }
 
-.history {
-  display: flex;
-  flex-direction: column;
-  width: min(1040px, 100%);
-  height: min(720px, 100%);
-  border-radius: 14px;
-  background: var(--panel);
-  box-shadow: var(--shadow-pop);
-  overflow: hidden;
-}
-
-.history-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 12px 12px 18px;
-  border-bottom: 1px solid var(--line);
-}
-
-.history-header h2 {
-  flex: 1;
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.history-commit {
-  display: flex;
-  gap: 8px;
-  padding: 10px 18px;
-  border-bottom: 1px solid var(--line);
-}
-
-.history-commit input {
-  flex: 1;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--field);
-  color: var(--fg);
-  font: inherit;
-}
-
-.history-body {
-  flex: 1;
+.history-nav {
   min-height: 0;
-  display: flex;
+  padding-bottom: 0;
 }
 
 .history-list {
-  flex: none;
-  width: 280px;
+  flex: 1;
+  min-height: 0;
+  margin: 0 -10px;
+  padding: 0 10px 8px;
   overflow-y: auto;
-  padding: 8px;
-  border-right: 1px solid var(--line);
 }
 
 .history-day {
   padding: 10px 8px 4px;
   color: var(--fg-faint);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
-.history-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.history-list > div:first-child .history-day {
+  padding-top: 0;
+}
+
+.settings-nav-item.history-row {
   width: 100%;
-  padding: 7px 8px;
-  border: 0;
-  border-radius: 8px;
-  background: none;
-  color: var(--fg);
-  text-align: left;
-  font: inherit;
-}
-
-.history-row:hover {
-  background: var(--hover);
-}
-
-.history-row.on {
-  background: var(--accent-soft);
+  height: auto;
+  gap: 10px;
+  padding: 6px 8px;
 }
 
 .history-dot {
@@ -3164,71 +3102,95 @@ button {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  font-size: 12px;
 }
 
 .history-row-title {
   overflow: hidden;
-  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.history-empty {
-  padding: 16px 8px;
+.history-row-meta {
+  color: var(--fg-faint);
   font-size: 12px;
+}
+
+.history-empty {
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--fg-faint);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.history-commit {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 -10px;
+  padding: 12px 10px 14px;
+  border-top: 1px solid var(--line);
+}
+
+/* The nav is --chrome, the same grey as a field. */
+.history-commit .field {
+  background: var(--panel);
+  border-color: var(--line);
+}
+
+.history-commit .field:focus-within {
+  border-color: var(--accent);
+}
+
+.history-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  text-align: left;
+}
+
+.history-name h3 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-name svg {
+  flex: none;
+  color: var(--fg-faint);
+  opacity: 0;
+}
+
+.history-name:hover svg,
+.history-name:focus-visible svg {
+  opacity: 1;
+}
+
+.history-rename {
+  flex: 1;
+  max-width: 360px;
+  border-color: var(--accent);
 }
 
 .history-detail {
   flex: 1;
-  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
 .history-detail-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 18px 10px;
-}
-
-.history-detail-title {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  font-size: 12px;
-}
-
-.history-name {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--fg);
-  font: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  text-align: left;
-}
-
-.history-name svg {
-  color: var(--fg-faint);
-}
-
-.history-detail-title input {
-  height: 26px;
-  padding: 0 8px;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
-  background: var(--field);
-  color: var(--fg);
-  font: inherit;
-  font-size: 14px;
+  padding: 14px 24px 12px;
 }
 
 .history-actions {
@@ -3242,7 +3204,7 @@ button {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 18px 10px;
+  padding: 0 24px 12px;
 }
 
 .history-stat {
@@ -3261,7 +3223,7 @@ button {
 .history-diff {
   flex: 1;
   min-height: 0;
-  margin: 0 18px 18px;
+  margin: 0 24px 24px;
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -3337,56 +3299,26 @@ button {
 }
 
 .explorer {
-  flex: none;
-  width: var(--explorer-w, 240px);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
+  width: var(--explorer-w, 248px);
   border-right: 1px solid var(--line);
-  background: var(--chrome);
 }
 
-.explorer-header {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  height: 38px;
-  padding: 0 6px 0 14px;
+.explorer .sidebar-resizer {
+  right: -3px;
 }
 
-.explorer-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
-  color: var(--fg-muted);
+/* Same tile as a document's badge in its sidebar header. */
+.folder-badge {
+  background: #8a8f98;
 }
 
 .explorer-filter {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 8px 6px;
-  padding: 0 8px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  background: var(--field);
+  flex: none;
+  padding: 10px 12px 6px;
 }
 
 .explorer-filter input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  background: none;
-  color: var(--fg);
-  font: inherit;
-  font-size: 12px;
-  outline: none;
+  font-size: 12.5px;
 }
 
 .explorer-clear {
@@ -3400,31 +3332,32 @@ button {
 }
 
 .explorer-tree {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 0 6px 12px;
+  padding: 2px 8px 12px;
 }
 
 .explorer-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   width: 100%;
-  height: 26px;
+  min-height: 28px;
   padding-right: 8px;
   border: 0;
-  border-radius: 6px;
-  background: none;
-  color: var(--fg);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
   text-align: left;
-  font: inherit;
-  font-size: 13px;
   white-space: nowrap;
 }
 
 .explorer-row:hover {
   background: var(--hover);
+  color: var(--fg);
+}
+
+.explorer-row.active,
+.explorer-row.open {
+  color: var(--fg);
 }
 
 .explorer-row.active {
@@ -3479,80 +3412,10 @@ button {
 }
 
 .explorer-empty {
-  margin: 8px;
-  font-size: 12px;
-}
-
-.home-folders {
-  margin-bottom: 32px;
-}
-
-.home-folders h2 {
-  margin: 0 0 10px;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.home-folder-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.home-folder {
-  position: relative;
-  display: flex;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--panel);
-}
-
-.home-folder.on {
-  border-color: var(--accent);
-}
-
-.home-folder > button:first-child {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 340px;
-  padding: 7px 26px 7px 10px;
-  border: 0;
-  background: none;
-  color: var(--fg);
-  font: inherit;
-  font-size: 13px;
-}
-
-.home-folder-name {
-  font-weight: 500;
-}
-
-.home-folder-path {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--fg-faint);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.home-folder-forget {
-  position: absolute;
-  top: 50%;
-  right: 6px;
-  display: none;
-  place-items: center;
-  padding: 2px;
-  border: 0;
-  border-radius: 4px;
-  background: none;
-  color: var(--fg-muted);
-  transform: translateY(-50%);
-}
-
-.home-folder:hover .home-folder-forget {
-  display: grid;
+  margin: 0;
+  padding: 10px 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
 }
 
 /* Split view (⇧⌘\): two tabs side by side */

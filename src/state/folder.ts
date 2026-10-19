@@ -14,7 +14,8 @@ interface FolderState {
   visible: boolean
   /** List every file, not only the ones Workspace opens. */
   showAll: boolean
-  recent: string[]
+  /** Folders opened lately, newest first; Home lists them with the recent files. */
+  recent: RecentFolder[]
   /** Bumped to make the tree read the disk again. */
   rev: number
   open(path: string): void
@@ -25,20 +26,35 @@ interface FolderState {
   setShowAll(on: boolean): void
   refresh(): void
   forgetRecent(path: string): void
+  /** Forget folders last opened before this time (ms since 1970); all of them with no time. */
+  pruneRecent(before?: number): void
+}
+
+export interface RecentFolder {
+  path: string
+  openedAt: number
 }
 
 const KEY = 'workspace.folder'
 
 function load() {
   try {
-    const saved = JSON.parse(localStorage.getItem(KEY) || '{}') as Partial<Pick<FolderState, 'root' | 'expanded' | 'visible' | 'showAll' | 'recent'>>
+    const saved = JSON.parse(localStorage.getItem(KEY) || '{}') as Partial<Record<'root' | 'expanded' | 'visible' | 'showAll' | 'recent', unknown>>
     const strings = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+    // The dev preview kept only paths: count those as opened now.
+    const recent = Array.isArray(saved.recent)
+      ? saved.recent.flatMap((r: unknown): RecentFolder[] => {
+          if (typeof r === 'string') return [{ path: r, openedAt: Date.now() }]
+          const f = r as Partial<RecentFolder> | null
+          return f && typeof f.path === 'string' && typeof f.openedAt === 'number' ? [{ path: f.path, openedAt: f.openedAt }] : []
+        })
+      : []
     return {
       root: typeof saved.root === 'string' ? saved.root : null,
       expanded: strings(saved.expanded),
       visible: saved.visible !== false,
       showAll: saved.showAll === true,
-      recent: strings(saved.recent).slice(0, 8),
+      recent: recent.slice(0, 8),
     }
   } catch {
     return { root: null, expanded: [], visible: true, showAll: false, recent: [] }
@@ -59,7 +75,7 @@ export const useFolder = create<FolderState>((set, get) => ({
       root: path,
       visible: true,
       expanded: same ? get().expanded : [],
-      recent: [path, ...get().recent.filter((p) => p !== path)].slice(0, 8),
+      recent: [{ path, openedAt: Date.now() }, ...get().recent.filter((r) => r.path !== path)].slice(0, 8),
       rev: get().rev + 1,
     })
     persist()
@@ -89,7 +105,13 @@ export const useFolder = create<FolderState>((set, get) => ({
   },
   refresh: () => set({ rev: get().rev + 1 }),
   forgetRecent: (path) => {
-    set({ recent: get().recent.filter((p) => p !== path) })
+    set({ recent: get().recent.filter((r) => r.path !== path) })
+    persist()
+  },
+  pruneRecent: (before = Infinity) => {
+    const recent = get().recent.filter((r) => r.openedAt >= before)
+    if (recent.length === get().recent.length) return
+    set({ recent })
     persist()
   },
 }))

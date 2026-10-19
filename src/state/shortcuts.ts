@@ -20,6 +20,8 @@ export interface ShortcutDef {
   keys: string
   /** The editor engine already answers the default keys; Workspace steps in only once they change. */
   builtIn?: boolean
+  /** A built-in shortcut whose engine keys aren't its default: Workspace answers `keys`, and the engine must not see these. */
+  engineKeys?: string
   /** Shown for reference but can't be changed (the system or the engine owns it). */
   fixed?: boolean
   platform?: 'mac' | 'windows'
@@ -47,7 +49,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'quit', label: 'Quit Workspace', group: 'Files and tabs', scope: 'app', keys: '⌘Q', platform: 'mac' },
 
   // ── View
-  { id: 'command-palette', label: 'Command palette', group: 'View', scope: 'app', keys: '⇧⌘P' },
+  { id: 'command-palette', label: 'Command palette', group: 'View', scope: 'app', keys: '⌘K' },
   { id: 'find', label: 'Find', group: 'View', scope: 'app', keys: '⌘F' },
   { id: 'toggle-explorer', label: 'Show or hide the folder', group: 'View', scope: 'app', keys: '⇧⌘E' },
   { id: 'split-view', label: 'Split view', group: 'View', scope: 'app', keys: '⇧⌘\\' },
@@ -81,7 +83,8 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'text.underline', label: 'Underline', group: 'Text (documents and presentations)', scope: 'text', keys: '⌘U', builtIn: true },
 
   // ── Documents (.docx)
-  { id: 'docx.link', label: 'Link', group: 'Document', scope: 'docx', keys: '⌘K', builtIn: true },
+  // The engine's own key for a link is ⌘K, which opens the command palette instead.
+  { id: 'docx.link', label: 'Link', group: 'Document', scope: 'docx', keys: '⇧⌘K', builtIn: true, engineKeys: '⌘K' },
   // Word's own keys; ⌥⌘M on a Mac is the Window menu's Minimize All.
   { id: 'docx.comment', label: 'Add comment', group: 'Document', scope: 'docx', keys: isMac ? '⌥⌘A' : '⌥⌘M' },
   { id: 'docx.header', label: 'Edit header', group: 'Document', scope: 'docx', keys: '' },
@@ -187,9 +190,12 @@ export function shortcutFor(keys: string, scope: Scope | null): ShortcutDef | un
   return SHORTCUTS.find((s) => !s.fixed && keysFor(s.id) === keys && (s.scope === 'app' || (!!scope && scopesOverlap(s.scope, scope))))
 }
 
-/** A built-in engine shortcut whose default keys these are, now moved elsewhere: the engine must not see them. */
+/** The keys the editor engine itself answers for a built-in shortcut. */
+export const engineKeysOf = (def: ShortcutDef) => (def.builtIn ? (def.engineKeys ?? def.keys) : undefined)
+
+/** A built-in engine shortcut whose engine keys these are, now moved elsewhere: the engine must not see them. */
 export function movedBuiltIn(keys: string, scope: Scope | null): ShortcutDef | undefined {
-  return SHORTCUTS.find((s) => s.builtIn && s.keys === keys && keysFor(s.id) !== keys && !!scope && scopesOverlap(s.scope, scope))
+  return SHORTCUTS.find((s) => engineKeysOf(s) === keys && keysFor(s.id) !== keys && !!scope && scopesOverlap(s.scope, scope))
 }
 
 // ── Reading keys from the keyboard

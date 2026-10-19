@@ -122,7 +122,7 @@ fn build_with<R: Runtime>(app: &AppHandle<R>, keys: &Shortcuts) -> tauri::Result
         .build()?;
 
     let view_menu = SubmenuBuilder::new(app, "View")
-        .item(&item(app, keys, "command-palette", "Command Palette…", Some("CmdOrCtrl+Shift+P"))?)
+        .item(&item(app, keys, "command-palette", "Command Palette…", Some("CmdOrCtrl+K"))?)
         .separator()
         .item(&markdown_menu)
         .separator()

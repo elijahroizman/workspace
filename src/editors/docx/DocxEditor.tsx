@@ -156,7 +156,7 @@ function DocxWorkbench({
   const { openAtCaret } = useHyperlinkPopup()
   const openLinkRef = useRef(openAtCaret)
   openLinkRef.current = openAtCaret
-  const rightOpen = useWorkspace((s) => s.rightOpen.docx)
+  const rightOpen = useWorkspace((s) => (s.split?.includes(tab.id) ? !!s.splitPanels[tab.id]?.right : s.rightOpen.docx))
   const rightOpenRef = useRef(rightOpen)
   rightOpenRef.current = rightOpen
   usePinchZoom(stageRef, {
@@ -199,7 +199,7 @@ function DocxWorkbench({
             const ed = editorRef.current
             if (!ed || !comments.begin(ed)) return false
             // The comment is written in the inspector.
-            if (!rightOpenRef.current) useWorkspace.getState().toggleRight('docx')
+            if (!rightOpenRef.current) useWorkspace.getState().toggleRight('docx', tab.id)
           },
           'docx.header': () => openHeaderFooter(editorRef.current, stageRef.current, 'header'),
           'docx.footer': () => openHeaderFooter(editorRef.current, stageRef.current, 'footer'),

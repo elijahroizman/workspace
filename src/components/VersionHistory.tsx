@@ -1,4 +1,4 @@
-import { ArchiveRestore, Copy, History, Tag, Trash2, X } from 'lucide-react'
+import { ArchiveRestore, Copy, Pencil, Save, Tag, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { create } from 'zustand'
 import type { DiffOp } from '../lib/diff'
@@ -239,33 +239,13 @@ export function VersionHistory() {
 
   let lastDay = ''
   return (
-    <div className="history-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="history" role="dialog" aria-modal="true" aria-label={`Version history of ${tab.title}`}>
-        <header className="history-header">
-          <History size={16} />
-          <h2>
-            Version history <span className="faint">· {tab.title}</span>
-          </h2>
-          <IconButton label="Close (esc)" onClick={close}>
-            <X size={16} />
-          </IconButton>
-        </header>
-        <form
-          className="history-commit"
-          onSubmit={(e) => {
-            e.preventDefault()
-            void saveVersion()
-          }}
-        >
-          <input value={message} placeholder="Describe what changed, like a commit message (optional)" onChange={(e) => setMessage(e.currentTarget.value)} />
-          <button type="submit" className="btn primary">
-            Save version
-          </button>
-        </form>
-        <div className="history-body">
+    <div className="settings-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+      <div className="settings history" role="dialog" aria-modal="true" aria-label={`Version history of ${tab.title}`}>
+        <nav className="settings-nav history-nav" aria-label="Versions">
+          <h2>Version history</h2>
           <div className="history-list" role="listbox" ref={listRef} aria-label="Versions">
             {versions === null && <Spinner />}
-            {versions?.length === 0 && <p className="history-empty muted">No versions yet. Each time you save (or autosave), a copy is kept here.</p>}
+            {versions?.length === 0 && <p className="history-empty">No versions yet. Each time you save (or autosave), a copy is kept here.</p>}
             {versions?.map((v, i) => {
               const day = dayName(v.time)
               const heading = day !== lastDay
@@ -273,11 +253,11 @@ export function VersionHistory() {
               return (
                 <div key={v.id} role="presentation">
                   {heading && <div className="history-day">{day}</div>}
-                  <button type="button" role="option" aria-selected={v.id === selected} className={`history-row ${v.id === selected ? 'on' : ''}`} onClick={() => setSelected(v.id)}>
+                  <button type="button" role="option" aria-selected={v.id === selected} className={`settings-nav-item history-row ${v.id === selected ? 'on' : ''}`} onClick={() => setSelected(v.id)}>
                     <span className="history-dot" data-latest={i === 0 || undefined} />
                     <span className="history-row-text">
                       <span className="history-row-title">{v.label || (v.source === 'original' ? 'Before Workspace saved it' : i === 0 ? 'Latest save' : 'Saved')}</span>
-                      <span className="faint">
+                      <span className="history-row-meta">
                         {timeOf(v.time)} · {formatSize(v.size)}
                       </span>
                     </span>
@@ -287,41 +267,65 @@ export function VersionHistory() {
               )
             })}
           </div>
+          <form
+            className="history-commit"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void saveVersion()
+            }}
+          >
+            <label className="field">
+              <input value={message} placeholder="Name this save (optional)" spellCheck={false} onChange={(e) => setMessage(e.currentTarget.value)} />
+            </label>
+            <button type="submit" className="btn">
+              <Save size={14} /> Save version
+            </button>
+          </form>
+        </nav>
+        <div className="settings-page">
+          <header className="settings-page-header">
+            {version && renaming ? (
+              <label className="field history-rename">
+                <input
+                  autoFocus
+                  defaultValue={version.label ?? ''}
+                  placeholder="Name this version"
+                  onBlur={(e) => void rename(e.currentTarget.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void rename(e.currentTarget.value)
+                    if (e.key === 'Escape') setRenaming(false)
+                  }}
+                />
+              </label>
+            ) : version ? (
+              <button type="button" className="history-name" title="Name this version (named versions are always kept)" onClick={() => setRenaming(true)}>
+                <h3>{version.label || 'Unnamed version'}</h3>
+                <Pencil size={12} />
+              </button>
+            ) : (
+              <h3>{tab.title}</h3>
+            )}
+            <IconButton label="Close (esc)" onClick={close}>
+              <X size={16} />
+            </IconButton>
+          </header>
           <div className="history-detail">
             {version ? (
               <>
                 <div className="history-detail-head">
-                  <div className="history-detail-title">
-                    {renaming ? (
-                      <input
-                        autoFocus
-                        defaultValue={version.label ?? ''}
-                        placeholder="Name this version"
-                        onBlur={(e) => void rename(e.currentTarget.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') void rename(e.currentTarget.value)
-                          if (e.key === 'Escape') setRenaming(false)
-                        }}
-                      />
-                    ) : (
-                      <button type="button" className="history-name" title="Name this version (named versions are always kept)" onClick={() => setRenaming(true)}>
-                        {version.label || 'Unnamed version'} <Tag size={12} />
-                      </button>
-                    )}
-                    <span className="faint">
-                      {new Date(version.time).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })} · {formatSize(version.size)}
-                    </span>
-                  </div>
+                  <span className="settings-hint">
+                    {tab.title} · {new Date(version.time).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })} · {formatSize(version.size)}
+                  </span>
                   <div className="history-actions">
+                    <IconButton label="Delete this version" onClick={() => void remove()}>
+                      <Trash2 size={15} />
+                    </IconButton>
                     <button type="button" className="btn" onClick={() => void openCopy()} title="Open this version in a new tab, without changing the file">
                       <Copy size={14} /> Open copy
                     </button>
                     <button type="button" className="btn primary" disabled={index === 0 && !tab.dirty} onClick={() => void restore()}>
                       <ArchiveRestore size={14} /> Restore
                     </button>
-                    <IconButton label="Delete this version" onClick={() => void remove()}>
-                      <Trash2 size={15} />
-                    </IconButton>
                   </div>
                 </div>
                 <div className="history-compare">
