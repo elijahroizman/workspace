@@ -129,7 +129,7 @@
   padding: 0 2px;
   border: 0;
   border-radius: 1px;
-  background: rgba(79, 140, 255, 0.1);
+  background: transparent;
   outline: none;
   font-family: Helvetica, Arial, sans-serif;
   color: transparent;
@@ -327,4 +327,265 @@ textarea.form-field {
   border-radius: 14px;
   background: var(--panel);
   border: 1px solid var(--line);
+}
+
+/* Form › Show fields tints every field so the empty ones are easy to find. */
+.pdf-stage.show-fields .form-field {
+  background: rgba(79, 140, 255, 0.12);
+}
+
+.form-field.sign {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 196, 0, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(214, 150, 0, 0.55);
+  color: #8a5a00;
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+
+.form-field.sign:hover {
+  background: rgba(255, 196, 0, 0.3);
+}
+
+.tool-layer.place {
+  cursor: copy;
+}
+
+.form-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  font-size: 12px;
+}
+
+.form-progress-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--field);
+  overflow: hidden;
+}
+
+.form-progress-bar span {
+  display: block;
+  height: 100%;
+  background: var(--success);
+  transition: width 0.3s;
+}
+
+/* Sign tool */
+.sign-group {
+  margin-top: 12px;
+}
+
+.sign-group-title {
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+
+.sign-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.sign-item {
+  position: relative;
+  height: 52px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.sign-item.on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.sign-pick {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 6px;
+  border: 0;
+  background: none;
+}
+
+.sign-pick img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.sign-remove {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+}
+
+.sign-item:hover .sign-remove {
+  display: grid;
+}
+
+.sign-new {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-style: dashed;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.sign-new:hover {
+  color: var(--fg);
+  background: var(--hover);
+}
+
+.sign-marks {
+  display: flex;
+  gap: 6px;
+}
+
+.sign-marks .btn.on,
+.pdf-inspector-toggle[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.signature-dialog {
+  width: min(700px, calc(100vw - 32px));
+}
+
+.signature-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.signature-head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.signature-canvas-wrap {
+  position: relative;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.signature-canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 640 / 220;
+  touch-action: none;
+}
+
+.signature-canvas.draw {
+  cursor: crosshair;
+}
+
+.signature-line {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 26%;
+  border-bottom: 1px dashed #c8c8c8;
+  pointer-events: none;
+}
+
+.signature-placeholder {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 12%;
+  color: #a0a0a0;
+  font-size: 12px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.signature-placeholder-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.signature-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.signature-input {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--field);
+  color: var(--fg);
+  font: inherit;
+}
+
+.signature-fonts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.signature-font {
+  height: 40px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--field);
+  color: var(--fg);
+  font-size: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.signature-font.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.signature-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.signature-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.signature-note {
+  margin: 10px 0 0;
+  font-size: 11px;
 }
