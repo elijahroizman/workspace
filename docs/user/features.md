@@ -14,6 +14,10 @@ Every file opens as a tab across the top. Each kind of document gets its own sid
 
 Open as many files as you like and switch with ⌘1–⌘9 or ⇧⌘[ / ⇧⌘]. Drag tabs to reorder them. Right-click a tab to duplicate it (⇧⌘D), for example to keep a textbook's questions and answers side by side. Open tabs come back the next time you launch. A restored tab loads its document the first time you look at it.
 
+## Command palette
+
+⇧⌘P opens a search box for everything: commands (with their shortcuts), open tabs and recent files. Type a few letters of what you want (“dark”, “new note”, “rotate”) and press return. Start with `>` to search commands only. Commands for the document in front of you, such as Word's Add comment or PowerPoint's Play from start, are listed while that tab is active. It's also in the View menu.
+
 ## New files
 
 ⌘N asks which kind of file to make, from the plugins you have on. The Home tab has a button for each too. New Word documents are A4.

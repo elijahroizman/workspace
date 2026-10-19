@@ -6,6 +6,7 @@ On Windows and Linux, use Ctrl for ⌘, Alt for ⌥ and Shift for ⇧. Ctrl+Tab 
 
 | | |
 | --- | --- |
+| Command palette: search commands, open tabs and recent files | ⇧⌘P |
 | New file (pick the kind) | ⌘N |
 | Open… | ⌘O |
 | Save / Save As… | ⌘S / ⇧⌘S |

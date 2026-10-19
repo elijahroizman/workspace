@@ -1,5 +1,6 @@
 import { Component, lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
 import type { ComponentType, ErrorInfo, ReactNode } from 'react'
+import { CommandPalette, usePalette } from './components/CommandPalette'
 import { Home } from './components/Home'
 import { NewFilePicker, useNewFile } from './components/NewFile'
 import { TexInstall, TexRemove } from './components/TexInstall'
@@ -16,7 +17,7 @@ import { useSettings } from './state/settings'
 import { useSetup } from './state/setup'
 import { useTex } from './state/tex'
 import type { Scope } from './state/shortcuts'
-import { keysFromEvent, movedBuiltIn, shortcutFor, syncMenu } from './state/shortcuts'
+import { keysFor, keysFromEvent, movedBuiltIn, shortcutFor, syncMenu } from './state/shortcuts'
 import type { DocTab } from './state/workspace'
 import { getEditor, HOME_TAB_ID, persistSession, restoreSession, useWorkspace } from './state/workspace'
 
@@ -160,6 +161,9 @@ export async function runCommand(id: string) {
     case 'settings':
       useSettings.getState().setOpen(true)
       break
+    case 'command-palette':
+      usePalette.getState().setOpen(!usePalette.getState().open)
+      break
     case 'toggle-theme':
       ws.setTheme(ws.theme === 'dark' ? 'light' : 'dark')
       break
@@ -207,8 +211,33 @@ async function confirmDiscardAll(): Promise<boolean> {
 
 let sessionFrozen = false
 
+/** Whether a command does anything right now, for the command palette. */
+export function commandAvailable(command: string) {
+  const ws = useWorkspace.getState()
+  const tab = ws.tabs.find((t) => t.id === ws.activeId)
+  if (!editorHandles(command)) return false
+  switch (command) {
+    case 'save':
+    case 'save-as':
+    case 'close-tab':
+    case 'duplicate-tab':
+      return !!tab
+    case 'revert':
+    case 'reveal':
+      return !!tab?.path && !tab.path.startsWith('browser:')
+    case 'reopen-tab':
+      return ws.closedPaths.length > 0
+    case 'toggle-left':
+    case 'toggle-right':
+      return !!tab
+    case 'install-update':
+      return false
+  }
+  return true
+}
+
 /** Commands that only mean something in some editors; elsewhere the key goes to the document (Ctrl+E centers text in Word). */
-function editorHandles(command: string) {
+export function editorHandles(command: string) {
   const editor = getEditor(useWorkspace.getState().activeId)
   if (command.startsWith('view-')) return !!editor?.viewMode
   if (command.startsWith('zoom-')) return !!editor?.zoom
@@ -225,6 +254,7 @@ export default function App() {
   const settingsOpen = useSettings((s) => s.open)
   const setupOpen = useSetup((s) => s.open)
   const newFileOpen = useNewFile((s) => s.open)
+  const paletteOpen = usePalette((s) => s.open)
   const texOffer = useTex((s) => s.offer)
   const texRemoval = useTex((s) => !!s.removal)
   const started = useRef(false)
@@ -283,6 +313,8 @@ export default function App() {
     const menuOwnsShortcuts = platform.isTauri && platform.isMac
     const onKey = (e: KeyboardEvent) => {
       if (useSettings.getState().open || useSetup.getState().open || useNewFile.getState().open) return
+      // The palette answers its own keys; its shortcut still closes it.
+      if (usePalette.getState().open && keysFromEvent(e) !== keysFor('command-palette')) return
       const mod = platform.isMac ? e.metaKey : e.ctrlKey
       if (mod && (platform.isMac || !e.metaKey) && /^Digit[1-9]$/.test(e.code) && !e.shiftKey && !e.altKey) {
         e.preventDefault()
@@ -367,6 +399,7 @@ export default function App() {
         </Suspense>
       )}
       {newFileOpen && <NewFilePicker />}
+      {paletteOpen && <CommandPalette />}
       {setupOpen && (
         <Suspense fallback={null}>
           <SetupScreen />
