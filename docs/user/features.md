@@ -44,6 +44,17 @@ A file you've already saved is written back to the same place a few seconds afte
 
 In **Settings › Autosave** you can turn it off, change the delay, or leave some file types on manual save. Saving doesn't move a PDF: it stays on the page you're reading. While you're typing into a PDF form field or a text box, or drawing, autosave waits until you finish.
 
+## Version history
+
+Each time a file is saved, by you or by autosave, Workspace keeps a copy of that version. **File › Version History…** (or right-click a tab) lists them by day. Pick one to see what's different: **Compare with now** shows what going back would undo, and **What changed in this save** shows that save's own changes. Text, Markdown, LaTeX and Mermaid files compare line by line; Word documents and PowerPoint presentations compare their text paragraph by paragraph. PDFs and pictures can be opened or restored but not compared.
+
+- **Save version** saves now, with a description if you type one, like a commit message.
+- **Restore** puts that version back. What the document was before is kept in the history too, so restoring can be undone.
+- **Open copy** opens the old version in a new tab without touching the file.
+- Click a version's name to name it. Named versions are always kept.
+
+Every save from the last hour is kept, then one per ten minutes for a day, one per day for a month and one per week after that. Identical versions are stored once. The copies live in Workspace's own data folder on this computer, not next to your files. The first time Workspace saves over a file, it also keeps the file as it was. **Settings › Autosave** turns version history off, shows how much space it takes, and can delete it all. A file that's moved or renamed outside Workspace starts a new history.
+
 ## Fonts
 
 Word documents use open-licensed stand-ins for Calibri, Cambria, Arial, Times New Roman and Courier New, with the same widths, so lines break where Word breaks them.

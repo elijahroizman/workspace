@@ -82,6 +82,7 @@ fn build_with<R: Runtime>(app: &AppHandle<R>, keys: &Shortcuts) -> tauri::Result
         .item(&item(app, keys, "save", "Save", Some("CmdOrCtrl+S"))?)
         .item(&item(app, keys, "save-as", "Save As…", Some("CmdOrCtrl+Shift+S"))?)
         .item(&item(app, keys, "revert", "Revert to Saved", None)?)
+        .item(&item(app, keys, "version-history", "Version History…", None)?)
         .separator()
         .item(&item(app, keys, "print", "Print…", Some("CmdOrCtrl+P"))?)
         .separator()

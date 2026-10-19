@@ -5,6 +5,7 @@ import * as platform from '../lib/platform'
 import type { PluginInfo } from '../plugins/catalog'
 import { pluginForKind } from '../plugins/catalog'
 import { enabledKinds, kindEnabled, usePlugins } from './plugins'
+import { useSettings } from './settings'
 
 export const HOME_TAB_ID = 'home'
 
@@ -105,9 +106,15 @@ interface WorkspaceState {
   markDirty(id: string, dirty: boolean): void
   /**
    * Save a tab. `to` saves to that path without asking. `quiet` throws on failure instead of
-   * showing an error (autosave reports failures itself).
+   * showing an error (autosave reports failures itself). `label` names this version in the
+   * file's version history.
    */
-  save(id?: string, opts?: { saveAs?: boolean; to?: string; quiet?: boolean }): Promise<boolean>
+  save(id?: string, opts?: { saveAs?: boolean; to?: string; quiet?: boolean; label?: string }): Promise<boolean>
+  /**
+   * Put an earlier version back: unsaved changes are saved first (so they're in the history
+   * too), then the version is saved over the file, named `label`, and the tab reloads it.
+   */
+  restoreVersion(id: string, bytes: Uint8Array, label: string): Promise<boolean>
   revert(id?: string): Promise<void>
   closeTab(id?: string): Promise<boolean>
   closeAll(): Promise<boolean>
@@ -345,7 +352,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       const editsBefore = edits.get(tab.id) ?? 0
       try {
         const bytes = await editor.getBytes()
-        await platform.writeFile(path, bytes)
+        await platform.writeFile(path, bytes, { history: useSettings.getState().history, label: opts?.label })
         editor.markSaved?.()
         const title = stripExtension(platform.basename(path))
         // An edit made while the file was being written isn't in it, so the tab stays unsaved.
@@ -358,6 +365,20 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         await platform.showError(String(err))
         return false
       }
+    },
+
+    restoreVersion: async (id, bytes, label) => {
+      const tab = get().tabs.find((t) => t.id === id)
+      if (!tab?.path) return false
+      if (tab.dirty && !(await get().save(id))) return false
+      try {
+        await platform.writeFile(tab.path, bytes, { history: true, label })
+      } catch (err) {
+        await platform.showError(String(err))
+        return false
+      }
+      set({ tabs: get().tabs.map((t) => (t.id === id ? { ...t, bytes, loadId: t.loadId + 1, dirty: false } : t)) })
+      return true
     },
 
     revert: async (id) => {

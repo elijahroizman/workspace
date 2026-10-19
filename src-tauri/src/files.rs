@@ -19,19 +19,34 @@ pub fn read_file(path: String) -> Result<Response, String> {
 /// Receives raw bytes as the request body and the destination path in the
 /// percent-encoded `x-path` header. Writes atomically: a crash or full disk
 /// mid-save leaves the original file untouched.
+///
+/// With an `x-history` header the save is also kept in version history (see history.rs),
+/// named by the percent-encoded `x-history-label` if there is one.
 #[tauri::command]
-pub fn write_file(request: Request<'_>) -> Result<(), String> {
-    let encoded = request
-        .headers()
-        .get("x-path")
-        .and_then(|v| v.to_str().ok())
-        .ok_or("Missing destination path")?;
+pub fn write_file<R: tauri::Runtime>(app: tauri::AppHandle<R>, request: Request<'_>) -> Result<(), String> {
+    let header = |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok());
+    let encoded = header("x-path").ok_or("Missing destination path")?;
     let path = PathBuf::from(percent_decode(encoded)?);
     let InvokeBody::Raw(bytes) = request.body() else {
         return Err("Expected raw file bytes".into());
     };
+    let history = header("x-history").and_then(|_| crate::history::history_root(&app));
+    let label = header("x-history-label").map(percent_decode).transpose()?;
+    if let Some(root) = &history {
+        crate::history::remember_original(root, &path);
+    }
     atomic_write(&path, bytes)
-        .map_err(|e| format!("Couldn't save “{}”: {e}", display_name(&path.to_string_lossy())))
+        .map_err(|e| format!("Couldn't save “{}”: {e}", display_name(&path.to_string_lossy())))?;
+    if let Some(root) = history {
+        // Off the save's path: hashing and copying a big file shouldn't hold up the next edit.
+        let bytes = bytes.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = crate::history::record(&root, &path, &bytes, label) {
+                eprintln!("version history: {e}");
+            }
+        });
+    }
+    Ok(())
 }
 
 /// Downloads a small public resource (a video's thumbnail image) for embedding in a

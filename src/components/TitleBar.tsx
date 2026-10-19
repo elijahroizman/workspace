@@ -1,4 +1,4 @@
-import { Check, CircleAlert, Copy, FolderOpen, LayoutGrid, Plus, Save, SaveOff, X } from 'lucide-react'
+import { Check, CircleAlert, Copy, FolderOpen, History, LayoutGrid, Plus, Save, SaveOff, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { autosaveBlocker, useAutosaveStatus } from '../lib/autosave'
 import { isMac, isTauri, revealInFinder, revealLabel, shortcut, tildify } from '../lib/platform'
@@ -6,6 +6,7 @@ import { enabledKinds, usePlugins } from '../state/plugins'
 import { useSettings } from '../state/settings'
 import { HOME_TAB_ID, useWorkspace } from '../state/workspace'
 import { UpdateButton } from './UpdateButton'
+import { showVersionHistory } from './VersionHistory'
 import { KindIcon } from './Workbench'
 import { PopoverMenu } from './ui'
 
@@ -153,7 +154,10 @@ export function TitleBar() {
           items={[
             { label: 'Duplicate Tab', icon: <Copy size={14} />, shortcut: '⇧⌘D', onSelect: () => void duplicateTab(tabMenu.id) },
             ...(isTauri && tabs.find((t) => t.id === tabMenu.id)?.path
-              ? [{ label: revealLabel, icon: <FolderOpen size={14} />, onSelect: () => void revealInFinder(tabs.find((t) => t.id === tabMenu.id)!.path!) }]
+              ? [
+                  { label: revealLabel, icon: <FolderOpen size={14} />, onSelect: () => void revealInFinder(tabs.find((t) => t.id === tabMenu.id)!.path!) },
+                  { label: 'Version History…', icon: <History size={14} />, onSelect: () => showVersionHistory(tabMenu.id) },
+                ]
               : []),
             { label: 'Close Tab', shortcut: '⌘W', separatorBefore: true, onSelect: () => void closeTab(tabMenu.id) },
             { label: 'Close Other Tabs', onSelect: () => void closeOthers(tabMenu.id) },

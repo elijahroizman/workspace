@@ -3,6 +3,7 @@ import type { ComponentType, ErrorInfo, ReactNode } from 'react'
 import { CommandPalette, usePalette } from './components/CommandPalette'
 import { FocusMode } from './components/FocusMode'
 import { Home } from './components/Home'
+import { showVersionHistory, useVersionHistory, VersionHistory } from './components/VersionHistory'
 import { NewFilePicker, useNewFile } from './components/NewFile'
 import { TexInstall, TexRemove } from './components/TexInstall'
 import { Dialogs } from './components/Dialogs'
@@ -112,6 +113,9 @@ export async function runCommand(id: string) {
       break
     case 'print':
       await editor?.print?.()
+      break
+    case 'version-history':
+      showVersionHistory()
       break
     case 'reveal': {
       const tab = ws.tabs.find((t) => t.id === ws.activeId)
@@ -266,6 +270,7 @@ export default function App() {
   const setupOpen = useSetup((s) => s.open)
   const newFileOpen = useNewFile((s) => s.open)
   const paletteOpen = usePalette((s) => s.open)
+  const historyOpen = useVersionHistory((s) => !!s.tabId)
   const texOffer = useTex((s) => s.offer)
   const texRemoval = useTex((s) => !!s.removal)
   const focus = useFocus((s) => s.on)
@@ -326,7 +331,7 @@ export default function App() {
   useEffect(() => {
     const menuOwnsShortcuts = platform.isTauri && platform.isMac
     const onKey = (e: KeyboardEvent) => {
-      if (useSettings.getState().open || useSetup.getState().open || useNewFile.getState().open) return
+      if (useSettings.getState().open || useSetup.getState().open || useNewFile.getState().open || useVersionHistory.getState().tabId) return
       // The palette answers its own keys; its shortcut still closes it.
       if (usePalette.getState().open && keysFromEvent(e) !== keysFor('command-palette')) return
       const mod = platform.isMac ? e.metaKey : e.ctrlKey
@@ -414,6 +419,7 @@ export default function App() {
       )}
       {newFileOpen && <NewFilePicker />}
       {paletteOpen && <CommandPalette />}
+      {historyOpen && <VersionHistory />}
       {setupOpen && (
         <Suspense fallback={null}>
           <SetupScreen />
