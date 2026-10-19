@@ -71,6 +71,18 @@ Word documents use open-licensed stand-ins for Calibri, Cambria, Arial, Times Ne
 
 **Settings › Appearance** picks light, dark or the system's setting (⇧⌘L switches), and a color theme for each. You can make your own themes: two tones and an accent.
 
+## Command line
+
+Like `code` for VS Code, `workspace` opens things from a terminal:
+
+```sh
+workspace .              # this folder, in the folder sidebar
+workspace notes.md       # a file; a new Markdown, text or LaTeX file is created empty
+workspace a.pdf b.docx   # several files, each in a tab
+```
+
+On a Mac, install it from **Settings › General › Command line** or **Workspace › Install Command Line Tool…**. It goes in `/usr/local/bin`, which usually asks for your password. It finds Workspace by its app ID, so moving the app doesn't break it. On Debian and Ubuntu the .deb puts `workspace` on the PATH already. On Windows and Linux, running it while Workspace is open hands the files to the open window instead of starting a second copy.
+
 ## Default apps
 
 The setup screen on first launch asks which file types Workspace should open, and **Settings › General › Default apps** can change that later. On Windows, each one is confirmed in Windows' own Default apps settings. Workspace also appears in every Open With menu.

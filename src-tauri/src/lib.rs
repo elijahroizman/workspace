@@ -1,3 +1,4 @@
+mod cli;
 mod defaults;
 mod files;
 mod fonts;
@@ -40,13 +41,11 @@ fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn queue_open(app: &tauri::AppHandle, paths: Vec<String>) {
-    if paths.is_empty() {
-        return;
+    if !paths.is_empty() {
+        app.state::<PendingOpens>().push(paths);
+        let _ = app.emit("open-requested", ());
     }
-    app.state::<PendingOpens>().push(paths);
-    let _ = app.emit("open-requested", ());
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
@@ -98,7 +97,14 @@ pub fn run() {
         .map(|p| p.to_string_lossy().into_owned())
         .collect();
 
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Windows and Linux start a second copy for `workspace notes.md` or a double-click; it hands
+    // its paths to this one and quits. (A Mac sends them to the running app itself.)
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+        queue_open(app, cli::paths_from_args(&args, &cwd));
+    }));
+    let app = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -148,6 +154,9 @@ pub fn run() {
             history::history_usage,
             history::history_clear_all,
             take_pending_opens,
+            cli::cli_status,
+            cli::cli_install,
+            cli::cli_uninstall,
             quit_app,
             update::latest_release,
             update::relaunch_in_place,

@@ -191,6 +191,15 @@ export async function runCommand(id: string) {
     case 'command-palette':
       usePalette.getState().setOpen(!usePalette.getState().open)
       break
+    case 'install-cli':
+      try {
+        if (await platform.setCliInstalled(true)) {
+          await platform.showMessage('Type workspace . in Terminal to open the folder you’re in, or workspace and a file’s name to open it.', 'The workspace command is installed')
+        }
+      } catch (err) {
+        await platform.showError(String(err), 'Couldn’t install the command')
+      }
+      break
     case 'toggle-theme':
       ws.setTheme(ws.theme === 'dark' ? 'light' : 'dark')
       break

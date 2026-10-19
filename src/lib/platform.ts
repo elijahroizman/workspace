@@ -368,6 +368,16 @@ export async function confirmDialog(
   return answer === 'ok'
 }
 
+export async function showMessage(message: string, title?: string): Promise<void> {
+  await showDialog({
+    kind: 'info',
+    title: title ?? message,
+    message: title ? message : undefined,
+    buttons: [{ label: 'OK', value: 'ok', primary: true }],
+    cancelValue: 'ok',
+  })
+}
+
 export async function showError(message: string, title?: string): Promise<void> {
   await showDialog({
     kind: 'error',
@@ -397,6 +407,34 @@ export async function takePendingOpens(): Promise<string[]> {
   if (!isTauri) return []
   const { invoke } = await core()
   return invoke<string[]>('take_pending_opens')
+}
+
+export interface CliStatus {
+  /** Settings can install it (a Mac). */
+  supported: boolean
+  installed: boolean
+  /** Something else called `workspace` is in the way. */
+  taken: boolean
+  path: string
+}
+
+/** The `workspace` shell command (src-tauri/src/cli.rs). */
+export async function cliStatus(): Promise<CliStatus> {
+  if (!isTauri) return { supported: false, installed: false, taken: false, path: '' }
+  const { invoke } = await core()
+  return invoke<CliStatus>('cli_status')
+}
+
+/** Install or remove it. Resolves false when the password prompt was cancelled. */
+export async function setCliInstalled(on: boolean): Promise<boolean> {
+  const { invoke } = await core()
+  try {
+    await invoke(on ? 'cli_install' : 'cli_uninstall')
+    return true
+  } catch (err) {
+    if (String(err) === 'cancelled') return false
+    throw err
+  }
 }
 
 export async function quitApp(): Promise<void> {

@@ -184,6 +184,15 @@
         "role": "Viewer",
         "rank": "Alternate",
         "mimeType": "image/heic"
+      },
+      {
+        "ext": [],
+        "contentTypes": [
+          "public.folder"
+        ],
+        "name": "Folder",
+        "role": "Viewer",
+        "rank": "Alternate"
       }
     ],
     "linux": {
