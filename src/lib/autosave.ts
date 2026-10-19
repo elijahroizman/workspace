@@ -49,7 +49,7 @@ function schedule(tabId: string) {
   if (pending) window.clearTimeout(pending.timer)
   const since = pending?.since ?? now
   const wait = Math.max(0, Math.min(useSettings.getState().autosave.delay * 1000, since + MAX_WAIT - now))
-  timers.set(tabId, { since, timer: window.setTimeout(() => void run(tabId), wait) })
+  timers.set(tabId, { since, timer: window.setTimeout(() => void run(tabId, true), wait) })
 }
 
 function cancel(tabId: string) {
@@ -58,8 +58,16 @@ function cancel(tabId: string) {
   timers.delete(tabId)
 }
 
-/** Save one tab if it has changes autosave covers. Resolves true when it has none left. */
-async function run(tabId: string): Promise<boolean> {
+/**
+ * Save one tab if it has changes autosave covers. Resolves true when it has none left. `timed`
+ * (the timer, not quitting or closing): if the editor is mid-entry, wait and try again.
+ */
+async function run(tabId: string, timed = false): Promise<boolean> {
+  if (timed && getEditor(tabId)?.busy?.()) {
+    const since = timers.get(tabId)?.since ?? Date.now()
+    timers.set(tabId, { since, timer: window.setTimeout(() => void run(tabId, true), useSettings.getState().autosave.delay * 1000) })
+    return false
+  }
   cancel(tabId)
   // One save per tab at a time; a change made meanwhile is picked up after it.
   while (running.has(tabId)) await running.get(tabId)

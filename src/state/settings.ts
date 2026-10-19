@@ -21,14 +21,18 @@ export const DEFAULT_SETTINGS: Settings = {
   autosave: {
     enabled: true,
     delay: 3,
-    // Saving a PDF rewrites the whole file, so PDFs wait for the Save command unless you opt in.
-    kinds: { docx: true, pptx: true, md: true, txt: true, pdf: false },
+    kinds: {},
   },
   previewDelay: 3,
   recentTabs: {},
 }
 
 const KEY = 'workspace.settings'
+/**
+ * Stored with the settings. Before 2, PDFs started with autosave off, so a stored `pdf: false`
+ * was almost always that default rather than a choice; version 1 settings drop it.
+ */
+const VERSION = 2
 
 /** The delays Settings offers. Anything else in storage is ignored. */
 const DELAYS = [1, 3, 10, 30]
@@ -56,6 +60,7 @@ function load(): Settings {
         if (typeof old.kinds[kind] === 'boolean') kinds[kind] = old.kinds[kind]
       }
     }
+    if (parsed.version !== VERSION && kinds.pdf === false) delete kinds.pdf
     const delay = typeof old.delay === 'number' && DELAYS.includes(old.delay) ? old.delay : defaults.delay
     // A build from before `enabled` stored the choice as whether a folder was picked.
     let enabled = defaults.enabled
@@ -83,7 +88,7 @@ interface SettingsState extends Settings {
 
 const persist = () => {
   const { autosave, previewDelay, recentTabs } = useSettings.getState()
-  localStorage.setItem(KEY, JSON.stringify({ autosave, previewDelay, recentTabs } satisfies Settings))
+  localStorage.setItem(KEY, JSON.stringify({ version: VERSION, autosave, previewDelay, recentTabs } satisfies Settings & { version: number }))
 }
 
 export const useSettings = create<SettingsState>((set, get) => ({
