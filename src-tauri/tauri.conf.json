@@ -207,6 +207,12 @@
         },
         "postInstallScript": "linux/postinst",
         "postRemoveScript": "linux/postrm"
+      },
+      "rpm": {
+        "depends": [
+          "webkit2gtk4.1",
+          "gtk3"
+        ]
       }
     },
     "macOS": {

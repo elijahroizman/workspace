@@ -1,12 +1,12 @@
 name: Release
 
-# Builds the Windows (x64) installer, the macOS (Apple silicon) disk image and a Debian/Ubuntu
-# (x64) .deb package and attaches all three to a GitHub Release. Push a tag like v0.4.0 to publish one. Running it
+# Builds the Windows (x64) installer, the macOS (Apple silicon) disk image, a Debian/Ubuntu
+# (x64) .deb package and a Fedora (x64) .rpm, and attaches them to a GitHub Release. Push a tag like v0.4.0 to publish one. Running it
 # from the Actions tab only builds (and signs and notarizes), unless "publish" is ticked.
 # It also signs the update bundles and publishes latest.json, which installed copies check
 # for updates (see plugins.updater in src-tauri/tauri.conf.json). The update bundles are only
 # made here, via tauri.release.conf.json, because signing them needs the private key. The .deb
-# has no update bundle (Tauri's updater can't replace a package-managed install), so the Linux
+# and .rpm have no update bundle (Tauri's updater can't replace a package-managed install), so the Linux
 # job leaves latest.json alone and publishes an APT repository instead (see its step below).
 # The release notes are the version's section of CHANGELOG.md.
 #
@@ -39,10 +39,11 @@ jobs:
           - name: macOS Apple silicon
             os: macos-latest
             args: --target aarch64-apple-darwin --bundles app,dmg --config src-tauri/tauri.release.conf.json
-          - name: Linux x64 (Debian, Ubuntu)
+          - name: Linux x64 (Debian, Ubuntu, Fedora)
             # The oldest runner with webkit2gtk-4.1, so the .deb installs on Ubuntu 22.04+ and Debian 12+.
+            # The .rpm is built from the same binary; it doesn't add an update repository.
             os: ubuntu-22.04
-            args: --bundles deb
+            args: --bundles deb,rpm
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     env:
@@ -129,7 +130,7 @@ jobs:
           releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false
-          # A .deb has no update bundle, so only the Mac and Windows jobs write latest.json.
+          # A .deb or .rpm has no update bundle, so only the Mac and Windows jobs write latest.json.
           uploadUpdaterJson: ${{ matrix.os != 'ubuntu-22.04' }}
           args: ${{ matrix.args }}
       - name: Publish the APT repository
