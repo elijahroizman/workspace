@@ -1,4 +1,4 @@
-import { Check, CircleAlert, Copy, FolderOpen, LayoutGrid, Plus, Save, SaveOff, X } from 'lucide-react'
+import { Check, CircleAlert, Columns2, Copy, FolderOpen, LayoutGrid, Plus, Save, SaveOff, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { autosaveBlocker, useAutosaveStatus } from '../lib/autosave'
 import { isMac, isTauri, revealInFinder, revealLabel, shortcut, tildify } from '../lib/platform'
@@ -12,7 +12,8 @@ import { PopoverMenu } from './ui'
 export function TitleBar() {
   const tabs = useWorkspace((s) => s.tabs)
   const activeId = useWorkspace((s) => s.activeId)
-  const { activate, closeTab, moveTab, newDocument, openDialog, duplicateTab, closeOthers } = useWorkspace.getState()
+  const split = useWorkspace((s) => s.split)
+  const { activate, closeTab, moveTab, newDocument, openDialog, duplicateTab, closeOthers, splitWith } = useWorkspace.getState()
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const plugins = usePlugins((s) => s.enabled)
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; id: string } | null>(null)
@@ -87,6 +88,7 @@ export function TitleBar() {
         </div>
         {tabs.map((tab) => {
           const active = tab.id === activeId
+          const beside = !active && !!split?.includes(tab.id)
           const dragging = drag?.id === tab.id
           return (
             <div
@@ -97,7 +99,7 @@ export function TitleBar() {
               }}
               role="tab"
               aria-selected={active}
-              className={`tab ${active ? 'active' : ''} ${tab.dirty ? 'dirty' : ''} ${dragging ? 'dragging' : ''}`}
+              className={`tab ${active ? 'active' : ''} ${beside ? 'beside' : ''} ${tab.dirty ? 'dirty' : ''} ${dragging ? 'dragging' : ''}`}
               title={tab.path ?? tab.title}
               style={dragging ? { transform: `translateX(${drag.dx}px)` } : undefined}
               onPointerDown={(e) => startDrag(e, tab.id)}
@@ -152,6 +154,9 @@ export function TitleBar() {
           onClose={() => setTabMenu(null)}
           items={[
             { label: 'Duplicate Tab', icon: <Copy size={14} />, shortcut: '⇧⌘D', onSelect: () => void duplicateTab(tabMenu.id) },
+            split?.includes(tabMenu.id)
+              ? { label: 'Close Split View', icon: <Columns2 size={14} />, onSelect: () => void splitWith(null) }
+              : { label: 'Open to the Side', icon: <Columns2 size={14} />, onSelect: () => void openBeside(tabMenu.id) },
             ...(isTauri && tabs.find((t) => t.id === tabMenu.id)?.path
               ? [{ label: revealLabel, icon: <FolderOpen size={14} />, onSelect: () => void revealInFinder(tabs.find((t) => t.id === tabMenu.id)!.path!) }]
               : []),
@@ -174,6 +179,20 @@ export function TitleBar() {
       )}
     </header>
   )
+}
+
+/** Right-clicking a tab brings it to the front, so “to the side” means beside the tab that was there before. */
+let previousActive: string | null = null
+useWorkspace.subscribe((s, prev) => {
+  if (s.activeId !== prev.activeId) previousActive = prev.activeId
+})
+
+/** Split view with this tab on the right of the one that was in front (a copy of it, if it's the same). */
+async function openBeside(id: string) {
+  const ws = useWorkspace.getState()
+  const left = previousActive && previousActive !== id && ws.tabs.some((t) => t.id === previousActive) ? previousActive : id
+  ws.activate(left)
+  await ws.splitWith(id)
 }
 
 /** Where the active tab autosaves to, and how the last autosave went. Just a status: clicking it does nothing. */

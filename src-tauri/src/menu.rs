@@ -121,6 +121,7 @@ fn build_with<R: Runtime>(app: &AppHandle<R>, keys: &Shortcuts) -> tauri::Result
     let view_menu = SubmenuBuilder::new(app, "View")
         .item(&markdown_menu)
         .separator()
+        .item(&item(app, keys, "split-view", "Split View", Some("CmdOrCtrl+Shift+\\"))?)
         .item(&item(app, keys, "toggle-left", "Toggle Sidebar", Some("CmdOrCtrl+\\"))?)
         .item(&item(app, keys, "toggle-right", "Toggle Inspector", Some("CmdOrCtrl+Alt+\\"))?)
         .separator()

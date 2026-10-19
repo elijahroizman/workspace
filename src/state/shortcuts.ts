@@ -44,6 +44,7 @@ export const SHORTCUTS: ShortcutDef[] = [
 
   // ── View
   { id: 'find', label: 'Find', group: 'View', scope: 'app', keys: '⌘F' },
+  { id: 'split-view', label: 'Split view', group: 'View', scope: 'app', keys: '⇧⌘\\' },
   { id: 'toggle-left', label: 'Show or hide sidebar', group: 'View', scope: 'app', keys: '⌘\\' },
   { id: 'toggle-right', label: 'Show or hide inspector', group: 'View', scope: 'app', keys: '⌥⌘\\' },
   { id: 'zoom-in', label: 'Zoom in', group: 'View', scope: 'app', keys: '⌘=' },
