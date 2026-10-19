@@ -595,7 +595,7 @@ fn apt_packages(variant: &str) -> &'static str {
 pub(crate) fn pkexec(line: &str, what: &str) -> Result<(), String> {
     let mut cmd = Command::new("pkexec");
     cmd.args(["/bin/sh", "-c", line]);
-    let output = cmd.stdin(Stdio::null()).output().map_err(|_| format!("Workspace needs pkexec (polkit) to ask for your password. {what} needs doing with apt in a terminal instead."))?;
+    let output = cmd.stdin(Stdio::null()).output().map_err(|_| format!("Workspace needs pkexec (polkit) to ask for your password. {what} needs doing in a terminal instead."))?;
     match output.status.code() {
         Some(0) => Ok(()),
         // 126 is polkit's "the password dialog was dismissed"; 127 is an error.

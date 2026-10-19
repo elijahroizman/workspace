@@ -1,0 +1,10 @@
+#!/bin/sh
+# Removing Workspace also removes the dnf repository its install added. rpm runs this with 0
+# when the package is erased, and with 1 after an upgrade, which keeps the file.
+set -e
+
+if [ "$1" = 0 ]; then
+  rm -f /etc/yum.repos.d/workspace.repo
+fi
+
+exit 0

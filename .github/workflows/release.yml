@@ -7,7 +7,7 @@ name: Release
 # for updates (see plugins.updater in src-tauri/tauri.conf.json). The update bundles are only
 # made here, via tauri.release.conf.json, because signing them needs the private key. The .deb
 # and .rpm have no update bundle (Tauri's updater can't replace a package-managed install), so the Linux
-# job leaves latest.json alone and publishes an APT repository instead (see its step below).
+# job leaves latest.json alone and publishes an APT and a dnf repository instead (see their steps below).
 # The release notes are the version's section of CHANGELOG.md.
 #
 # The Mac app is signed with the Developer ID certificate in APPLE_CERTIFICATE and notarized
@@ -41,7 +41,7 @@ jobs:
             args: --target aarch64-apple-darwin --bundles app,dmg --config src-tauri/tauri.release.conf.json
           - name: Linux x64 (Debian, Ubuntu, Fedora)
             # The oldest runner with webkit2gtk-4.1, so the .deb installs on Ubuntu 22.04+ and Debian 12+.
-            # The .rpm is built from the same binary; it doesn't add an update repository.
+            # The .rpm is built from the same binary and is for Fedora.
             os: ubuntu-22.04
             args: --bundles deb,rpm
     name: ${{ matrix.name }}
@@ -56,7 +56,7 @@ jobs:
         if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev patchelf createrepo-c
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -188,6 +188,58 @@ jobs:
             | grep -E '^Workspace_.*_amd64\.deb$' | grep -vxF "$deb" | sort -V | head -n -1 || true)"
           for name in $old; do
             gh release delete-asset apt "$name" -R "$GITHUB_REPOSITORY" --yes
+          done
+      - name: Publish the dnf repository
+        # A dnf repository at https://github.com/<repo>/releases/download/rpm/, which src-tauri/linux/rpm-postinst
+        # adds to /etc/yum.repos.d. dnf reads <baseurl>/repodata/… and the index points packages at
+        # packages/…, and GitHub serves tags with a slash, so the metadata is the assets of the
+        # pre-release tagged "rpm/repodata" and the .rpm files those of "rpm/packages". repomd.xml is
+        # signed with the APT key (repo_gpgcheck); it lists the other files' checksums and they list
+        # the packages', so the one signature covers the lot. Same order as APT: the .rpm first, then
+        # the metadata files (named by hash), then repomd.xml and its signature.
+        if: matrix.os == 'ubuntu-22.04' && env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          rpms=(src-tauri/target/release/bundle/rpm/*.rpm)
+          if [ "${#rpms[@]}" -ne 1 ]; then
+            echo "expected one .rpm, found ${#rpms[@]}"
+            exit 1
+          fi
+          repo="$RUNNER_TEMP/dnf"
+          rm -rf "$repo"
+          mkdir -p "$repo/packages"
+          cp "${rpms[0]}" "$repo/packages/"
+          rpm="$(basename "${rpms[0]}")"
+          cd "$repo"
+          createrepo_c --no-database --general-compress-type=gz .
+          export GNUPGHOME="$(mktemp -d)"
+          printf '%s\n' "$APT_SIGNING_KEY" | gpg --batch --import
+          gpg --batch --yes --armor --detach-sign -o repodata/repomd.xml.asc repodata/repomd.xml
+          gpgconf --kill gpg-agent || true
+          rm -rf "$GNUPGHOME"
+          for tag in rpm/packages rpm/repodata; do
+            if ! gh release view "$tag" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+              gh release create "$tag" -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "dnf repository (${tag#rpm/})" \
+                --notes "Part of Workspace's dnf repository for Fedora. The .rpm adds it for you; nothing here needs downloading by hand."
+            fi
+          done
+          gh release upload rpm/packages -R "$GITHUB_REPOSITORY" "packages/$rpm" --clobber
+          meta=(repodata/*.xml.gz)
+          gh release upload rpm/repodata -R "$GITHUB_REPOSITORY" "${meta[@]}" --clobber
+          gh release upload rpm/repodata -R "$GITHUB_REPOSITORY" repodata/repomd.xml repodata/repomd.xml.asc --clobber
+          # Drop metadata the new repomd.xml doesn't name, and keep the new .rpm and the one before it.
+          for name in $(gh release view rpm/repodata -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name'); do
+            case "$name" in repomd.xml | repomd.xml.asc) continue ;; esac
+            [ -e "repodata/$name" ] || gh release delete-asset rpm/repodata "$name" -R "$GITHUB_REPOSITORY" --yes
+          done
+          old="$(gh release view rpm/packages -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' \
+            | grep -E '\.rpm$' | grep -vxF "$rpm" | sort -V | head -n -1 || true)"
+          for name in $old; do
+            gh release delete-asset rpm/packages "$name" -R "$GITHUB_REPOSITORY" --yes
           done
       - name: Check the Mac app is signed and notarized
         if: matrix.os == 'macos-latest'
