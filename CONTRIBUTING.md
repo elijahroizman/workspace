@@ -26,6 +26,6 @@ A reviewer should also name their model and harness in the review.
 
 ## Releases
 
-Bump the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`, then push a tag like `v0.3.0`. The release workflow builds the Windows and Mac apps and publishes the update feed that installed copies check.
+Add the version's notes to the top of `CHANGELOG.md` (the release workflow refuses a version without them), bump the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`, then push a tag like `v0.3.0`. The release workflow builds the Mac, Windows and Linux apps, publishes the update feed and refreshes the APT repository. See [docs/internals/releasing.md](docs/internals/releasing.md).
 
 If an optional plugin's version in `plugins/<id>/plugin.json` changed, push its `plugin-<id>-<version>` tag first, so the archive the new app asks for exists. See `plugins/README.md`.

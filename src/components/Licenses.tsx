@@ -46,6 +46,13 @@ export default function LicensesPage() {
       <p className="settings-intro">
         Workspace is free to use thanks to these open-source projects. Each is used under its license, shown below.
       </p>
+      <p className="settings-intro">
+        The theme picker in Settings › Appearance is heavily inspired by the one in{' '}
+        <button type="button" className="link-btn" onClick={() => void openExternal('https://github.com/pingdotgg/t3code')}>
+          T3 Code
+        </button>
+        .
+      </p>
       <label className="field shortcut-search">
         <Search size={13} className="faint" />
         <input value={query} placeholder="Search packages or licenses" spellCheck={false} onChange={(e) => setQuery(e.currentTarget.value)} />

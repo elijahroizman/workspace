@@ -1,0 +1,63 @@
+# Development
+
+Setup for each system is in the [README](../../README.md#run-it-locally). This page covers the rest.
+
+## Commands
+
+```sh
+npm run dev            # UI in a browser at http://localhost:1420
+npm run app:dev        # the app, with hot reload
+npm run typecheck      # tsc-rs, a Rust port of the TypeScript compiler
+npm run build          # licenses, type check, production build into dist/
+npm run plugins        # builds the optional plugins into plugins/<id>/dist
+cd src-tauri && cargo test
+```
+
+Type checking uses [tsc-rs](https://github.com/pingdotgg/ts-rust), not Microsoft's `tsc`. In October 2026 it was also faster here than [tsc-ts](https://github.com/vercel-labs/tsc-ts) (0.73 s against 0.87 s for the app).
+
+## Testing in a browser
+
+In browser mode, `http://localhost:1420/?open=/dev-samples/File.pdf` opens a file from `dev-samples/` (git-ignored) without a dialog.
+
+A production build is lighter than the dev server and exposes test hooks (`window.__workspace`, the store):
+
+```sh
+VITE_TEST_HOOKS=1 npx vite build
+ln -s ../dev-samples dist/dev-samples
+npx vite preview --port 1420
+```
+
+Playwright can drive that build. To test code that only runs in the app (saving, autosave), fake `window.__TAURI_INTERNALS__` in `addInitScript`. Test builds also accept `window.__texFake` in place of the system's TeX.
+
+## Native code
+
+Rust lives in `src-tauri/`. `cargo check` there checks the code for the system you're on. Some tests reach the network or need TeX and are marked `#[ignore]`; run them with `cargo test -- --ignored`.
+
+Mac and Windows build on case-insensitive file systems, so never add two paths that differ only in case.
+
+## Where things are
+
+```
+src/
+  App.tsx                 shell: tabs, menu commands, session restore, drag and drop
+  state/                  open tabs and saving, settings, plugins, TeX, fonts
+  lib/platform.ts         native file dialogs and file I/O (browser fallbacks for dev)
+  lib/dialogs.ts          the app's own questions and alerts (components/Dialogs.tsx)
+  lib/updater.ts          update checks, the Tauri updater, and apt on Linux
+  components/             title bar and tabs, Home, setup, Settings, the three-pane workbench
+  editors/{docx,pptx,pdf,markdown,text}/   built-in editors, each loaded the first time it's needed
+  plugins/catalog.ts      every plugin and the file types it opens
+  plugins/api.ts          the contract an optional plugin's editor implements
+plugins/<id>/             optional plugins, built and released apart from the app
+scripts/licenses.mjs      collects license texts for Settings (runs in npm run build)
+src-tauri/
+  src/lib.rs              app setup, Open With handling
+  src/plugins.rs          downloads, checks and serves optional plugins (wsplugin: scheme)
+  src/tex.rs              finds, runs, installs and removes the system's TeX
+  src/fonts.rs            downloads fonts Workspace can't ship (Michelangelus)
+  src/update.rs           the latest release's notes, Mac relaunch, apt updates on Linux
+  src/defaults.rs         makes Workspace the default app for its file types
+  src/files.rs            raw-bytes file reading and atomic saving
+  src/menu.rs             the native menu bar
+  linux/                  the .deb's install scripts and APT signing key
+```

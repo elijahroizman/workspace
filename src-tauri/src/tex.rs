@@ -368,17 +368,68 @@ fn sha256_hex(path: &Path) -> Result<String, String> {
 // installer and Windows gets MiKTeX's.
 
 /// Runs a program to completion with its output captured; the error is the tail of what it said.
-fn run_captured(mut cmd: Command, what: &str) -> Result<String, String> {
-    let output = cmd.stdin(Stdio::null()).output().map_err(|e| format!("Couldn't start {what}: {e}"))?;
-    let out = String::from_utf8_lossy(&output.stdout).into_owned();
-    if output.status.success() {
+/// A program still running after `limit` is stopped, so a package manager waiting on something
+/// can't leave Workspace waiting forever.
+fn run_captured(mut cmd: Command, what: &str, limit: Duration) -> Result<String, String> {
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Couldn't start {what}: {e}"))?;
+    // Each pipe is read on its own thread. A helper the program started can keep a pipe open
+    // after the program exits, so that wait is short and bounded by the same deadline.
+    let (sender, received) = std::sync::mpsc::channel::<(bool, String)>();
+    let drain = |pipe: Option<Box<dyn Read + Send>>, is_out: bool| {
+        let sender = sender.clone();
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut bytes);
+            }
+            let _ = sender.send((is_out, String::from_utf8_lossy(&bytes).into_owned()));
+        });
+    };
+    drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>), true);
+    drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>), false);
+    drop(sender);
+    let started = Instant::now();
+    let stopped = || format!("{what} didn't finish in {} minutes and was stopped.", limit.as_secs().div_ceil(60));
+    let status = loop {
+        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+            break status;
+        }
+        if started.elapsed() > limit {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(stopped());
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    let (mut out, mut err) = (String::new(), String::new());
+    let exited = Instant::now();
+    for _ in 0..2 {
+        let left = limit.saturating_sub(started.elapsed()).min(Duration::from_secs(30).saturating_sub(exited.elapsed()));
+        match received.recv_timeout(left) {
+            Ok((true, text)) => out = text,
+            Ok((false, text)) => err = text,
+            // What it said is lost, but the exit status still tells whether it worked.
+            Err(_) => break,
+        }
+    }
+    if status.success() {
         return Ok(out);
     }
-    let said = format!("{}\n{}", String::from_utf8_lossy(&output.stderr), out);
-    let tail: Vec<&str> = said.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let said = format!("{err}\n{out}");
+    // winget draws progress bars with \r and spinner characters; keep the words.
+    let tail: Vec<&str> = said.split(['\n', '\r']).map(str::trim).filter(|l| l.chars().any(char::is_alphanumeric)).collect();
     let tail = tail[tail.len().saturating_sub(4)..].join(" ");
-    Err(format!("{what} failed: {}", if tail.is_empty() { "no details" } else { tail.as_str() }))
+    let code = status.code().map(|c| format!(" (exit code {c:#x})")).unwrap_or_default();
+    Err(format!("{what} failed{code}: {}", if tail.is_empty() { "no details" } else { tail.as_str() }))
 }
+
+/// How long installing or removing TeX may take before Workspace gives up on it.
+const INSTALL_TIMEOUT: Duration = Duration::from_secs(45 * 60);
 
 /// Whether a program answers `--version` (winget is an app alias, so it's found by running it).
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -456,7 +507,7 @@ fn install(app: &AppHandle<impl Runtime>, variant: &str, dir: &Path) -> Result<(
         let cask = if variant == "basictex" { "basictex" } else { "mactex-no-gui" };
         let mut cmd = mac::brew_command(&brew, dir)?;
         cmd.args(["install", "--cask", cask]);
-        return run_captured(cmd, "Homebrew").map(|_| ());
+        return run_captured(cmd, "Homebrew", INSTALL_TIMEOUT).map(|_| ());
     }
     let name = match variant {
         "basictex" => "BasicTeX.pkg",
@@ -488,29 +539,44 @@ fn install(app: &AppHandle<impl Runtime>, _variant: &str, dir: &Path) -> Result<
             let _ = command(&initexmf).arg("--set-config-value=[MPM]AutoInstall=1").status();
         }
     };
+    // winget first. If it isn't there or fails (no network for its sources, a broken App
+    // Installer, policies on a work laptop), MiKTeX's own installer is the fallback.
+    let mut winget_error = None;
     if runs("winget", "--version") {
         emit("install", 0, 0);
         let mut cmd = command(Path::new("winget"));
         // Just for this user, so Windows doesn't ask for an administrator.
         cmd.args(["install", "--id", "MiKTeX.MiKTeX", "-e", "--scope", "user", "--silent", "--disable-interactivity", "--accept-package-agreements", "--accept-source-agreements"]);
-        run_captured(cmd, "winget")?;
-        configure();
-        return Ok(());
+        match run_captured(cmd, "winget", INSTALL_TIMEOUT) {
+            Ok(_) => {
+                configure();
+                return Ok(());
+            }
+            // It may have installed and still said no (already installed, a reboot pending).
+            Err(_) if status().installed => {
+                configure();
+                return Ok(());
+            }
+            Err(e) => winget_error = Some(e),
+        }
     }
+    let with_winget = |e: String| match &winget_error {
+        Some(w) => format!("{w}\n\nMiKTeX's own installer didn't work either: {e}"),
+        None => e,
+    };
     let (name, sha256) = MIKTEX;
     let setup = dir.join(name);
     let url = format!("https://mirror.ctan.org/systems/win32/miktex/setup/windows-x64/{name}");
-    download_to(&url, &setup, |r, t| emit("download", r, t))?;
+    download_to(&url, &setup, |r, t| emit("download", r, t)).map_err(with_winget)?;
     emit("verify", 0, 0);
-    if sha256_hex(&setup)? != sha256 {
-        return Err("The MiKTeX installer didn't match its published checksum, so it wasn't installed.".into());
+    if sha256_hex(&setup).map_err(with_winget)? != sha256 {
+        return Err(with_winget("The MiKTeX installer didn't match its published checksum, so it wasn't installed.".into()));
     }
     emit("install", 0, 0);
     // Just for this user, so Windows doesn't ask for an administrator.
-    let status = Command::new(&setup).args(["--unattended", "--private"]).status().map_err(|e| e.to_string())?;
-    if !status.success() {
-        return Err("The MiKTeX installer didn't finish.".into());
-    }
+    let mut cmd = command(&setup);
+    cmd.args(["--unattended", "--private"]);
+    run_captured(cmd, "The MiKTeX installer", INSTALL_TIMEOUT).map_err(with_winget)?;
     configure();
     Ok(())
 }
@@ -526,10 +592,10 @@ fn apt_packages(variant: &str) -> &'static str {
 
 /// Runs a shell line as root through polkit's own password prompt.
 #[cfg(target_os = "linux")]
-fn pkexec(line: &str, what: &str) -> Result<(), String> {
+pub(crate) fn pkexec(line: &str, what: &str) -> Result<(), String> {
     let mut cmd = Command::new("pkexec");
     cmd.args(["/bin/sh", "-c", line]);
-    let output = cmd.stdin(Stdio::null()).output().map_err(|_| "Workspace needs pkexec (polkit) to ask for your password. Install TeX with apt instead.".to_string())?;
+    let output = cmd.stdin(Stdio::null()).output().map_err(|_| format!("Workspace needs pkexec (polkit) to ask for your password. {what} needs doing with apt in a terminal instead."))?;
     match output.status.code() {
         Some(0) => Ok(()),
         // 126 is polkit's "the password dialog was dismissed"; 127 is an error.
@@ -594,8 +660,9 @@ fn uninstall_method() -> Option<&'static str> {
     #[cfg(windows)]
     {
         // Only a MiKTeX winget itself knows by id: one from MiKTeX's own installer may not match.
-        let listed = command(Path::new("winget")).args(["list", "--id", "MiKTeX.MiKTeX", "--exact", "--accept-source-agreements"]).stdin(Stdio::null()).output();
-        if listed.is_ok_and(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).contains("MiKTeX")) {
+        let mut list = command(Path::new("winget"));
+        list.args(["list", "--id", "MiKTeX.MiKTeX", "--exact", "--accept-source-agreements", "--disable-interactivity"]);
+        if run_captured(list, "winget", Duration::from_secs(60)).is_ok_and(|out| out.contains("MiKTeX")) {
             return Some("winget");
         }
     }
@@ -623,7 +690,7 @@ fn uninstall(app: &AppHandle<impl Runtime>, dir: &Path) -> Result<(), String> {
             let cask = mac::installed_cask(&brew).ok_or("Homebrew didn't install this TeX.")?;
             let mut cmd = mac::brew_command(&brew, dir)?;
             cmd.args(["uninstall", "--cask", cask]);
-            run_captured(cmd, "Homebrew").map(|_| ())
+            run_captured(cmd, "Homebrew", INSTALL_TIMEOUT).map(|_| ())
         }
         #[cfg(target_os = "macos")]
         Some("MacTeX’s installer") => {
@@ -639,7 +706,7 @@ fn uninstall(app: &AppHandle<impl Runtime>, dir: &Path) -> Result<(), String> {
             let _ = dir;
             let mut cmd = command(Path::new("winget"));
             cmd.args(["uninstall", "--id", "MiKTeX.MiKTeX", "--exact", "--silent", "--disable-interactivity", "--accept-source-agreements"]);
-            run_captured(cmd, "winget").map(|_| ())
+            run_captured(cmd, "winget", INSTALL_TIMEOUT).map(|_| ())
         }
         #[cfg(target_os = "linux")]
         Some("apt") => {
@@ -672,6 +739,21 @@ pub async fn tex_uninstall<R: Runtime>(app: AppHandle<R>) -> Result<TexStatus, S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn reports_what_a_failed_program_said() {
+        let mut ok = Command::new("sh");
+        ok.args(["-c", "echo done"]);
+        assert_eq!(run_captured(ok, "sh", Duration::from_secs(10)).unwrap().trim(), "done");
+        let mut failing = Command::new("sh");
+        failing.args(["-c", "echo progress; echo 'No package found' >&2; exit 3"]);
+        let err = run_captured(failing, "winget", Duration::from_secs(10)).unwrap_err();
+        assert!(err.starts_with("winget failed (exit code 0x3)") && err.contains("No package found"), "{err}");
+        let mut slow = Command::new("sh");
+        slow.args(["-c", "sleep 5"]);
+        assert!(run_captured(slow, "sh", Duration::from_millis(300)).unwrap_err().contains("was stopped"));
+    }
 
     #[test]
     fn hashes_files() {

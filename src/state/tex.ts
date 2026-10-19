@@ -21,8 +21,11 @@ interface TexState {
   status: TexStatus | null
   /** The install offer is showing. */
   offer: boolean
-  /** The "turn off LaTeX" question is showing: how TeX would be removed, and where that has got to. */
-  removal: { method: string; busy: boolean; error: string | null } | null
+  /**
+   * The "turn off LaTeX" question is showing: how TeX would be removed (null while that's being
+   * worked out, or when Workspace can't remove it), and where that has got to.
+   */
+  removal: { method: string | null; checking: boolean; busy: boolean; error: string | null } | null
   installing: InstallProgress | null
   error: string | null
   refresh(): Promise<TexStatus>
@@ -31,8 +34,9 @@ interface TexState {
   install(variant: InstallVariant): Promise<void>
   close(): void
   /**
-   * Called when the LaTeX plugin is turned off. If Workspace can take TeX off the computer, asks
-   * whether to (it's off unless they tick it). Resolves false if they cancel turning the plugin off.
+   * Called when the LaTeX plugin is turned off. Asks to confirm and, if Workspace can take TeX off
+   * the computer, whether to do that too (it's off unless they tick it). Resolves false if they
+   * cancel turning the plugin off.
    */
   confirmTurnOff(): Promise<boolean>
   /** Answer the question `confirmTurnOff` is asking. */
@@ -71,21 +75,33 @@ export const useTex = create<TexState>((set, get) => ({
       const status = await invoke<TexStatus>('tex_install', { variant })
       set({ status })
       if (status.installed) get().close()
-      else set({ error: 'TeX installed, but Workspace can’t find it. Restart Workspace and try again.' })
+      // If the offer was hidden while installing, it comes back to say what went wrong.
+      else set({ error: 'TeX installed, but Workspace can’t find it. Restart Workspace and try again.', offer: true })
     } catch (err) {
-      set({ error: String(err) })
+      set({ error: String(err), offer: true })
     } finally {
       stop()
       set({ installing: null })
     }
   },
 
-  confirmTurnOff: async () => {
-    const hook = texTestHook()
-    const status = await get().refresh()
-    const method = !status.installed ? null : hook ? (hook.uninstallMethod?.() ?? null) : isTauri ? await invoke<string | null>('tex_uninstall_method').catch(() => null) : null
-    if (!method) return true
-    set({ removal: { method, busy: false, error: null } })
+  confirmTurnOff: () => {
+    // The question shows at once. Finding out how TeX was installed can take a while (winget is
+    // slow to list packages), and turning LaTeX off never waits for it.
+    set({ removal: { method: null, checking: true, busy: false, error: null } })
+    void (async () => {
+      const hook = texTestHook()
+      const status = await get().refresh()
+      const method = !status.installed
+        ? null
+        : hook
+          ? (hook.uninstallMethod?.() ?? null)
+          : isTauri
+            ? await invoke<string | null>('tex_uninstall_method').catch(() => null)
+            : null
+      const removal = get().removal
+      if (removal?.checking) set({ removal: { ...removal, method, checking: false } })
+    })()
     return new Promise((resolve) => (turnOff = resolve))
   },
 
@@ -99,7 +115,7 @@ export const useTex = create<TexState>((set, get) => ({
     }
     if (!proceed) return finish(false)
     // After a failed removal the button says "Turn off anyway": the plugin goes off, the TeX stays.
-    if (!remove || removal.error) return finish(true)
+    if (!remove || removal.error || !removal.method) return finish(true)
     set({ removal: { ...removal, busy: true, error: null } })
     let stop = () => {}
     try {
@@ -118,7 +134,7 @@ export const useTex = create<TexState>((set, get) => ({
   },
 
   close: () => {
-    if (get().installing) return
+    // An install that's under way carries on; Settings › Plugins shows how it's going.
     set({ offer: false })
     const status = get().status ?? NONE
     for (const resolve of closed) resolve(status)

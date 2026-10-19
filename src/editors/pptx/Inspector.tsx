@@ -62,6 +62,7 @@ import { TABLE_LOOKS, applyLook, currentLook, fitRowsTo, isTable, resizeColumns,
 import { DIRECTIONS, TRANSITIONS, changeTransition } from './transitions'
 import type { Deck, Element, ShapeKind, ShapeStyle, Slide, TextStyle, Transition } from './types'
 import { hasText, linkOf, shapeStyleOf } from './types'
+import { extraFamilies, useExtraFonts } from '../../state/fonts'
 
 const SHAPES: { kind: ShapeKind; label: string; icon: ReactNode }[] = [
   { kind: 'rect', label: 'Rectangle', icon: <Square size={14} /> },
@@ -309,6 +310,7 @@ export function tableLooks(deck: Deck): TableLook[] {
 }
 
 function TableSection({ deck, el }: { deck: Deck; el: TableElement }) {
+  const extraFonts = useExtraFonts((s) => s.installed)
   const { handle, tb } = deck
   const data = el.tableData
   const looks = tableLooks(deck)
@@ -327,7 +329,7 @@ function TableSection({ deck, el }: { deck: Deck; el: TableElement }) {
   const header = data.firstRowHeader !== false
   const banded = data.bandedRows !== false
   const first = data.rows[0]?.cells[0]?.style
-  const fonts = Array.from(new Set([tb.themeFonts?.body, tb.themeFonts?.heading, ...FONTS].filter(Boolean) as string[]))
+  const fonts = Array.from(new Set([tb.themeFonts?.body, tb.themeFonts?.heading, ...FONTS, ...extraFamilies(extraFonts)].filter(Boolean) as string[]))
 
   const commit = (next: TableData) => {
     const height = rowsHeight(next)
@@ -401,10 +403,11 @@ function Stepper({ label, value, min, max, onChange }: { label: string; value: n
 }
 
 function TextSection({ deck, el }: { deck: Deck; el: Element & { textStyle?: TextStyle } }) {
+  const extraFonts = useExtraFonts((s) => s.installed)
   const { tb } = deck
   const style = el.textStyle ?? {}
   const set = (patch: TextStyle) => tb.onUpdateTextStyle(patch)
-  const fonts = Array.from(new Set([tb.themeFonts?.body, tb.themeFonts?.heading, ...(tb.embeddedFontFamilies ?? []), ...FONTS].filter(Boolean) as string[]))
+  const fonts = Array.from(new Set([tb.themeFonts?.body, tb.themeFonts?.heading, ...(tb.embeddedFontFamilies ?? []), ...FONTS, ...extraFamilies(extraFonts)].filter(Boolean) as string[]))
   const align = style.align === 'center' || style.align === 'right' || style.align === 'justify' ? style.align : 'left'
   return (
     <Section title="Text">
@@ -618,6 +621,7 @@ function MultiSelection({ deck, count, onArrange, canArrange }: { deck: Deck; co
 
 /** Text styling for every selected object that holds text, all at once (one undo step). */
 function GroupTextSection({ deck }: { deck: Deck }) {
+  const extraFonts = useExtraFonts((s) => s.installed)
   const { tb, handle, slides, activeIndex, selectedIds } = deck
   const ids = new Set(selectedIds)
   const texts = pickedText(slides[activeIndex]?.elements ?? [], ids)
@@ -628,7 +632,7 @@ function GroupTextSection({ deck }: { deck: Deck }) {
     return texts.every((t) => t.textStyle?.[key] === first) ? first : undefined
   }
   const set = (patch: TextStyle) => handle.current?.editSlides(withElements(activeIndex, (els) => mapPicked(els, ids, (el) => styleText(el, patch))))
-  const fonts = Array.from(new Set([tb.themeFonts?.body, tb.themeFonts?.heading, ...(tb.embeddedFontFamilies ?? []), ...FONTS].filter(Boolean) as string[]))
+  const fonts = Array.from(new Set([tb.themeFonts?.body, tb.themeFonts?.heading, ...(tb.embeddedFontFamilies ?? []), ...FONTS, ...extraFamilies(extraFonts)].filter(Boolean) as string[]))
   const all = (key: 'bold' | 'italic' | 'underline' | 'strikethrough') => texts.every((t) => !!t.textStyle?.[key])
   const color = normalizeHex(shared('color') as string | undefined)
   const align = shared('align')

@@ -66,6 +66,8 @@ import { isMac, openExternal, shortcut } from '../../lib/platform'
 import { withKeys } from '../../state/shortcuts'
 import { registerEditor, useWorkspace } from '../../state/workspace'
 import { CommentPeek, CommentStore, CommentsSection } from './Comments'
+import { EXTRA_FONTS, useExtraFonts } from '../../state/fonts'
+import { extraWordFonts } from './extraFonts'
 import './docx.css'
 
 type EditorCommand = Parameters<Editor['exec']>[0]
@@ -90,7 +92,9 @@ function blankA4Document() {
 }
 
 export default function DocxTab({ tab, active }: EditorProps) {
-  const fonts = useFonts(FONTS)
+  // Downloaded extras (Michelangelus) join only once they're on disk, so the engine doesn't try them.
+  const extras = useExtraFonts((s) => EXTRA_FONTS.some((f) => s.installed[f.id]))
+  const fonts = useFonts(FONTS, extras ? extraWordFonts : undefined)
   const blank = tab.bytes ? null : use(blankA4Document())
   // A copy per tab, so two new documents never share bytes.
   const document = useMemo(() => tab.bytes ?? blank!.slice(), [tab.bytes, blank])

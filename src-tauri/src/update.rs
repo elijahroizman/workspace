@@ -71,6 +71,61 @@ fn fetch_latest_release() -> Result<ReleaseNotes, String> {
     Ok(notes_from_release(release))
 }
 
+/// Where the .deb's install script puts Workspace's APT repository (src-tauri/linux/postinst).
+#[cfg(target_os = "linux")]
+const APT_SOURCES: &str = "/etc/apt/sources.list.d/workspace.list";
+
+/// Whether this copy came with Workspace's APT repository and it's still on (its `deb` line not
+/// commented out), so apt can install new versions.
+#[tauri::command]
+pub fn apt_updates() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let active = std::fs::read_to_string(APT_SOURCES).is_ok_and(|list| list.lines().any(|l| l.trim_start().starts_with("deb ")));
+        active && std::path::Path::new("/usr/bin/apt-get").is_file()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
+/// Installs the newest Workspace from its APT repository, after polkit asks for the password.
+/// Only Workspace's own source is refreshed, so a broken or slow mirror elsewhere can't stop it.
+#[tauri::command]
+pub async fn apt_upgrade() -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        tauri::async_runtime::spawn_blocking(|| {
+            let installed = || {
+                std::process::Command::new("dpkg-query")
+                    .args(["-W", "-f=${Version}", "workspace"])
+                    .output()
+                    .ok()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                    .filter(|v| !v.is_empty())
+            };
+            let before = installed();
+            let line = format!(
+                "export DEBIAN_FRONTEND=noninteractive; apt-get update -o Dir::Etc::sourcelist={APT_SOURCES} -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0 && apt-get install -y --only-upgrade workspace"
+            );
+            crate::tex::pkexec(&line, "Updating Workspace")?;
+            // apt succeeds without doing anything when its repository hasn't got the release yet
+            // (the Linux build finishes after the Mac and Windows ones).
+            if before.is_some() && installed() == before {
+                return Err("The new version isn't in Workspace's APT repository yet. Try again in a few minutes.".into());
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Err("Updates through apt are for Linux.".into())
+    }
+}
+
 /// Quote `path` as one shell word.
 #[cfg(any(target_os = "macos", test))]
 fn sh_quote(path: &std::path::Path) -> String {

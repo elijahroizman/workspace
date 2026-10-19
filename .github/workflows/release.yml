@@ -7,7 +7,8 @@ name: Release
 # for updates (see plugins.updater in src-tauri/tauri.conf.json). The update bundles are only
 # made here, via tauri.release.conf.json, because signing them needs the private key. The .deb
 # has no update bundle (Tauri's updater can't replace a package-managed install), so the Linux
-# job leaves latest.json alone; the Linux app only shows the release notes and links to them.
+# job leaves latest.json alone and publishes an APT repository instead (see its step below).
+# The release notes are the version's section of CHANGELOG.md.
 #
 # The Mac app is signed with the Developer ID certificate in APPLE_CERTIFICATE and notarized
 # with the App Store Connect API key (APPLE_API_KEY holds the .p8 file, APPLE_API_KEY_ID its
@@ -71,29 +72,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          prev="$(git describe --tags --abbrev=0 'HEAD^' 2>/dev/null || true)"
-          if [ -n "$prev" ]; then
-            changes="$(git log --no-merges --pretty='- %s' "${prev}..HEAD")"
-          else
-            changes="$(git log --no-merges --pretty='- %s' -n 20)"
+          # The release body is this version's section of CHANGELOG.md: what the update panel
+          # in the app shows. A version without one doesn't get released.
+          version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          section="$(awk -v v="$version" '/^## /{ if (found) exit; if (index($0, "## " v " ") == 1) { found = 1; next } } found' CHANGELOG.md)"
+          if [ -z "$(printf '%s' "$section" | tr -d '[:space:]')" ]; then
+            echo "CHANGELOG.md has no section for $version. Add one headed '## $version — <date>'." >&2
+            exit 1
           fi
           {
             echo 'body<<RELEASE_NOTES_EOF'
-            echo '## Changes'
-            echo
-            printf '%s\n' "${changes:-- No commits since the previous release.}"
-            cat <<'EOF'
-
-          ## Install
-
-          **Mac (Apple silicon):** download `Workspace_…_aarch64.dmg`, open it and drag Workspace to Applications.
-
-          **Windows (x64):** download `Workspace_…_x64-setup.exe` and run it. Windows may show "Windows protected your PC" because the app isn't signed; click More info → Run anyway.
-
-          **Debian, Ubuntu (x64):** download `Workspace_…_amd64.deb` and run `sudo apt install ./Workspace_…_amd64.deb`. It doesn't update itself; install each new .deb the same way.
-
-          On Mac and Windows, version 0.2.0 and later update themselves. The Update button at the top right checks for a new version, shows these notes, and installs it. Quitting the app also installs an update that has already been downloaded.
-          EOF
+            printf '%s\n\n' "$section"
+            echo "Earlier versions: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/v${version}/CHANGELOG.md). How to install: [README](https://github.com/${GITHUB_REPOSITORY}#install)."
             echo 'RELEASE_NOTES_EOF'
           } >> "$GITHUB_OUTPUT"
       - name: App Store Connect key
@@ -142,6 +132,62 @@ jobs:
           # A .deb has no update bundle, so only the Mac and Windows jobs write latest.json.
           uploadUpdaterJson: ${{ matrix.os != 'ubuntu-22.04' }}
           args: ${{ matrix.args }}
+      - name: Publish the APT repository
+        # A flat APT repository in the assets of the release tagged "apt" (a pre-release, so the
+        # updater and the app's "latest release" never pick it). The .deb's postinst points
+        # /etc/apt/sources.list.d/workspace.list there, signed-by the key it installs
+        # (src-tauri/linux/workspace-archive-keyring.gpg; the private half is APT_SIGNING_KEY).
+        # The new .deb goes up first, then the index, then the signed Release, so apt never sees
+        # an index pointing at a file that isn't there yet.
+        if: matrix.os == 'ubuntu-22.04' && env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          debs=(src-tauri/target/release/bundle/deb/*.deb)
+          if [ "${#debs[@]}" -ne 1 ]; then
+            echo "expected one .deb, found ${#debs[@]}"
+            exit 1
+          fi
+          repo="$RUNNER_TEMP/apt"
+          rm -rf "$repo"
+          mkdir -p "$repo"
+          cp "${debs[0]}" "$repo/"
+          deb="$(basename "${debs[0]}")"
+          cd "$repo"
+          # Asset names can't hold a path, so the index names the file alone.
+          apt-ftparchive packages . | sed 's|^Filename: \./|Filename: |' > Packages
+          gzip -9kn Packages
+          apt-ftparchive \
+            -o APT::FTPArchive::Release::Origin=Workspace \
+            -o APT::FTPArchive::Release::Label=Workspace \
+            -o APT::FTPArchive::Release::Suite=stable \
+            -o APT::FTPArchive::Release::Codename=stable \
+            -o APT::FTPArchive::Release::Architectures=amd64 \
+            -o APT::FTPArchive::Release::Description="Workspace (github.com/${GITHUB_REPOSITORY})" \
+            release . > "$RUNNER_TEMP/Release"
+          mv "$RUNNER_TEMP/Release" Release
+          export GNUPGHOME="$(mktemp -d)"
+          printf '%s\n' "$APT_SIGNING_KEY" | gpg --batch --import
+          gpg --batch --yes --clearsign -o InRelease Release
+          gpg --batch --yes --armor --detach-sign -o Release.gpg Release
+          gpgconf --kill gpg-agent || true
+          rm -rf "$GNUPGHOME"
+          if ! gh release view apt -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create apt -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "APT repository" \
+              --notes "Workspace's APT repository for Debian and Ubuntu. The .deb adds it for you; nothing here needs downloading by hand."
+          fi
+          gh release upload apt -R "$GITHUB_REPOSITORY" "$deb" --clobber
+          gh release upload apt -R "$GITHUB_REPOSITORY" Packages Packages.gz --clobber
+          gh release upload apt -R "$GITHUB_REPOSITORY" Release Release.gpg InRelease --clobber
+          # Keep the new .deb and the one before it, for anyone whose index is a step behind.
+          old="$(gh release view apt -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' \
+            | grep -E '^Workspace_.*_amd64\.deb$' | grep -vxF "$deb" | sort -V | head -n -1 || true)"
+          for name in $old; do
+            gh release delete-asset apt "$name" -R "$GITHUB_REPOSITORY" --yes
+          done
       - name: Check the Mac app is signed and notarized
         if: matrix.os == 'macos-latest'
         run: |
