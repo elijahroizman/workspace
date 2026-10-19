@@ -17,9 +17,9 @@ Installing the .deb adds Workspace's APT repository and its signing key:
 
 After that, new versions come with your system's other updates (Software Updater, or `sudo apt update && sudo apt upgrade`). The **Update** button can also install one: it asks for your password, runs apt for Workspace alone, and reopens the app.
 
-Copies installed from 0.7.1 or earlier don't have the repository. Install the newest .deb once by hand and they will.
+Copies installed from 0.7.1 or earlier don't have the repository. Install the newest .deb once by hand and they will. The .deb only writes `workspace.list` when there's no such file, so if you made one yourself, check that its `deb` line matches the one below.
 
-To stop updates through apt, put a `#` in front of the `deb` line in `workspace.list`. Upgrading Workspace leaves that file alone once it exists. `sudo apt purge workspace` removes it.
+To stop updates, put a `#` in front of the `deb` line in `workspace.list`. Neither apt nor the **Update** button installs new versions after that (the button only shows the release notes), and upgrading Workspace leaves the file alone. Removing Workspace deletes it, along with the key.
 
 To add the repository by hand (for example on a machine that never had the .deb), install the key from this repository's `src-tauri/linux/workspace-archive-keyring.gpg` to `/usr/share/keyrings/` and add:
 

@@ -17,7 +17,7 @@ A book shows as one scrolling column, with its table of contents in the sidebar.
 
 ## Mermaid and LaTeX
 
-Both work like Markdown: source and preview side by side, and ⌘E switches between the preview, both, and the source.
+Both work like Markdown: source and preview side by side, and ⌘E (Ctrl+E on Windows and Linux) switches between the preview, both, and the source.
 
 Mermaid draws the diagram as you type and exports SVG or PNG.
 

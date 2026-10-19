@@ -27,6 +27,6 @@ On Windows and Linux, use Ctrl for ⌘, Alt for ⌥ and Shift for ⇧. Ctrl+Tab 
 | PowerPoint: group / ungroup | ⌘G / ⇧⌘G |
 | PowerPoint: play from this slide / from the start | ⌘↩ / ⇧⌘↩ |
 
-In a question Workspace asks (Save changes?, Revert?), Enter picks the highlighted button and Esc cancels.
+In a question Workspace asks (Save changes?, Revert?), Enter picks the highlighted button and Esc cancels. When the other choice throws something away (Revert, Delete), Cancel is the highlighted one.
 
 You can also drop files onto the window or the Dock icon.

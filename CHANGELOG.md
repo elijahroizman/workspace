@@ -12,7 +12,7 @@ Every release's notes. The release workflow copies a version's section into its 
 - If you installed 0.7.1 or earlier, install the 0.7.2 .deb once by hand. Updates come through apt after that.
 
 ### Dialogs
-- Questions and alerts ("Save changes?", "Revert?", errors) are drawn by Workspace instead of the system, so they look the same on macOS, Windows and Linux. Enter picks the highlighted button, Esc cancels.
+- Questions and alerts ("Save changes?", "Revert?", errors) are drawn by Workspace instead of the system, so they look the same on macOS, Windows and Linux. Enter picks the highlighted button (Cancel when the other choice throws something away, as Revert and Delete do), Esc cancels.
 - Deleting a custom theme asks first.
 
 ### LaTeX on Windows

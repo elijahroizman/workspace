@@ -1,8 +1,10 @@
 #!/bin/sh
-# Purging Workspace also removes the APT repository its install added.
+# Removing Workspace also removes the APT repository its install added. The keyring goes with
+# the package, so a source left behind would make every `apt update` fail. (dpkg doesn't run
+# this with "remove" during an upgrade.)
 set -e
 
-if [ "$1" = purge ]; then
+if [ "$1" = remove ] || [ "$1" = purge ]; then
   rm -f /etc/apt/sources.list.d/workspace.list
 fi
 

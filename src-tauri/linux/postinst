@@ -2,7 +2,8 @@
 # Adds Workspace's APT repository, so new versions arrive with the system's other updates
 # (Software Updater, apt upgrade) and the app's Update button can install them. The repository is
 # the assets of the GitHub release tagged "apt", signed with the key this package installs. Once the
-# sources file exists it's left alone, so commenting its line out turns the updates off for good.
+# sources file exists it's left alone, so commenting its line out turns the updates off until
+# Workspace is removed (postrm deletes the file with the keyring).
 set -e
 
 SOURCES=/etc/apt/sources.list.d/workspace.list

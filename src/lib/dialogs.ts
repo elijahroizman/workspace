@@ -7,7 +7,7 @@ import { create } from 'zustand'
 export interface DialogButton {
   label: string
   value: string
-  /** Enter presses it. */
+  /** Enter presses it, unless it's also `danger`. */
   primary?: boolean
   danger?: boolean
 }

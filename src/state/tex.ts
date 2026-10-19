@@ -75,9 +75,9 @@ export const useTex = create<TexState>((set, get) => ({
       const status = await invoke<TexStatus>('tex_install', { variant })
       set({ status })
       if (status.installed) get().close()
-      else set({ error: 'TeX installed, but Workspace can’t find it. Restart Workspace and try again.' })
+      // If the offer was hidden while installing, it comes back to say what went wrong.
+      else set({ error: 'TeX installed, but Workspace can’t find it. Restart Workspace and try again.', offer: true })
     } catch (err) {
-      // If the offer was hidden while installing, bring it back to say what went wrong.
       set({ error: String(err), offer: true })
     } finally {
       stop()

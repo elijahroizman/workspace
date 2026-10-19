@@ -85,6 +85,7 @@ export const useExtraFonts = create<FontsState>((set, get) => ({
     try {
       await invoke('remove_font', { id })
       set({ installed: { ...get().installed, [id]: false } })
+      unregisterPageFont(id)
       await globalThis.caches?.delete(FONT_CACHE).catch(() => false)
     } catch (err) {
       set({ errors: { ...get().errors, [id]: String(err) } })
@@ -101,21 +102,31 @@ export async function faceBytes(id: string, file: string): Promise<ArrayBuffer> 
   return invoke<ArrayBuffer>('font_file', { id, file })
 }
 
-const registered = new Set<string>()
+/** Faces added to document.fonts, by font id. */
+const registered = new Map<string, FontFace[]>()
 
 /** Slides draw text with the page's own fonts, so the faces are added to document.fonts. */
 async function registerPageFont(id: string) {
   const font = EXTRA_FONTS.find((f) => f.id === id)
   if (!font || registered.has(id)) return
-  registered.add(id)
-  await Promise.all(
-    font.faces.map(async (face) => {
-      try {
-        const loaded = await new FontFace(font.family, await faceBytes(id, face.file), { weight: String(face.weight), style: face.style }).load()
-        document.fonts.add(loaded)
-      } catch (err) {
-        console.warn(`Couldn't load ${face.file}`, err)
-      }
-    }),
-  )
+  const faces: FontFace[] = []
+  // Claimed while loading so a second refresh doesn't load them twice; a failure frees it to retry.
+  registered.set(id, faces)
+  try {
+    for (const face of font.faces) {
+      const loaded = await new FontFace(font.family, await faceBytes(id, face.file), { weight: String(face.weight), style: face.style }).load()
+      // Removed while this was loading.
+      if (registered.get(id) !== faces) return
+      document.fonts.add(loaded)
+      faces.push(loaded)
+    }
+  } catch (err) {
+    console.warn(`Couldn't load ${font.family}`, err)
+    unregisterPageFont(id)
+  }
+}
+
+function unregisterPageFont(id: string) {
+  for (const face of registered.get(id) ?? []) document.fonts.delete(face)
+  registered.delete(id)
 }

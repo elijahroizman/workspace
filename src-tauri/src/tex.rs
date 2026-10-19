@@ -377,18 +377,24 @@ fn run_captured(mut cmd: Command, what: &str, limit: Duration) -> Result<String,
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Couldn't start {what}: {e}"))?;
-    let drain = |pipe: Option<Box<dyn Read + Send>>| {
+    // Each pipe is read on its own thread. A helper the program started can keep a pipe open
+    // after the program exits, so that wait is short and bounded by the same deadline.
+    let (sender, received) = std::sync::mpsc::channel::<(bool, String)>();
+    let drain = |pipe: Option<Box<dyn Read + Send>>, is_out: bool| {
+        let sender = sender.clone();
         std::thread::spawn(move || {
             let mut bytes = Vec::new();
             if let Some(mut pipe) = pipe {
                 let _ = pipe.read_to_end(&mut bytes);
             }
-            String::from_utf8_lossy(&bytes).into_owned()
-        })
+            let _ = sender.send((is_out, String::from_utf8_lossy(&bytes).into_owned()));
+        });
     };
-    let stdout = drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
-    let stderr = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>), true);
+    drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>), false);
+    drop(sender);
     let started = Instant::now();
+    let stopped = || format!("{what} didn't finish in {} minutes and was stopped.", limit.as_secs().div_ceil(60));
     let status = loop {
         if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
             break status;
@@ -396,15 +402,25 @@ fn run_captured(mut cmd: Command, what: &str, limit: Duration) -> Result<String,
         if started.elapsed() > limit {
             let _ = child.kill();
             let _ = child.wait();
-            return Err(format!("{what} didn't finish in {} minutes and was stopped.", limit.as_secs().div_ceil(60)));
+            return Err(stopped());
         }
         std::thread::sleep(Duration::from_millis(100));
     };
-    let out = stdout.join().unwrap_or_default();
+    let (mut out, mut err) = (String::new(), String::new());
+    let exited = Instant::now();
+    for _ in 0..2 {
+        let left = limit.saturating_sub(started.elapsed()).min(Duration::from_secs(30).saturating_sub(exited.elapsed()));
+        match received.recv_timeout(left) {
+            Ok((true, text)) => out = text,
+            Ok((false, text)) => err = text,
+            // What it said is lost, but the exit status still tells whether it worked.
+            Err(_) => break,
+        }
+    }
     if status.success() {
         return Ok(out);
     }
-    let said = format!("{}\n{}", stderr.join().unwrap_or_default(), out);
+    let said = format!("{err}\n{out}");
     // winget draws progress bars with \r and spinner characters; keep the words.
     let tail: Vec<&str> = said.split(['\n', '\r']).map(str::trim).filter(|l| l.chars().any(char::is_alphanumeric)).collect();
     let tail = tail[tail.len().saturating_sub(4)..].join(" ");
@@ -723,6 +739,21 @@ pub async fn tex_uninstall<R: Runtime>(app: AppHandle<R>) -> Result<TexStatus, S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn reports_what_a_failed_program_said() {
+        let mut ok = Command::new("sh");
+        ok.args(["-c", "echo done"]);
+        assert_eq!(run_captured(ok, "sh", Duration::from_secs(10)).unwrap().trim(), "done");
+        let mut failing = Command::new("sh");
+        failing.args(["-c", "echo progress; echo 'No package found' >&2; exit 3"]);
+        let err = run_captured(failing, "winget", Duration::from_secs(10)).unwrap_err();
+        assert!(err.starts_with("winget failed (exit code 0x3)") && err.contains("No package found"), "{err}");
+        let mut slow = Command::new("sh");
+        slow.args(["-c", "sleep 5"]);
+        assert!(run_captured(slow, "sh", Duration::from_millis(300)).unwrap_err().contains("was stopped"));
+    }
 
     #[test]
     fn hashes_files() {

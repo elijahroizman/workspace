@@ -20,7 +20,7 @@ window.addEventListener(
       answerDialog(current.id, current.cancelValue)
     } else if (e.key === 'Enter' && !inBox) {
       e.preventDefault()
-      const primary = current.buttons.find((b) => b.primary)
+      const primary = current.buttons.find((b) => b.primary && !b.danger)
       if (primary) answerDialog(current.id, primary.value)
     } else if (e.key === 'Tab') {
       // Focus stays on the dialog's buttons.
@@ -45,8 +45,12 @@ export function Dialogs() {
     if (!current) return
     box = ref.current
     const focused = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    // The highlighted button, never a destructive one by accident (Enter presses what's focused).
-    const start = ref.current?.querySelector<HTMLButtonElement>('button.primary') ?? ref.current?.querySelector<HTMLButtonElement>('button')
+    // The highlighted button, unless it's destructive (Revert, Delete): then Cancel, so Enter
+    // can't throw anything away by accident.
+    const start =
+      ref.current?.querySelector<HTMLButtonElement>('button.primary:not(.danger)') ??
+      ref.current?.querySelector<HTMLButtonElement>('button:not(.danger)') ??
+      ref.current?.querySelector<HTMLButtonElement>('button')
     start?.focus()
     return () => {
       box = null
