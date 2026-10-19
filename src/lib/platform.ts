@@ -94,14 +94,99 @@ export async function readFile(path: string): Promise<Uint8Array> {
   return data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data)
 }
 
-export async function writeFile(path: string, bytes: Uint8Array): Promise<void> {
+/**
+ * Save bytes to a file. `history` also keeps this version in the file's version history, named
+ * `label` if given (see src-tauri/src/history.rs).
+ */
+export async function writeFile(path: string, bytes: Uint8Array, opts: { history?: boolean; label?: string } = {}): Promise<void> {
   if (!isTauri) {
+    if (opts.history) browserHistory(path, bytes, opts.label)
     browserFiles.set(path, bytes)
     download(basename(path), bytes)
     return
   }
   const { invoke } = await core()
-  await invoke('write_file', bytes, { headers: { 'x-path': encodeURIComponent(path) } })
+  const headers: Record<string, string> = { 'x-path': encodeURIComponent(path) }
+  if (opts.history) headers['x-history'] = '1'
+  if (opts.history && opts.label?.trim()) headers['x-history-label'] = encodeURIComponent(opts.label.trim())
+  await invoke('write_file', bytes, { headers })
+}
+
+// ── Version history
+
+export interface FileVersion {
+  id: string
+  hash: string
+  /** ms since 1970 */
+  time: number
+  size: number
+  label?: string
+  /** 'save', or 'original': the file as it was before Workspace first saved over it. */
+  source: string
+}
+
+// In the browser, versions live in memory for the session.
+const browserVersions = new Map<string, { version: FileVersion; bytes: Uint8Array }[]>()
+function browserHistory(path: string, bytes: Uint8Array, label?: string) {
+  const list = browserVersions.get(path) ?? []
+  const old = browserFiles.get(path)
+  const time = Date.now()
+  if (!list.length && old) list.unshift({ version: { id: `${time}-o`, hash: '', time: time - 1, size: old.length, source: 'original' }, bytes: old })
+  list.unshift({ version: { id: `${time}-${list.length}`, hash: '', time, size: bytes.length, label: label?.trim() || undefined, source: 'save' }, bytes: bytes.slice() })
+  browserVersions.set(path, list)
+}
+
+/** A file's saved versions, newest first. */
+export async function listVersions(path: string): Promise<FileVersion[]> {
+  if (!isTauri) return (browserVersions.get(path) ?? []).map((v) => v.version)
+  const { invoke } = await core()
+  return invoke<FileVersion[]>('history_list', { path })
+}
+
+export async function readVersion(path: string, id: string): Promise<Uint8Array> {
+  if (!isTauri) {
+    const hit = browserVersions.get(path)?.find((v) => v.version.id === id)
+    if (!hit) throw new Error('That version is gone.')
+    return hit.bytes
+  }
+  const { invoke } = await core()
+  const data = await invoke<ArrayBuffer | number[]>('history_read', { path, id })
+  return data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data)
+}
+
+export async function labelVersion(path: string, id: string, label: string | null): Promise<void> {
+  if (!isTauri) {
+    const hit = browserVersions.get(path)?.find((v) => v.version.id === id)
+    if (hit) hit.version.label = label?.trim() || undefined
+    return
+  }
+  const { invoke } = await core()
+  await invoke('history_label', { path, id, label })
+}
+
+export async function deleteVersion(path: string, id: string): Promise<void> {
+  if (!isTauri) {
+    browserVersions.set(path, (browserVersions.get(path) ?? []).filter((v) => v.version.id !== id))
+    return
+  }
+  const { invoke } = await core()
+  await invoke('history_delete', { path, id })
+}
+
+/** Bytes every file's history takes on disk. */
+export async function historyUsage(): Promise<number> {
+  if (!isTauri) return [...browserVersions.values()].flat().reduce((n, v) => n + v.bytes.length, 0)
+  const { invoke } = await core()
+  return invoke<number>('history_usage')
+}
+
+export async function clearAllHistory(): Promise<void> {
+  if (!isTauri) {
+    browserVersions.clear()
+    return
+  }
+  const { invoke } = await core()
+  await invoke('history_clear_all')
 }
 
 /** Fetch a public https resource (used for video thumbnails). */

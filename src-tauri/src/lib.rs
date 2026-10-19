@@ -1,6 +1,7 @@
 mod defaults;
 mod files;
 mod fonts;
+mod history;
 // Helpers below are called from the macOS launch path. Other targets still
 // compile them so the tests run, and nothing else references them.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -138,6 +139,12 @@ pub fn run() {
             files::write_file,
             files::path_info,
             files::fetch_bytes,
+            history::history_list,
+            history::history_read,
+            history::history_label,
+            history::history_delete,
+            history::history_usage,
+            history::history_clear_all,
             take_pending_opens,
             quit_app,
             update::latest_release,

@@ -1,6 +1,7 @@
 import { Component, lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
 import type { ComponentType, ErrorInfo, ReactNode } from 'react'
 import { Home } from './components/Home'
+import { showVersionHistory, useVersionHistory, VersionHistory } from './components/VersionHistory'
 import { NewFilePicker, useNewFile } from './components/NewFile'
 import { TexInstall, TexRemove } from './components/TexInstall'
 import { Dialogs } from './components/Dialogs'
@@ -109,6 +110,9 @@ export async function runCommand(id: string) {
       break
     case 'print':
       await editor?.print?.()
+      break
+    case 'version-history':
+      showVersionHistory()
       break
     case 'reveal': {
       const tab = ws.tabs.find((t) => t.id === ws.activeId)
@@ -225,6 +229,7 @@ export default function App() {
   const settingsOpen = useSettings((s) => s.open)
   const setupOpen = useSetup((s) => s.open)
   const newFileOpen = useNewFile((s) => s.open)
+  const historyOpen = useVersionHistory((s) => !!s.tabId)
   const texOffer = useTex((s) => s.offer)
   const texRemoval = useTex((s) => !!s.removal)
   const started = useRef(false)
@@ -282,7 +287,7 @@ export default function App() {
   useEffect(() => {
     const menuOwnsShortcuts = platform.isTauri && platform.isMac
     const onKey = (e: KeyboardEvent) => {
-      if (useSettings.getState().open || useSetup.getState().open || useNewFile.getState().open) return
+      if (useSettings.getState().open || useSetup.getState().open || useNewFile.getState().open || useVersionHistory.getState().tabId) return
       const mod = platform.isMac ? e.metaKey : e.ctrlKey
       if (mod && (platform.isMac || !e.metaKey) && /^Digit[1-9]$/.test(e.code) && !e.shiftKey && !e.altKey) {
         e.preventDefault()
@@ -367,6 +372,7 @@ export default function App() {
         </Suspense>
       )}
       {newFileOpen && <NewFilePicker />}
+      {historyOpen && <VersionHistory />}
       {setupOpen && (
         <Suspense fallback={null}>
           <SetupScreen />

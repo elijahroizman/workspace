@@ -2,7 +2,7 @@ import { ArrowLeft, Blocks, Copy, Keyboard, Monitor, Moon, Palette, Pencil, Plus
 import type { ReactNode } from 'react'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { canSetDefaults, defaultStatus, makeDefault } from '../lib/defaults'
-import { confirmDialog, isLinux, isMac, isTauri, openExternal, shortcut, showError } from '../lib/platform'
+import { clearAllHistory, confirmDialog, historyUsage, isLinux, isMac, isTauri, openExternal, shortcut, showError } from '../lib/platform'
 import type { ExtraFont } from '../state/fonts'
 import { EXTRA_FONTS, useExtraFonts } from '../state/fonts'
 import type { Appearance, ThemeDef } from '../lib/themes'
@@ -19,6 +19,7 @@ import type { ShortcutDef } from '../state/shortcuts'
 import { SHORTCUTS, isValidKeys, keysFor, keysFromEvent, syncMenu, useShortcuts } from '../state/shortcuts'
 import { useWorkspace } from '../state/workspace'
 import { PluginRow } from './PluginList'
+import { formatSize as formatVersionSize } from './VersionHistory'
 import { DocBadge } from './Workbench'
 import { IconButton, Segmented, Spinner, Switch } from './ui'
 
@@ -460,6 +461,56 @@ function AutosavePage() {
           </div>
         </div>
       </fieldset>
+
+      <HistoryRows />
+    </>
+  )
+}
+
+/** Version history: on or off, and how much room it takes. */
+function HistoryRows() {
+  const history = useSettings((s) => s.history)
+  const setHistory = useSettings((s) => s.setHistory)
+  const [usage, setUsage] = useState<number | null>(null)
+  useEffect(() => {
+    void historyUsage()
+      .then(setUsage)
+      .catch(() => setUsage(null))
+  }, [])
+  const clear = async () => {
+    const ok = await confirmDialog('Every earlier version of every file is deleted. The files themselves aren’t touched.', { title: 'Delete all version history?', okLabel: 'Delete', danger: true })
+    if (!ok) return
+    try {
+      await clearAllHistory()
+      setUsage(0)
+    } catch (err) {
+      await showError(String(err))
+    }
+  }
+  return (
+    <>
+      <div className="settings-row">
+        <div className="settings-row-text">
+          <span className="settings-label">Version history</span>
+          <span className="settings-hint">
+            Keep a copy each time a file is saved, so you can compare with or go back to an earlier version (File › Version History). Every save from the last hour is kept, then fewer as they get older. Copies stay on this computer.
+          </span>
+        </div>
+        <div className="settings-row-control">
+          <Switch label="Version history" checked={history} onChange={setHistory} />
+        </div>
+      </div>
+      <div className="settings-row">
+        <div className="settings-row-text">
+          <span className="settings-label">Space used</span>
+          <span className="settings-hint">{usage === null ? '…' : usage === 0 ? 'Nothing yet.' : `${formatVersionSize(usage)} for every file’s versions.`}</span>
+        </div>
+        <div className="settings-row-control">
+          <button type="button" className="btn danger" disabled={!usage} onClick={() => void clear()}>
+            Delete all versions
+          </button>
+        </div>
+      </div>
     </>
   )
 }

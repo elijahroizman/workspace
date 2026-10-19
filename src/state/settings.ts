@@ -15,6 +15,8 @@ export interface Settings {
   previewDelay: number
   /** By kind id: whether Home's Recent list has a tab for it. Every file is still under All. */
   recentTabs: Record<string, boolean>
+  /** Keep a copy of each saved version (see src-tauri/src/history.rs). */
+  history: boolean
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -25,6 +27,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   previewDelay: 3,
   recentTabs: {},
+  history: true,
 }
 
 const KEY = 'workspace.settings'
@@ -51,7 +54,8 @@ function load(): Settings {
     if (isRecord(parsed.recentTabs)) {
       for (const [kind, on] of Object.entries(parsed.recentTabs)) if (typeof on === 'boolean') recentTabs[kind] = on
     }
-    if (!isRecord(parsed.autosave)) return { ...DEFAULT_SETTINGS, previewDelay, recentTabs }
+    const history = typeof parsed.history === 'boolean' ? parsed.history : DEFAULT_SETTINGS.history
+    if (!isRecord(parsed.autosave)) return { ...DEFAULT_SETTINGS, previewDelay, recentTabs, history }
     const old = parsed.autosave
     const defaults = DEFAULT_SETTINGS.autosave
     const kinds = { ...defaults.kinds }
@@ -66,7 +70,7 @@ function load(): Settings {
     let enabled = defaults.enabled
     if (typeof old.enabled === 'boolean') enabled = old.enabled
     else if ('root' in old) enabled = typeof old.root === 'string' && old.root.length > 0
-    return { autosave: { enabled, delay, kinds }, previewDelay, recentTabs }
+    return { autosave: { enabled, delay, kinds }, previewDelay, recentTabs, history }
   } catch {
     return DEFAULT_SETTINGS
   }
@@ -84,11 +88,12 @@ interface SettingsState extends Settings {
   setAutosave(patch: Partial<AutosaveSettings>): void
   setPreviewDelay(seconds: number): void
   setRecentTab(kind: string, on: boolean): void
+  setHistory(on: boolean): void
 }
 
 const persist = () => {
-  const { autosave, previewDelay, recentTabs } = useSettings.getState()
-  localStorage.setItem(KEY, JSON.stringify({ version: VERSION, autosave, previewDelay, recentTabs } satisfies Settings & { version: number }))
+  const { autosave, previewDelay, recentTabs, history } = useSettings.getState()
+  localStorage.setItem(KEY, JSON.stringify({ version: VERSION, autosave, previewDelay, recentTabs, history } satisfies Settings & { version: number }))
 }
 
 export const useSettings = create<SettingsState>((set, get) => ({
@@ -108,6 +113,10 @@ export const useSettings = create<SettingsState>((set, get) => ({
   },
   setRecentTab: (kind, on) => {
     set({ recentTabs: { ...get().recentTabs, [kind]: on } })
+    persist()
+  },
+  setHistory: (history) => {
+    set({ history })
     persist()
   },
 }))
