@@ -22,13 +22,13 @@ Open as many files as you like and switch with ⌘1–⌘9 or ⇧⌘[ / ⇧⌘].
 
 A file you've already saved is written back to the same place a few seconds after you stop editing. That place can be any folder, including one iCloud Drive, Dropbox, OneDrive or another sync app watches; the sync app uploads it. Workspace doesn't sign in to anything. A new document isn't saved until you use Save.
 
-In **Settings › Autosave** you can turn it off, change the delay, or leave some file types on manual save. PDFs start out on manual save, because saving a PDF rewrites the whole file.
+In **Settings › Autosave** you can turn it off, change the delay, or leave some file types on manual save. Saving doesn't move a PDF: it stays on the page you're reading. While you're typing into a PDF form field or a text box, or drawing, autosave waits until you finish.
 
 ## Fonts
 
 Word documents use open-licensed stand-ins for Calibri, Cambria, Arial, Times New Roman and Courier New, with the same widths, so lines break where Word breaks them.
 
-**Settings › General** can add **Michelangelus**, Microsoft's free typeface based on Michelangelo's handwriting. Microsoft's license doesn't allow apps to include it, so Workspace downloads it from Microsoft's Download Center when you ask and checks each file before using it. It then appears in the Word and PowerPoint font menus. Documents keep the font's name, so Word shows it too wherever Michelangelus is installed.
+**Settings › Plugins** can add more: Michelangelus, Ubuntu, JetBrains Mono, Atkinson Hyperlegible, Courier Prime, Instrument Serif and Comic Neue. Each downloads when you turn it on and appears in the Word and PowerPoint font menus. See [Plugins › Fonts](plugins.md#fonts).
 
 ## Appearance
 

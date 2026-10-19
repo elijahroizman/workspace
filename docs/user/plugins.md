@@ -1,11 +1,12 @@
 # Plugins
 
-Word, PowerPoint, PDF, Markdown and text are built in. The rest are optional and off until you turn them on, in the setup screen on first launch or later in **Settings › Plugins**.
+Word, PowerPoint, PDF, Markdown and text are built in. The rest are optional and off until you turn them on, in the setup screen on first launch or later in **Settings › Plugins**. The same page has optional [fonts](#fonts).
 
 | Plugin | Opens | Size | How it arrives |
 | --- | --- | --- | --- |
 | [Excalidraw](https://excalidraw.com) | `.excalidraw` drawings | about 16 MB, mostly fonts | Downloaded from this repository's releases when you turn it on |
 | EPUB | `.epub` books | about 200 KB | Comes with the app; turns on instantly |
+| Images | `.png`, `.jpg`, `.jpeg`, `.heic` pictures | about 20 KB, and 2 MB for HEIC | Comes with the app |
 | [Mermaid](https://mermaid.js.org) | `.mmd`, `.mermaid` diagrams | about 1.2 MB | Downloaded |
 | LaTeX | `.tex` documents | about 120 KB (TeX itself is separate) | Downloaded |
 
@@ -14,6 +15,16 @@ Workspace checks every downloaded plugin's signature before installing it. Turni
 ## EPUB
 
 A book shows as one scrolling column, with its table of contents in the sidebar. Find and zoom work, and the book reopens where you left off. Nothing in a book runs or loads from the web.
+
+## Images
+
+A plain viewer for PNG, JPEG and HEIC, made with Mermaid exports in mind but fine for photos. Pinch or ⌘-scroll to zoom, double-click to switch between fitting the window and 100%, and drag to move around.
+
+The toolbar has a few touch-ups: **highlight**, **draw**, **box**, **select** (to crop, or to copy part of the picture), and **turn** left or right. Hold Shift while highlighting or drawing for a straight line. ⌘Z undoes, ⌘C copies the picture (or the selection). Changes save into the same file and format; a file you haven't changed is saved back exactly as it was. **⋯** saves a copy as PNG or JPEG, or prints.
+
+Workspace can read HEIC photos but can't write them, so they open for viewing. **Edit a JPEG copy** opens a copy in a new tab to mark up and save. Outside Safari's engine on recent Macs, HEIC is decoded by [libheif](https://github.com/strukturag/libheif) (LGPL-3.0), loaded the first time you open one.
+
+It doesn't pick out text in pictures (OCR).
 
 ## Mermaid and LaTeX
 
@@ -34,3 +45,19 @@ If there's no TeX when you turn LaTeX on, Workspace offers to install it:
 You can hide the install window while it runs; **Settings › Plugins** shows the progress. When you turn LaTeX off, Workspace asks whether to remove TeX too (only if it knows how it was installed). It's unticked unless you choose it.
 
 LaTeX on Windows is still being tested. If installing or removing TeX fails, the message includes what winget or the installer said; please put that in an [issue](https://github.com/elijahroizman/workspace/issues).
+
+## Fonts
+
+**Settings › Plugins › Fonts** downloads extra fonts for Word documents and PowerPoint slides. Each is off until you turn it on; Workspace then downloads it from its maker, checks every file against the copy it was tested with, and adds it to the font menus. Turning it off removes it.
+
+| Font | What it's for | From |
+| --- | --- | --- |
+| Michelangelus | A serif drawn from Michelangelo's handwriting | Microsoft (its license doesn't let apps include it) |
+| Ubuntu | Ubuntu's rounded sans-serif | Google Fonts |
+| JetBrains Mono | Code | JetBrains |
+| Atkinson Hyperlegible | Readers with low vision | Google Fonts |
+| Courier Prime | Screenplays; a better Courier | Google Fonts |
+| Instrument Serif | Headings and title slides (regular and italic) | Google Fonts |
+| Comic Neue | Posters, worksheets, invitations | Google Fonts |
+
+Documents keep the font's name, so Word shows the same font wherever it's installed.

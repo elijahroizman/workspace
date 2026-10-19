@@ -50,14 +50,26 @@ src/
   plugins/api.ts          the contract an optional plugin's editor implements
 plugins/<id>/             optional plugins, built and released apart from the app
 scripts/licenses.mjs      collects license texts for Settings (runs in npm run build)
+scripts/sync-plugins.mjs  moves downloaded plugins to their engine's latest release (the weekly Sync plugins workflow)
 src-tauri/
   src/lib.rs              app setup, Open With handling
   src/plugins.rs          downloads, checks and serves optional plugins (wsplugin: scheme)
   src/tex.rs              finds, runs, installs and removes the system's TeX
-  src/fonts.rs            downloads fonts Workspace can't ship (Michelangelus)
+  src/fonts.rs            downloads the optional fonts (Michelangelus, Ubuntu, JetBrains Mono…)
   src/update.rs           the latest release's notes, Mac relaunch, apt updates on Linux
   src/defaults.rs         makes Workspace the default app for its file types
   src/files.rs            raw-bytes file reading and atomic saving
   src/menu.rs             the native menu bar
   linux/                  the .deb's install scripts and APT signing key
 ```
+
+## The icon
+
+`assets/app-icon.svg` is the source of every app icon. After changing it, regenerate the sizes the app uses (the command also makes mobile and Windows Store sizes; leave those out):
+
+```sh
+npx tauri icon assets/app-icon.svg -o /tmp/icons
+cp /tmp/icons/{32x32.png,128x128.png,128x128@2x.png,icon.icns,icon.ico,icon.png} src-tauri/icons/
+```
+
+`public/favicon.svg` is a simplified copy for small sizes, used by the browser version.
