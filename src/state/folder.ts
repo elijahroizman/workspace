@@ -1,0 +1,103 @@
+import { create } from 'zustand'
+import { basename, pickFolder } from '../lib/platform'
+
+/**
+ * The open folder, like a VS Code workspace: its files in a sidebar beside the tabs. One folder
+ * at a time; the last few are offered again on Home. Reopens at launch with the folders you'd
+ * expanded.
+ */
+interface FolderState {
+  root: string | null
+  /** Folders expanded in the tree. */
+  expanded: string[]
+  /** The sidebar is showing (the folder stays open while it's hidden). */
+  visible: boolean
+  /** List every file, not only the ones Workspace opens. */
+  showAll: boolean
+  recent: string[]
+  /** Bumped to make the tree read the disk again. */
+  rev: number
+  open(path: string): void
+  close(): void
+  toggleVisible(): void
+  toggleDir(path: string, open?: boolean): void
+  collapseAll(): void
+  setShowAll(on: boolean): void
+  refresh(): void
+  forgetRecent(path: string): void
+}
+
+const KEY = 'workspace.folder'
+
+function load() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEY) || '{}') as Partial<Pick<FolderState, 'root' | 'expanded' | 'visible' | 'showAll' | 'recent'>>
+    const strings = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+    return {
+      root: typeof saved.root === 'string' ? saved.root : null,
+      expanded: strings(saved.expanded),
+      visible: saved.visible !== false,
+      showAll: saved.showAll === true,
+      recent: strings(saved.recent).slice(0, 8),
+    }
+  } catch {
+    return { root: null, expanded: [], visible: true, showAll: false, recent: [] }
+  }
+}
+
+const persist = () => {
+  const { root, expanded, visible, showAll, recent } = useFolder.getState()
+  localStorage.setItem(KEY, JSON.stringify({ root, expanded, visible, showAll, recent }))
+}
+
+export const useFolder = create<FolderState>((set, get) => ({
+  ...load(),
+  rev: 0,
+  open: (path) => {
+    const same = get().root === path
+    set({
+      root: path,
+      visible: true,
+      expanded: same ? get().expanded : [],
+      recent: [path, ...get().recent.filter((p) => p !== path)].slice(0, 8),
+      rev: get().rev + 1,
+    })
+    persist()
+  },
+  close: () => {
+    set({ root: null, expanded: [] })
+    persist()
+  },
+  toggleVisible: () => {
+    set({ visible: !get().visible })
+    persist()
+  },
+  toggleDir: (path, open) => {
+    const has = get().expanded.includes(path)
+    const want = open ?? !has
+    if (want === has) return
+    set({ expanded: want ? [...get().expanded, path] : get().expanded.filter((p) => p !== path) })
+    persist()
+  },
+  collapseAll: () => {
+    set({ expanded: [] })
+    persist()
+  },
+  setShowAll: (showAll) => {
+    set({ showAll })
+    persist()
+  },
+  refresh: () => set({ rev: get().rev + 1 }),
+  forgetRecent: (path) => {
+    set({ recent: get().recent.filter((p) => p !== path) })
+    persist()
+  },
+}))
+
+/** Ask for a folder and open it. */
+export async function chooseFolder() {
+  const path = await pickFolder()
+  if (path) useFolder.getState().open(path)
+}
+
+export const folderName = (path: string) => basename(path.replace(/[\\/]+$/, '')) || path

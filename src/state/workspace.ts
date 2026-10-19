@@ -4,6 +4,7 @@ import { KINDS, kindFromPath, stripExtension } from '../lib/kinds'
 import * as platform from '../lib/platform'
 import type { PluginInfo } from '../plugins/catalog'
 import { pluginForKind } from '../plugins/catalog'
+import { useFolder } from './folder'
 import { enabledKinds, kindEnabled, usePlugins } from './plugins'
 
 export const HOME_TAB_ID = 'home'
@@ -234,6 +235,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
           continue
         }
         const kind = kindFromPath(path)
+        // A folder (dropped on the window, from Finder or the command line) opens in the sidebar.
+        if (!kind && (await platform.isDirectory(path))) {
+          useFolder.getState().open(path)
+          continue
+        }
         if (!kind) {
           failures.push(`“${platform.basename(path)}” isn't a file type Workspace opens (${openableTypes()}).`)
           continue

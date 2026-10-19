@@ -1,5 +1,6 @@
 import { Component, lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
 import type { ComponentType, ErrorInfo, ReactNode } from 'react'
+import { Explorer } from './components/Explorer'
 import { Home } from './components/Home'
 import { NewFilePicker, useNewFile } from './components/NewFile'
 import { TexInstall, TexRemove } from './components/TexInstall'
@@ -11,6 +12,7 @@ import * as platform from './lib/platform'
 import { flushAutosave, startAutosave } from './lib/autosave'
 import { installUpdate, openUpdatePanel, startUpdateChecks } from './lib/updater'
 import { startPlugins } from './state/plugins'
+import { chooseFolder, useFolder } from './state/folder'
 import { useExtraFonts } from './state/fonts'
 import { useSettings } from './state/settings'
 import { useSetup } from './state/setup'
@@ -97,6 +99,16 @@ export async function runCommand(id: string) {
       break
     case 'open':
       await ws.openDialog()
+      break
+    case 'open-folder':
+      await chooseFolder()
+      break
+    case 'toggle-explorer':
+      if (useFolder.getState().root) useFolder.getState().toggleVisible()
+      else await runCommand('open-folder')
+      break
+    case 'close-folder':
+      useFolder.getState().close()
       break
     case 'save':
       await ws.save()
@@ -227,6 +239,7 @@ export default function App() {
   const newFileOpen = useNewFile((s) => s.open)
   const texOffer = useTex((s) => s.offer)
   const texRemoval = useTex((s) => !!s.removal)
+  const explorer = useFolder((s) => !!s.root && s.visible)
   const started = useRef(false)
 
   // Startup: restore last session, then open anything Finder handed us.
@@ -353,13 +366,16 @@ export default function App() {
   return (
     <div className="app">
       <TitleBar />
-      <div className="views">
-        <div className="view" data-active={activeId === HOME_TAB_ID} inert={activeId !== HOME_TAB_ID}>
-          <Home />
+      <div className="app-body">
+        {explorer && <Explorer />}
+        <div className="views">
+          <div className="view" data-active={activeId === HOME_TAB_ID} inert={activeId !== HOME_TAB_ID}>
+            <Home />
+          </div>
+          {tabs.map((tab) => (
+            <EditorSlot key={tab.id} tab={tab} active={tab.id === activeId} />
+          ))}
         </div>
-        {tabs.map((tab) => (
-          <EditorSlot key={tab.id} tab={tab} active={tab.id === activeId} />
-        ))}
       </div>
       {settingsOpen && (
         <Suspense fallback={null}>

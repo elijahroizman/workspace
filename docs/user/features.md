@@ -14,6 +14,12 @@ Every file opens as a tab across the top. Each kind of document gets its own sid
 
 Open as many files as you like and switch with ⌘1–⌘9 or ⇧⌘[ / ⇧⌘]. Drag tabs to reorder them. Right-click a tab to duplicate it (⇧⌘D), for example to keep a textbook's questions and answers side by side. Open tabs come back the next time you launch. A restored tab loads its document the first time you look at it.
 
+## Folders
+
+**File › Open Folder…** (⇧⌘O) opens a folder in a sidebar to the left of everything, like a project in a code editor. It lists the folder's documents, with subfolders you can expand; click a file to open it in a tab. Files Workspace can't open are hidden unless you pick **Show All Files** from the sidebar's **⋯** menu. Hidden files and folders such as `.git` and `node_modules` are always left out.
+
+Type in **Find a file** to search every document under the folder by name. ⇧⌘E hides and shows the sidebar. The folder (and which subfolders were expanded) comes back the next time you open Workspace, and Home lists recent folders. Dropping a folder on the window opens it too. The list refreshes when you come back to Workspace from another app, or with the refresh button.
+
 ## New files
 
 ⌘N asks which kind of file to make, from the plugins you have on. The Home tab has a button for each too. New Word documents are A4.

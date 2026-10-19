@@ -78,6 +78,8 @@ fn build_with<R: Runtime>(app: &AppHandle<R>, keys: &Shortcuts) -> tauri::Result
         // Asks which kind of file: one per plugin that's on.
         .item(&item(app, keys, "new", "New…", Some("CmdOrCtrl+N"))?)
         .item(&item(app, keys, "open", "Open…", Some("CmdOrCtrl+O"))?)
+        .item(&item(app, keys, "open-folder", "Open Folder…", Some("CmdOrCtrl+Shift+O"))?)
+        .item(&item(app, keys, "close-folder", "Close Folder", None)?)
         .separator()
         .item(&item(app, keys, "save", "Save", Some("CmdOrCtrl+S"))?)
         .item(&item(app, keys, "save-as", "Save As…", Some("CmdOrCtrl+Shift+S"))?)
@@ -121,6 +123,7 @@ fn build_with<R: Runtime>(app: &AppHandle<R>, keys: &Shortcuts) -> tauri::Result
     let view_menu = SubmenuBuilder::new(app, "View")
         .item(&markdown_menu)
         .separator()
+        .item(&item(app, keys, "toggle-explorer", "Toggle Folder", Some("CmdOrCtrl+Shift+E"))?)
         .item(&item(app, keys, "toggle-left", "Toggle Sidebar", Some("CmdOrCtrl+\\"))?)
         .item(&item(app, keys, "toggle-right", "Toggle Inspector", Some("CmdOrCtrl+Alt+\\"))?)
         .separator()

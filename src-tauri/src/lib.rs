@@ -137,6 +137,8 @@ pub fn run() {
             files::read_file,
             files::write_file,
             files::path_info,
+            files::list_dir,
+            files::walk_dir,
             files::fetch_bytes,
             take_pending_opens,
             quit_app,

@@ -1,8 +1,9 @@
-import { FolderOpen, MoreHorizontal, Moon, Settings, Sun } from 'lucide-react'
+import { Folder, FolderOpen, FolderTree, MoreHorizontal, Moon, Settings, Sun, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { DocKind } from '../lib/kinds'
 import { KINDS } from '../lib/kinds'
 import { basename, dirname, revealInFinder, revealLabel, isTauri, shortcut, tildify } from '../lib/platform'
+import { chooseFolder, folderName, useFolder } from '../state/folder'
 import { enabledKinds, usePlugins } from '../state/plugins'
 import { useSettings } from '../state/settings'
 import type { RecentFile } from '../state/workspace'
@@ -19,6 +20,8 @@ export function Home() {
   const plugins = usePlugins((s) => s.enabled)
   const kinds = enabledKinds(plugins)
   const recentTabs = useSettings((s) => s.recentTabs)
+  const folders = useFolder((s) => s.recent)
+  const openFolder = useFolder((s) => s.root)
   // Settings › General picks which file types get a tab. All always lists everything.
   const filters = kinds.filter((k) => recentTabs[k.id] !== false).map((k) => k.id)
   const shownFilter = filter === 'all' || filters.includes(filter) ? filter : 'all'
@@ -53,6 +56,20 @@ export function Home() {
             </span>
             <span className="kbd">{shortcut('⌘O')}</span>
           </button>
+          <button
+            type="button"
+            className="home-card open"
+            onClick={() => void chooseFolder()}
+          >
+            <span className="home-card-icon">
+              <FolderTree size={20} strokeWidth={1.75} />
+            </span>
+            <span className="home-card-text">
+              <strong>Open folder…</strong>
+              <span className="muted">Its files in a sidebar</span>
+            </span>
+            <span className="kbd">{shortcut('⇧⌘O')}</span>
+          </button>
           {kinds
             .filter((k) => k.create)
             .map((k) => (
@@ -65,6 +82,26 @@ export function Home() {
               </button>
             ))}
         </div>
+
+        {folders.length > 0 && (
+          <section className="home-folders">
+            <h2>Folders</h2>
+            <div className="home-folder-list">
+              {folders.map((path) => (
+                <div key={path} className={`home-folder ${openFolder === path ? 'on' : ''}`}>
+                  <button type="button" title={tildify(path)} onClick={() => useFolder.getState().open(path)}>
+                    <Folder size={14} />
+                    <span className="home-folder-name">{folderName(path)}</span>
+                    <span className="home-folder-path">{prettyDir(path)}</span>
+                  </button>
+                  <button type="button" className="home-folder-forget" aria-label={`Remove ${folderName(path)} from the list`} onClick={() => useFolder.getState().forgetRecent(path)}>
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="home-recents">
           <div className="home-recents-header">
