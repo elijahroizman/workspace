@@ -81,7 +81,7 @@ const union = (boxes: Box[]): Box => {
 }
 const isEditable = (el: EventTarget | null) => el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))
 
-export default function PdfEditor({ tab, active }: EditorProps) {
+export default function PdfEditor({ tab, active, visible = false }: EditorProps) {
   const viewer = useRef<ViewerHandle>(null)
   const storeRef = useRef<DocStore | null>(null)
   const [store, setStore] = useState<DocStore | null>(null)
@@ -855,9 +855,10 @@ export default function PdfEditor({ tab, active }: EditorProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, undo, redo, selected, tool])
 
-  // Background tabs give their page drawings back after a while; they redraw when shown.
+  // Background tabs give their page drawings back after a while; they redraw when shown. One in
+  // split view's other pane is still on screen, so it stays awake.
   useEffect(() => {
-    if (active) {
+    if (active || visible) {
       setAwake(true)
       return
     }
@@ -874,7 +875,7 @@ export default function PdfEditor({ tab, active }: EditorProps) {
     }, SLEEP_AFTER_MS)
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active])
+  }, [active, visible])
 
   // Arrow keys and Page Down scroll the pages as soon as the tab is shown.
   const stageRef = useRef<HTMLDivElement>(null)

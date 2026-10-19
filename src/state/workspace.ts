@@ -75,6 +75,11 @@ export type ThemeMode = Theme | 'system'
 interface WorkspaceState {
   tabs: DocTab[]
   activeId: string
+  /**
+   * Split view: the tabs in the left and right panes, or null for one pane. The focused pane's
+   * tab is `activeId`; commands (save, find, zoom) go to it.
+   */
+  split: [string, string] | null
   recents: RecentFile[]
   closedPaths: string[]
   /** The appearance in use: `themeMode`, with 'system' resolved. */
@@ -85,6 +90,11 @@ interface WorkspaceState {
   dropHover: boolean
 
   activate(id: string): void
+  /** Show `id` beside the tab in front (a copy of it if they're the same), or leave split view with null. */
+  splitWith(id: string | null): Promise<void>
+  /** Drag the line between the panes: the left pane's share, 0.2–0.8. */
+  setSplitRatio(ratio: number): void
+  splitRatio: number
   activateOffset(delta: number): void
   activateIndex(index: number): void
   moveTab(id: string, toIndex: number): void
@@ -193,12 +203,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     const at = tabs.findIndex((t) => t.id === activeId)
     const next = [...tabs]
     next.splice(at === -1 ? tabs.length : at + 1, 0, tab)
-    set({ tabs: next, activeId: tab.id })
+    set({ tabs: next })
+    get().activate(tab.id)
   }
 
   return {
     tabs: [],
     activeId: HOME_TAB_ID,
+    split: null,
+    splitRatio: 0.5,
     recents: load<RecentFile[]>(STORAGE.recents, []),
     closedPaths: [],
     theme: initialThemeMode === 'system' ? systemTheme() : initialThemeMode,
@@ -207,19 +220,45 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     rightOpen: initialPanels.right,
     dropHover: false,
 
-    activate: (id) => set({ activeId: id }),
+    activate: (id) => {
+      const { split, activeId } = get()
+      // In split view a tab that isn't showing takes the focused pane's place.
+      if (split && !split.includes(id)) {
+        if (id === HOME_TAB_ID) set({ split: null })
+        else set({ split: split[0] === activeId ? [id, split[1]] : [split[0], id] })
+      }
+      set({ activeId: id })
+    },
+
+    splitWith: async (id) => {
+      const { activeId, tabs } = get()
+      if (id === null || activeId === HOME_TAB_ID) {
+        set({ split: null })
+        return
+      }
+      let other = id
+      if (other === activeId) {
+        // The same document twice: an independent copy, so each side scrolls on its own.
+        await get().duplicateTab(activeId)
+        other = get().activeId
+        set({ activeId })
+      } else if (!tabs.some((t) => t.id === other)) return
+      set({ split: [activeId, other], activeId: other })
+    },
+
+    setSplitRatio: (ratio) => set({ splitRatio: Math.min(0.8, Math.max(0.2, ratio)) }),
 
     activateOffset: (delta) => {
       const ids = [HOME_TAB_ID, ...get().tabs.map((t) => t.id)]
       const i = ids.indexOf(get().activeId)
-      set({ activeId: ids[(i + delta + ids.length) % ids.length] })
+      get().activate(ids[(i + delta + ids.length) % ids.length])
     },
 
     activateIndex: (index) => {
       const ids = [HOME_TAB_ID, ...get().tabs.map((t) => t.id)]
       // ⌘9 always jumps to the last tab, as in Safari.
       const id = index >= 8 ? ids[ids.length - 1] : ids[index]
-      if (id) set({ activeId: id })
+      if (id) get().activate(id)
     },
 
     moveTab: (id, toIndex) => {
@@ -238,7 +277,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       for (const path of paths) {
         const existing = get().tabs.find((t) => t.path === path)
         if (existing) {
-          set({ activeId: existing.id })
+          get().activate(existing.id)
           continue
         }
         const kind = kindFromPath(path)
@@ -290,7 +329,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         if (!kind || !kindEnabled(kind)) continue
         const existing = get().tabs.find((t) => t.path === file.path)
         if (existing) {
-          set({ activeId: existing.id })
+          get().activate(existing.id)
           continue
         }
         addTab({ id: newId(), kind, title: stripExtension(file.name), path: file.path, bytes: file.bytes, loadId: 0, dirty: false })
@@ -414,16 +453,20 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       if (!tab) return true
       // Autosaved tabs close without asking once their last changes are written.
       if (tab.dirty && !(await autosaveHooks.flush(tab.id))) {
-        set({ activeId: tab.id })
+        get().activate(tab.id)
         const choice = await platform.askSaveChanges(tab.title)
         if (choice === 'cancel') return false
         if (choice === 'save' && !(await get().save(tab.id))) return false
       }
-      const { tabs, activeId } = get()
+      const { tabs, activeId, split } = get()
       const index = tabs.findIndex((t) => t.id === tabId)
       const remaining = tabs.filter((t) => t.id !== tabId)
       let nextActive = activeId
-      if (activeId === tabId) {
+      if (split?.includes(tabId)) {
+        // Closing one side of a split leaves the other.
+        nextActive = split[0] === tabId ? split[1] : split[0]
+        set({ split: null })
+      } else if (activeId === tabId) {
         const neighbour = remaining[index] ?? remaining[index - 1]
         nextActive = neighbour?.id ?? HOME_TAB_ID
       }
@@ -461,7 +504,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       for (const tab of get().tabs.filter((t) => t.id !== id)) {
         if (!(await get().closeTab(tab.id))) return
       }
-      set({ activeId: id })
+      set({ activeId: id, split: null })
     },
 
     reopenClosed: async () => {

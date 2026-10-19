@@ -16,6 +16,7 @@ On Windows and Linux, use Ctrl for ⌘, Alt for ⌥ and Shift for ⇧. Ctrl+Tab 
 | Switch tabs | ⌘1–⌘9, ⇧⌘] / ⇧⌘[ |
 | Find | ⌘F |
 | Toggle sidebar / inspector | ⌘\ / ⌥⌘\ |
+| Split view | ⇧⌘\ |
 | Zoom in / out / reset | ⌘+ / ⌘− / ⌘0 |
 | Print (and Save as PDF from the print panel) | ⌘P |
 | Duplicate tab | ⇧⌘D |

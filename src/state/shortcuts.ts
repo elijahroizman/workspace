@@ -50,6 +50,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'command-palette', label: 'Command palette', group: 'View', scope: 'app', keys: '⇧⌘P' },
   { id: 'find', label: 'Find', group: 'View', scope: 'app', keys: '⌘F' },
   { id: 'toggle-explorer', label: 'Show or hide the folder', group: 'View', scope: 'app', keys: '⇧⌘E' },
+  { id: 'split-view', label: 'Split view', group: 'View', scope: 'app', keys: '⇧⌘\\' },
   { id: 'toggle-left', label: 'Show or hide sidebar', group: 'View', scope: 'app', keys: '⌘\\' },
   { id: 'toggle-right', label: 'Show or hide inspector', group: 'View', scope: 'app', keys: '⌥⌘\\' },
   { id: 'zoom-in', label: 'Zoom in', group: 'View', scope: 'app', keys: '⌘=' },

@@ -29,6 +29,8 @@ import { getEditor, HOME_TAB_ID, persistSession, restoreSession, useWorkspace } 
 export interface EditorProps {
   tab: DocTab
   active: boolean
+  /** On screen in split view's other pane: not focused, but not to be put to sleep either. */
+  visible?: boolean
 }
 
 // Each editor (and its heavy engine) loads only when a tab of that type opens,
@@ -74,22 +76,69 @@ class EditorBoundary extends Component<{ name: string; children: ReactNode }, { 
  * opened in the background cost nothing (a large document can take hundreds of MB in WebKit)
  * until you look at them. After that it stays loaded, so switching back is instant.
  */
-const EditorSlot = memo(function EditorSlot({ tab, active }: EditorProps) {
+const EditorSlot = memo(function EditorSlot({ tab, active, pane }: EditorProps & { pane?: 'left' | 'right' }) {
   const Editor = editorFor(tab.kind)
-  const [shown, setShown] = useState(active)
-  if (active && !shown) setShown(true)
+  const visible = !!pane && !active
+  const [shown, setShown] = useState(active || visible)
+  if ((active || visible) && !shown) setShown(true)
   return (
-    <div className="view" data-active={active} inert={!active}>
+    <div
+      className="view"
+      data-active={active || visible}
+      data-pane={pane}
+      data-focused={pane ? active : undefined}
+      inert={!active && !visible}
+      // In split view, using the other pane moves the focus (and the commands) to it.
+      onPointerDownCapture={visible ? () => useWorkspace.getState().activate(tab.id) : undefined}
+      onFocusCapture={visible ? () => useWorkspace.getState().activate(tab.id) : undefined}
+    >
       {shown && (
         <EditorBoundary key={tab.loadId} name={tab.title}>
           <Suspense fallback={<CenterState spinner />}>
-            <Editor key={tab.loadId} tab={tab} active={active} />
+            <Editor key={tab.loadId} tab={tab} active={active} visible={visible} />
           </Suspense>
         </EditorBoundary>
       )}
     </div>
   )
 })
+
+/** The line between split view's panes; drag to resize, double-click for half and half. */
+function SplitDivider() {
+  const ratio = useWorkspace((s) => s.splitRatio)
+  return (
+    <div
+      className="split-divider"
+      style={{ left: `${ratio * 100}%` }}
+      onDoubleClick={() => useWorkspace.getState().setSplitRatio(0.5)}
+      onPointerDown={(e) => {
+        e.preventDefault()
+        const el = e.currentTarget
+        const box = el.parentElement!.getBoundingClientRect()
+        el.setPointerCapture(e.pointerId)
+        el.classList.add('dragging')
+        const move = (ev: PointerEvent) => useWorkspace.getState().setSplitRatio((ev.clientX - box.left) / box.width)
+        const up = () => {
+          el.classList.remove('dragging')
+          el.removeEventListener('pointermove', move)
+          el.removeEventListener('pointerup', up)
+        }
+        el.addEventListener('pointermove', move)
+        el.addEventListener('pointerup', up)
+      }}
+    />
+  )
+}
+
+/** ⇧⌘\: split with the tab to the right (or left), or a copy of this one; again to go back to one pane. */
+async function toggleSplit() {
+  const ws = useWorkspace.getState()
+  if (ws.split) return ws.splitWith(null)
+  const i = ws.tabs.findIndex((t) => t.id === ws.activeId)
+  if (i === -1) return
+  const neighbour = ws.tabs[i + 1] ?? ws.tabs[i - 1]
+  await ws.splitWith(neighbour?.id ?? ws.activeId)
+}
 
 export async function runCommand(id: string) {
   const ws = useWorkspace.getState()
@@ -145,6 +194,9 @@ export async function runCommand(id: string) {
       break
     case 'find':
       editor?.find?.()
+      break
+    case 'split-view':
+      await toggleSplit()
       break
     case 'toggle-left':
       ws.toggleLeft()
@@ -286,6 +338,8 @@ export function editorHandles(command: string) {
 export default function App() {
   const tabs = useWorkspace((s) => s.tabs)
   const activeId = useWorkspace((s) => s.activeId)
+  const split = useWorkspace((s) => s.split)
+  const splitRatio = useWorkspace((s) => s.splitRatio)
   const dropHover = useWorkspace((s) => s.dropHover)
   const settingsOpen = useSettings((s) => s.open)
   const setupOpen = useSetup((s) => s.open)
@@ -428,13 +482,14 @@ export default function App() {
       <TitleBar />
       <div className="app-body">
         {explorer && <Explorer />}
-        <div className="views">
+        <div className="views" data-split={split ? '' : undefined} style={split ? ({ '--split': `${splitRatio * 100}%` } as React.CSSProperties) : undefined}>
           <div className="view" data-active={activeId === HOME_TAB_ID} inert={activeId !== HOME_TAB_ID}>
             <Home />
           </div>
           {tabs.map((tab) => (
-            <EditorSlot key={tab.id} tab={tab} active={tab.id === activeId} />
+            <EditorSlot key={tab.id} tab={tab} active={tab.id === activeId} pane={split?.[0] === tab.id ? 'left' : split?.[1] === tab.id ? 'right' : undefined} />
           ))}
+          {split && <SplitDivider />}
         </div>
       </div>
       {settingsOpen && (

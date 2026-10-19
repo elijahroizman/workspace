@@ -3554,3 +3554,69 @@ button {
 .home-folder:hover .home-folder-forget {
   display: grid;
 }
+
+/* Split view (⇧⌘\): two tabs side by side */
+.views[data-split] > .view[data-pane='left'] {
+  right: calc(100% - var(--split, 50%));
+}
+
+.views[data-split] > .view[data-pane='right'] {
+  left: var(--split, 50%);
+}
+
+/* Half a window is too narrow for both side panels: the sidebar goes, and only the focused pane keeps its inspector. */
+.views[data-split] > .view[data-pane] .pane.left,
+.views[data-split] > .view[data-focused='false'] .pane.right,
+.views[data-split] > .view[data-focused='false'] .canvas-toggles {
+  display: none;
+}
+
+.views[data-split] > .view[data-pane]::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 30;
+  height: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.15s;
+  pointer-events: none;
+}
+
+.views[data-split] > .view[data-focused='true']::after {
+  opacity: 1;
+}
+
+.split-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 31;
+  width: 9px;
+  margin-left: -4px;
+  cursor: col-resize;
+}
+
+.split-divider::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+  background: var(--line);
+}
+
+.split-divider:hover::before,
+.split-divider.dragging::before {
+  width: 3px;
+  left: 3px;
+  background: var(--accent);
+}
+
+.tab.beside {
+  background: color-mix(in srgb, var(--tab-active) 55%, transparent);
+  border-color: var(--line-soft);
+}

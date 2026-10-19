@@ -40,6 +40,12 @@ Open as many files as you like and switch with ⌘1–⌘9 or ⇧⌘[ / ⇧⌘].
 
 Type in **Find a file** to search every document under the folder by name. ⇧⌘E hides and shows the sidebar. The folder (and which subfolders were expanded) comes back the next time you open Workspace, and Home lists recent folders. Dropping a folder on the window opens it too. The list refreshes when you come back to Workspace from another app, or with the refresh button.
 
+## Split view
+
+**View › Split View** (⇧⌘\) shows two tabs side by side: the one in front and the tab next to it. With only one document open, the second pane is a copy of it, so you can keep a textbook's questions on one side and its answers on the other. Right-click a tab and pick **Open to the Side** to choose which.
+
+Click in a pane to work in it: a blue line along its top shows which one, and Save, Find, Zoom and the other commands go to it. Clicking another tab in the tab bar puts it in that pane. Drag the line between the panes to resize them (double-click it for half and half). In split view the left sidebars are hidden, and only the pane you're working in shows its inspector. ⇧⌘\ again, or closing either tab, goes back to one pane.
+
 ## New files
 
 ⌘N asks which kind of file to make, from the plugins you have on. The Home tab has a button for each too. New Word documents are A4.
