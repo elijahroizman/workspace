@@ -17,6 +17,10 @@ import {
   RotateCcw,
   RotateCw,
   Scaling,
+  Signature,
+  SquareDashed,
+  StepForward,
+  Stamp,
   Trash2,
   Type,
   Undo2,
@@ -29,10 +33,12 @@ import { CenterState, IconButton, PopoverMenu, Section, Segmented } from '../../
 import * as platform from '../../lib/platform'
 import { registerEditor, useWorkspace } from '../../state/workspace'
 import { isCancelled, PdfEngine, Priority } from './engine/client'
-import type { Box, DocMeta, OutlineItem, PageInfo } from './engine/protocol'
+import type { Annot, Box, DocMeta, OutlineItem, PageInfo } from './engine/protocol'
 import { DocStore, drawBitmap } from './engine/store'
 import { History } from './history'
 import { Outline, Thumbnails } from './Sidebar'
+import type { SavedSignature, SignChoice } from './signatures'
+import { markPng, PlaceLayer, pngBytes, SignaturePad, SignPanel, useSignatures } from './signatures'
 import type { AnnotationActions, Stroke } from './viewer/layers'
 import { AnnotationLayer, DrawLayer, InkPreview, SearchLayer, selectedCharacters, TextDraft, TextLayer, TextToolLayer } from './viewer/layers'
 import type { PageSlot, ViewerHandle } from './viewer/Viewer'
@@ -46,14 +52,19 @@ const INK_IDLE_MS = 1200
 /** Background tabs let go of their page drawings after this long. */
 const SLEEP_AFTER_MS = 30_000
 
-type ToolId = 'select' | 'highlight' | 'text' | 'draw' | 'image'
+type ToolId = 'select' | 'highlight' | 'text' | 'draw' | 'image' | 'sign'
 const TOOLS: { id: ToolId; label: string; icon: React.ReactNode; hint: string }[] = [
   { id: 'select', label: 'Select', icon: <MousePointer2 size={15} />, hint: 'Select text and annotations' },
   { id: 'highlight', label: 'Highlight', icon: <Highlighter size={15} />, hint: 'Select text to highlight it' },
   { id: 'text', label: 'Text', icon: <Type size={15} />, hint: 'Click on a page to add text' },
   { id: 'draw', label: 'Draw', icon: <PenLine size={15} />, hint: 'Draw freehand on a page, or sign your name' },
   { id: 'image', label: 'Image', icon: <ImagePlus size={15} />, hint: 'Place an image on a page' },
+  { id: 'sign', label: 'Sign', icon: <Signature size={15} />, hint: 'Pick a signature, initials or mark, then click where it goes' },
 ]
+
+/** Default widths, in points, of a placed signature and initials. */
+const SIGNATURE_WIDTH = { signature: 150, initials: 54 }
+const MARK_SIZE = 14
 
 interface FindState {
   query: string
@@ -76,6 +87,9 @@ export default function PdfEditor({ tab, active }: EditorProps) {
   const [store, setStore] = useState<DocStore | null>(null)
   const [pages, setPages] = useState<PageInfo[]>([])
   const [meta, setMeta] = useState<DocMeta>({})
+  const [hasForm, setHasForm] = useState(false)
+  const [pad, setPad] = useState<SavedSignature['kind'] | null>(null)
+  const [showFields, setShowFields] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [password, setPassword] = useState<{ retry: boolean } | null>(null)
   const [page, setPage] = useState(0)
@@ -126,6 +140,7 @@ export default function PdfEditor({ tab, active }: EditorProps) {
         setPassword(null)
         s.setPages(result.pages)
         setMeta(result.meta)
+        setHasForm(result.hasForm)
         setStore(s)
       } catch (err) {
         if (isCancelled(err)) return
@@ -343,6 +358,8 @@ export default function PdfEditor({ tab, active }: EditorProps) {
     )
   }
 
+  // Set below, once the signing helpers exist; the actions are made once and must see the latest.
+  const signIntoRef = useRef<(key: number, annot: Annot) => Promise<void>>(async () => {})
   const actions = useMemo<AnnotationActions>(
     () => ({
       select: (sel) => setSelected(sel),
@@ -375,6 +392,9 @@ export default function PdfEditor({ tab, active }: EditorProps) {
           touch(key)
           refreshDirty()
         })
+      },
+      signField: (index, annot) => {
+        void signIntoRef.current(keyAt(index), annot)
       },
       openLink: (link) => {
         if (link.url) {
@@ -497,6 +517,182 @@ export default function PdfEditor({ tab, active }: EditorProps) {
       await createAnnot(target.key, { type: PdfAnnotationSubtype.STAMP, id: '', pageIndex: page, rect: toRect(box) } as PdfAnnotationObject, bytes, true)
     } catch (err) {
       await platform.showError(`Couldn’t add that image. ${err instanceof Error ? err.message : ''}`)
+    }
+  }
+
+  // Sign tool: what's picked in the inspector goes where you click, or fills a signature field.
+  /** A signature field clicked before there was a signature to put in it; filled once one is made. */
+  const pendingField = useRef<{ key: number; box: Box } | null>(null)
+
+  const place = async (key: number, choice: SignChoice, at: { x: number; y: number } | { fit: Box }) => {
+    const s = storeRef.current
+    const target = s?.pages.find((p) => p.key === key)
+    if (!s || !target) return
+    const index = indexOfKey(key)
+    /** w × h placed with its left edge and middle at the click, or centered in a field. */
+    const boxFor = (w: number, h: number): Box => {
+      if ('fit' in at) {
+        const f = at.fit
+        const scale = Math.min((f.w * 0.94) / w, (f.h * 0.86) / h)
+        return { x: f.x + (f.w - w * scale) / 2, y: f.y + (f.h - h * scale) / 2, w: w * scale, h: h * scale }
+      }
+      const x = Math.max(0, Math.min(at.x, target.width - w))
+      const y = Math.max(0, Math.min(at.y - h / 2, target.height - h))
+      return { x, y, w, h }
+    }
+    if (choice.type === 'date') {
+      const text = new Date().toLocaleDateString()
+      const size = 'fit' in at ? Math.max(6, Math.min(fontSize, at.fit.h * 0.6)) : fontSize
+      const w = text.length * size * 0.56 + 4
+      const h = size * 1.3
+      const box = 'fit' in at ? { x: at.fit.x + 2, y: at.fit.y + (at.fit.h - h) / 2, w, h } : boxFor(w, h)
+      await createAnnot(
+        key,
+        {
+          type: PdfAnnotationSubtype.FREETEXT,
+          id: '',
+          pageIndex: index,
+          rect: toRect(box),
+          contents: text,
+          fontFamily: PdfStandardFont.Helvetica,
+          fontSize: size,
+          fontColor: inkColor,
+          textAlign: PdfTextAlignment.Left,
+          verticalAlign: PdfVerticalAlignment.Middle,
+          opacity: 1,
+        } as PdfAnnotationObject,
+        undefined,
+        true,
+      )
+      return
+    }
+    let image: { bytes: ArrayBuffer; w: number; h: number }
+    if (choice.type === 'saved') {
+      const sig = useSignatures.getState().list.find((x) => x.id === choice.id)
+      if (!sig) return
+      const w = SIGNATURE_WIDTH[sig.kind]
+      image = { bytes: pngBytes(sig.png), w, h: (w * sig.height) / sig.width }
+    } else {
+      const mark = markPng(choice.type, inkColor)
+      image = { bytes: mark.bytes, w: MARK_SIZE, h: MARK_SIZE }
+    }
+    const box = boxFor(image.w, image.h)
+    await createAnnot(key, { type: PdfAnnotationSubtype.STAMP, id: '', pageIndex: index, rect: toRect(box) } as PdfAnnotationObject, image.bytes, true)
+  }
+
+  /** Clicked a signature field: sign it with the picked signature, or the newest one, or make one. */
+  const signInto = async (key: number, annot: Annot) => {
+    const { choice, list } = useSignatures.getState()
+    const pick: SignChoice | null =
+      choice?.type === 'saved' && list.some((x) => x.id === choice.id) ? choice : list.find((x) => x.kind === 'signature') ? { type: 'saved', id: list.find((x) => x.kind === 'signature')!.id } : null
+    if (!pick) {
+      pendingField.current = { key, box: annot.box }
+      setPad('signature')
+      return
+    }
+    await place(key, pick, { fit: annot.box })
+  }
+
+  signIntoRef.current = signInto
+
+  const placeOnPage = (key: number, x: number, y: number) => {
+    const { choice, list } = useSignatures.getState()
+    if (!choice) {
+      // Nothing picked yet: the newest signature, or make the first one.
+      const first = list.find((x) => x.kind === 'signature') ?? list[0]
+      if (!first) {
+        setPad('signature')
+        return
+      }
+      useSignatures.getState().choose({ type: 'saved', id: first.id })
+      void place(key, { type: 'saved', id: first.id }, { x, y })
+      return
+    }
+    void place(key, choice, { x, y })
+  }
+
+  const padClosed = (saved: SavedSignature | null) => {
+    setPad(null)
+    const field = pendingField.current
+    pendingField.current = null
+    if (saved && field) void place(field.key, { type: 'saved', id: saved.id }, { fit: field.box })
+    else if (saved && tool !== 'sign') setTool('sign')
+  }
+
+  // ── Forms
+
+  /** Every fillable field in page order, read when asked (a long form's pages load lazily). */
+  const formFields = async () => {
+    const s = storeRef.current
+    if (!s) return []
+    const out: { index: number; annot: Annot }[] = []
+    for (let i = 0; i < s.pages.length; i++) {
+      for (const a of await s.getAnnotations(i)) {
+        const f = a.field
+        if (f && !f.readOnly && f.kind !== 'button' && f.kind !== 'other') out.push({ index: i, annot: a })
+      }
+    }
+    return out
+  }
+
+  const [formStats, setFormStats] = useState<{ total: number; filled: number } | null>(null)
+  const isFilled = (a: Annot) => {
+    const f = a.field!
+    if (f.kind === 'checkbox' || f.kind === 'radio') return f.checked
+    if (f.kind === 'combo' || f.kind === 'list') return f.options.some((o) => o.selected)
+    if (f.kind === 'signature') return false
+    return !!f.value.trim()
+  }
+  // Recount after each change; radio groups count once.
+  const revSig = useMemo(() => pages.map((p) => storeRef.current?.rev(p.key) ?? 0).join(','), [pages])
+  useEffect(() => {
+    if (!hasForm || !store) return
+    let live = true
+    void formFields().then((fields) => {
+      if (!live) return
+      const groups = new Map<string, boolean>()
+      for (const { annot } of fields) {
+        if (annot.field!.kind === 'signature') continue
+        const name = annot.field!.name || annot.id
+        groups.set(name, (groups.get(name) ?? false) || isFilled(annot))
+      }
+      setFormStats({ total: groups.size, filled: [...groups.values()].filter(Boolean).length })
+    })
+    return () => {
+      live = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasForm, store, revSig])
+
+  /** Go to the next field after the current page that's still empty, and put the cursor in it. */
+  const nextEmptyField = async () => {
+    selectTool('select')
+    const fields = (await formFields()).filter(({ annot }) => !isFilled(annot) && annot.field!.kind !== 'signature')
+    if (!fields.length) return
+    const focused = document.activeElement
+    const after = fields.findIndex(({ index, annot }) => index > page || (index === page && !(focused instanceof HTMLElement && focused.getAttribute('data-annot') === annot.id)))
+    const next = fields[after === -1 ? 0 : after]
+    viewer.current?.reveal(next.index, next.annot.box)
+    // The page's fields appear once it's drawn.
+    for (let tries = 0; tries < 20; tries++) {
+      await new Promise((r) => setTimeout(r, 60))
+      const el = stageRef.current?.querySelector<HTMLElement>(`[data-annot="${CSS.escape(next.annot.id)}"]`)
+      if (el) {
+        el.focus({ preventScroll: true })
+        return
+      }
+    }
+  }
+
+  const saveFlattened = async () => {
+    try {
+      commitInk()
+      await queue.current
+      const bytes = new Uint8Array(await call((s) => s.engine.call('flatten', [], { priority: Priority.action })))
+      const path = await platform.pickSavePath(`${tab.title} (flattened)`, 'pdf')
+      if (path) await platform.writeFile(path, bytes)
+    } catch (err) {
+      await platform.showError(`Couldn’t make a flattened copy. ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
@@ -718,6 +914,7 @@ export default function PdfEditor({ tab, active }: EditorProps) {
             </div>
           )
         )}
+        {tool === 'sign' && <PlaceLayer unit={unit} onPlace={(x, y) => placeOnPage(p.key, x, y)} />}
         {tool === 'text' && (
           <TextToolLayer
             unit={unit}
@@ -794,6 +991,7 @@ export default function PdfEditor({ tab, active }: EditorProps) {
             ))}
           </div>
         )}
+        {tool === 'sign' && <SignPanel onNew={setPad} />}
         {(tool === 'draw' || tool === 'text') && (
           <>
             <div className="swatches">
@@ -817,6 +1015,31 @@ export default function PdfEditor({ tab, active }: EditorProps) {
           </>
         )}
       </Section>
+      {hasForm && (
+        <Section title="Form">
+          {formStats && (
+            <p className="form-progress">
+              <span className="form-progress-bar">
+                <span style={{ width: `${formStats.total ? (formStats.filled / formStats.total) * 100 : 0}%` }} />
+              </span>
+              <span className="muted">
+                {formStats.filled} of {formStats.total} filled
+              </span>
+            </p>
+          )}
+          <div className="grid-2">
+            <button type="button" className="btn" disabled={!store} onClick={() => void nextEmptyField()}>
+              <StepForward size={14} /> Next empty
+            </button>
+            <button type="button" className="btn pdf-inspector-toggle" aria-pressed={showFields} onClick={() => setShowFields(!showFields)}>
+              <SquareDashed size={14} /> Show fields
+            </button>
+          </div>
+          <button type="button" className="btn block" disabled={!store} onClick={() => void saveFlattened()} title="A copy whose fields, signatures and marks are part of the page, so they can’t be changed">
+            <Stamp size={14} /> Save flattened copy…
+          </button>
+        </Section>
+      )}
       <Section title={numPages ? `Page ${page + 1} of ${numPages}` : 'Page'}>
         <div className="grid-2">
           <button type="button" className="btn" disabled={!store} onClick={() => rotatePage(page, -1)}>
@@ -844,6 +1067,11 @@ export default function PdfEditor({ tab, active }: EditorProps) {
         <button type="button" className="btn block" disabled={!store} onClick={() => void extract([page])}>
           <FileOutput size={14} /> Extract page as PDF…
         </button>
+        {!hasForm && (
+          <button type="button" className="btn block" disabled={!store} onClick={() => void saveFlattened()} title="A copy whose annotations, signatures and marks are part of the page, so they can’t be changed">
+            <Stamp size={14} /> Save flattened copy…
+          </button>
+        )}
       </Section>
       <Section title="Document" collapsible>
         <dl className="stats">
@@ -892,7 +1120,7 @@ export default function PdfEditor({ tab, active }: EditorProps) {
 
   return (
     <Workbench tab={tab} left={left} right={right} leftFooter={numPages ? <span>{numPages === 1 ? '1 page' : `${numPages} pages`}</span> : undefined}>
-      <div ref={stageRef} className={`pdf-stage tool-${tool}`}>
+      <div ref={stageRef} className={`pdf-stage tool-${tool} ${hasForm && showFields ? 'show-fields' : ''}`}>
         {store && (
           <Viewer ref={viewer} store={store} pages={pages} awake={awake} onPageChange={onPageChange} onZoomChange={onZoomChange} renderPage={renderPage} positionKey={tab.id} />
         )}
@@ -962,6 +1190,7 @@ export default function PdfEditor({ tab, active }: EditorProps) {
         </div>
       )}
       {menu && <PopoverMenu anchor={menu} items={pageMenu(menu.index)} onClose={() => setMenu(null)} />}
+      {pad && <SignaturePad kind={pad} onClose={padClosed} />}
     </Workbench>
   )
 }

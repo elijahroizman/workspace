@@ -124,6 +124,8 @@ export interface AnnotationActions {
   update(index: number, before: PdfAnnotationObject, after: PdfAnnotationObject): void
   remove(index: number, annot: Annot): void
   setField(index: number, annot: Annot, value: { text: string } | { checked: boolean } | { option: number }): void
+  /** A signature field was clicked. */
+  signField(index: number, annot: Annot): void
   openLink(link: NonNullable<Annot['link']>): void
 }
 
@@ -214,7 +216,11 @@ export const AnnotationLayer = memo(function AnnotationLayer({
             />
           )
         }
-        if (a.field) return <FormField key={a.id} annot={a} unit={unit} onChange={(value) => actions.setField(indexRef.current, a, value)} />
+        if (a.field) {
+          // A signature field with a signature already on it lets clicks through to that picture.
+          if (a.field.kind === 'signature' && annots.some((o) => o.type === PdfAnnotationSubtype.STAMP && covers(o.box, a.box))) return null
+          return <FormField key={a.id} annot={a} unit={unit} onChange={(value) => actions.setField(indexRef.current, a, value)} onSign={() => actions.signField(indexRef.current, a)} />
+        }
         if (selectable && MOVABLE.has(a.type) && a.id !== selectedId) {
           return (
             <div
@@ -246,6 +252,13 @@ export const AnnotationLayer = memo(function AnnotationLayer({
     </div>
   )
 })
+
+/** Whether picture `a` signs field `b`: mostly inside it, and not a small mark (a check). */
+function covers(a: Box, b: Box) {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)
+  const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)
+  return w > 0 && h > 0 && w * h > 0.5 * a.w * a.h && a.w * a.h > 0.2 * b.w * b.h
+}
 
 function markupBoxes(a: Annot): Box[] {
   const rects = (a.raw as { segmentRects?: { origin: { x: number; y: number }; size: { width: number; height: number } }[] }).segmentRects
@@ -335,17 +348,35 @@ function transformAnnot(raw: PdfAnnotationObject, b: Box, t: { dx: number; dy: n
   return { ...raw, rect }
 }
 
-function FormField({ annot, unit, onChange }: { annot: Annot; unit: number; onChange(value: { text: string } | { checked: boolean } | { option: number }): void }) {
+function FormField({
+  annot,
+  unit,
+  onChange,
+  onSign,
+}: {
+  annot: Annot
+  unit: number
+  onChange(value: { text: string } | { checked: boolean } | { option: number }): void
+  onSign(): void
+}) {
   const f = annot.field!
   const [focused, setFocused] = useState(false)
-  if (f.readOnly || f.kind === 'button' || f.kind === 'signature' || f.kind === 'other') return null
+  if (f.readOnly || f.kind === 'button' || f.kind === 'other') return null
   const style = pos(annot.box)
+  if (f.kind === 'signature') {
+    return (
+      <button type="button" className="form-field sign" style={style} data-annot={annot.id} aria-label={`Sign ${f.name}`} title="Sign here" onClick={onSign}>
+        <span style={{ fontSize: Math.max(9, Math.min(13, annot.box.h * 0.4)) * unit }}>Sign here</span>
+      </button>
+    )
+  }
   if (f.kind === 'checkbox' || f.kind === 'radio') {
     return (
       <button
         type="button"
         className="form-field toggle"
         style={style}
+        data-annot={annot.id}
         aria-label={f.name}
         aria-pressed={f.checked}
         onClick={() => onChange({ checked: f.kind === 'radio' ? true : !f.checked })}
@@ -355,7 +386,7 @@ function FormField({ annot, unit, onChange }: { annot: Annot; unit: number; onCh
   if (f.kind === 'combo' || f.kind === 'list') {
     const selected = f.options.findIndex((o) => o.selected)
     return (
-      <select className="form-field choice" style={style} aria-label={f.name} value={selected} onChange={(e) => onChange({ option: Number(e.currentTarget.value) })}>
+      <select className="form-field choice" style={style} data-annot={annot.id} aria-label={f.name} value={selected} onChange={(e) => onChange({ option: Number(e.currentTarget.value) })}>
         {selected === -1 && <option value={-1} />}
         {f.options.map((o, i) => (
           <option key={i} value={i}>
@@ -368,6 +399,7 @@ function FormField({ annot, unit, onChange }: { annot: Annot; unit: number; onCh
   const fontSize = (f.fontSize > 0 ? f.fontSize : Math.min(12, annot.box.h * 0.7)) * unit
   const props = {
     className: `form-field text ${focused ? 'editing' : ''}`,
+    'data-annot': annot.id,
     style: { ...style, fontSize },
     'aria-label': f.name,
     defaultValue: f.value,

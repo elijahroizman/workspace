@@ -6,9 +6,19 @@ Every file opens as a tab across the top. Each kind of document gets its own sid
 | --- | --- | --- |
 | Word | Heading outline, page and word count | Style, font, size, bold/italic/…, color, highlight, alignment, lists, line spacing; insert table, image, link or page break; header and footer with page numbers; comments with replies (rest the pointer on commented text to read one); ⌘-click a link to open it; image size and crop; table rows, columns, shading and borders; page size (A4 for new documents) and margins |
 | PowerPoint | Slide thumbnails (drag to reorder, shift- or ⌘-click to pick several, right-click for more); speaker notes under the slide | Insert text boxes, shapes, tables, images, video links and slides; text formatting for one object or several; table styles; fill and line; position, size, rotation, flip and layer order; crop; group and ungroup; links; align; slide layout; transitions; Present |
-| PDF | Page thumbnails (drag to reorder) or the PDF's outline | Highlight, add text, draw or sign, place images; rotate, move, duplicate, delete, insert and extract pages; document info |
+| PDF | Page thumbnails (drag to reorder) or the PDF's outline | Highlight, add text, draw, place images; sign with saved signatures and initials, add the date or a check mark; fill forms (how many fields are filled, jump to the next empty one); save a flattened copy; rotate, move, duplicate, delete, insert and extract pages; document info |
 | Markdown | Heading outline | Hidden by default. Read / Split / Write switch at the bottom (⌘E). Front matter, such as an Agent Skill's name and description, shows as a table |
 | Text | None | None |
+
+## Signing PDFs and filling in forms
+
+Pick **Sign** in a PDF's inspector. The first time, make a signature: draw it with the trackpad or mouse, type your name in a handwriting style, or use a picture of it (Workspace can make the white paper see-through). Make initials the same way. They're kept on this computer only, and you can have a few of each.
+
+Pick one and click on the page to place it; it's selected afterwards, so you can drag it into place or resize it from the corner. **Date** adds today's date as text, and the check mark and cross are for boxes that aren't real form fields. A PDF's own signature fields show **Sign here**: click one and your signature fills it.
+
+PDFs with a form get a **Form** section: how many fields are filled, **Next empty** to jump to the next field you haven't filled in, and **Show fields** to tint every field. **Save flattened copy…** writes a copy where the form's answers, your signature and any marks are part of the page, so whoever gets it can't change them. The PDF you're editing stays as it was.
+
+Placing a signature puts a picture of it on the page. It isn't a cryptographic (certificate) signature.
 
 ## Tabs
 

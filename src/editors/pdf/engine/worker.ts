@@ -30,6 +30,9 @@ interface NativeInternals {
 }
 
 const DOC_ID = 'doc'
+const FLAT_ID = 'flat'
+/** What the open document was unlocked with, to open copies of it. */
+let openPassword = ''
 let mod: Module
 let engine: PdfiumNative
 let internals: NativeInternals
@@ -516,6 +519,7 @@ async function open(bytes: ArrayBuffer, password: string): Promise<OpenResult> {
   }
   const opened = await task(engine.openDocumentBuffer({ id: DOC_ID, content: bytes }, { password }))
   doc = opened
+  openPassword = password
   setPages(opened.pages)
   hasForms = mod.FPDF_GetFormType(ctx().docPtr) !== 0
   const pages = opened.pages.map(info)
@@ -534,10 +538,36 @@ async function open(bytes: ArrayBuffer, password: string): Promise<OpenResult> {
     meta.version = `${Math.floor(v / 10)}.${v % 10}`
   }
   free(version)
-  return { pages, meta, encrypted: opened.isEncrypted }
+  return { pages, meta, encrypted: opened.isEncrypted, hasForm: hasForms }
 }
 
 const save = () => task(engine.saveAsCopy(doc!))
+
+/**
+ * Save, open the result as a second document, bake every page's annotations and form fields
+ * into its content (as printed: hidden ones go), and save that. The open document is untouched.
+ */
+async function flatten(): Promise<ArrayBuffer> {
+  const bytes = await save()
+  const copy = await task(engine.openDocumentBuffer({ id: FLAT_ID, content: bytes }, { password: openPassword }))
+  try {
+    const c = internals.cache.getContext(FLAT_ID)
+    if (!c) throw new Error('Couldn’t make the copy')
+    for (let i = 0; i < copy.pageCount; i++) {
+      const pc = c.acquirePage(i)
+      try {
+        // FLAT_PRINT. Returns 0 when a page had nothing to flatten, which is fine.
+        if (mod.FPDFPage_Flatten(pc.pagePtr, 1) === 2) throw new Error(`Couldn’t flatten page ${i + 1}`)
+      } finally {
+        pc.release()
+      }
+    }
+    c.pageCache.forceReleaseAll()
+    return await task(engine.saveAsCopy(copy))
+  } finally {
+    await task(engine.closeDocument(copy)).catch(() => {})
+  }
+}
 
 // ── Message loop
 
@@ -563,6 +593,7 @@ const api: { [M in Method]: (...args: never[]) => unknown } = {
   restorePages,
   extract,
   save,
+  flatten,
   memory: () => heap().HEAPU8.length,
 } satisfies { [M in Method]: (...args: Parameters<Api[M]>) => ReturnType<Api[M]> | Promise<ReturnType<Api[M]>> }
 

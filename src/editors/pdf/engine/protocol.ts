@@ -31,6 +31,8 @@ export interface OpenResult {
   pages: PageInfo[]
   meta: DocMeta
   encrypted: boolean
+  /** The PDF has fillable form fields (AcroForm or XFA). */
+  hasForm: boolean
 }
 
 /** A strip of a drawing: an ImageBitmap where the worker can make one, otherwise raw RGBA. */
@@ -122,6 +124,8 @@ export interface Api {
   restorePages(token: number): PageInfo[]
   extract(keys: number[]): ArrayBuffer
   save(): ArrayBuffer
+  /** A copy with form fields and annotations made part of the page, so they can't be changed. */
+  flatten(): ArrayBuffer
   /** Bytes of WebAssembly memory in use, for diagnostics. */
   memory(): number
 }
