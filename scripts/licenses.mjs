@@ -15,6 +15,7 @@ const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const PLUGIN_PACKAGES = {
   Excalidraw: ['@excalidraw/excalidraw', 'react', 'react-dom'],
   EPUB: ['jszip', 'dompurify'],
+  Images: ['libheif-js'],
   Mermaid: ['mermaid', '@codemirror/commands', '@codemirror/language', '@codemirror/search', '@codemirror/view'],
   LaTeX: ['@codemirror/commands', '@codemirror/legacy-modes', '@codemirror/language', '@codemirror/search', '@codemirror/view'],
 }

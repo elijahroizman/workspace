@@ -7,7 +7,7 @@
 // A plugin bigger than about 1 MB should be a download.
 
 import type { ComponentType } from 'react'
-import { BookOpen, FileCode2, FileText, FileType2, NotepadText, Presentation, Sigma, Workflow } from 'lucide-react'
+import { BookOpen, FileCode2, FileText, FileType2, Image as ImageIcon, NotepadText, Presentation, Sigma, Workflow } from 'lucide-react'
 import excalidraw from '../../plugins/excalidraw/plugin.json'
 import latex from '../../plugins/latex/plugin.json'
 import mermaid from '../../plugins/mermaid/plugin.json'
@@ -197,6 +197,27 @@ export const PLUGINS: PluginInfo[] = [
         icon: BookOpen,
         untitled: 'Untitled Book',
         panels: { left: true, right: false },
+      },
+    ],
+  },
+  {
+    id: 'images',
+    name: 'Images',
+    description: 'A simple viewer for PNG, JPEG and HEIC pictures, with highlighting, drawing, cropping and turning.',
+    homepage: 'https://github.com/elijahroizman/workspace/tree/main/plugins/images',
+    license: 'MIT, LGPL-3.0',
+    source: { type: 'bundled' },
+    kinds: [
+      {
+        id: 'image',
+        prose: 'image',
+        label: 'Image',
+        short: 'Image',
+        extensions: ['png', 'jpg', 'jpeg', 'heic', 'heif'],
+        color: 'var(--kind-image)',
+        icon: ImageIcon,
+        untitled: 'Untitled Image',
+        panels: { left: false, right: false },
       },
     ],
   },

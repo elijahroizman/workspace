@@ -19,6 +19,7 @@
   --kind-epub: #2fb39a;
   --kind-mermaid: #ff3670;
   --kind-latex: #c9902c;
+  --kind-image: #34b366;
 
   --accent: #4f8cff;
   --accent-fg: #ffffff;
@@ -459,11 +460,6 @@ button {
   color: var(--fg-faint);
   font-size: 12px;
   white-space: nowrap;
-}
-
-.autosave-chip:hover {
-  background: var(--hover);
-  color: var(--fg-muted);
 }
 
 .autosave-chip.error {
@@ -2239,7 +2235,25 @@ button {
   border-top: 1px solid var(--line-soft);
 }
 
+.plugin-group h4 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.plugin-count {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.plugin-group-hint {
+  display: block;
+  margin-bottom: 4px;
+}
+
 .plugin-group h4 + .plugin-row,
+.plugin-group-hint + .plugin-row,
 .setup-body > .plugin-row:first-child {
   border-top: 0;
 }
@@ -2248,6 +2262,20 @@ button {
   display: flex;
   gap: 4px;
   padding-top: 2px;
+}
+
+.font-badge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-top: 2px;
+  border-radius: 7px;
+  background: var(--press);
+  color: var(--fg-muted);
+  font-size: 14px;
+  line-height: 1;
 }
 
 .plugin-text {
