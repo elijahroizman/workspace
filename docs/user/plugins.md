@@ -6,7 +6,7 @@ Word, PowerPoint, PDF, Markdown and text are built in. The rest are optional and
 | --- | --- | --- | --- |
 | [Excalidraw](https://excalidraw.com) | `.excalidraw` drawings | about 16 MB, mostly fonts | Downloaded from this repository's releases when you turn it on |
 | EPUB | `.epub` books | about 200 KB | Comes with the app; turns on instantly |
-| Images | `.png`, `.jpg`, `.jpeg`, `.heic` pictures | about 20 KB, and 2 MB for HEIC | Comes with the app |
+| Images | `.png`, `.jpg`, `.jpeg`, `.heic`, `.heif` pictures | about 20 KB, and 2 MB for HEIC | Comes with the app |
 | [Mermaid](https://mermaid.js.org) | `.mmd`, `.mermaid` diagrams | about 1.2 MB | Downloaded |
 | LaTeX | `.tex` documents | about 120 KB (TeX itself is separate) | Downloaded |
 

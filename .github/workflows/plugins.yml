@@ -70,20 +70,29 @@ jobs:
           fi
           echo "Publishing:${list:- nothing}"
           echo "list=$list" >> "$GITHUB_OUTPUT"
-      - name: Build, sign and publish
+      # Three steps, so the build (and the packages it runs) never sees the signing key or the token.
+      - name: Build
+        if: steps.plugins.outputs.list != ''
+        env:
+          LIST: ${{ steps.plugins.outputs.list }}
+        run: for id in $LIST; do npx vite build --config "plugins/$id/vite.config.ts"; done
+      - name: Zip and sign
+        if: steps.plugins.outputs.list != ''
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          LIST: ${{ steps.plugins.outputs.list }}
+        run: for id in $LIST; do node scripts/pack-plugin.mjs "$id"; done
+      - name: Publish
         if: steps.plugins.outputs.list != ''
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           LIST: ${{ steps.plugins.outputs.list }}
         run: |
           set -euo pipefail
           for id in $LIST; do
             version="$(node -p "require('./plugins/$id/plugin.json').version")"
-            npx vite build --config "plugins/$id/vite.config.ts"
-            node scripts/pack-plugin.mjs "$id"
             # On a tag the release takes that tag; on main it tags this commit.
             gh release create "plugin-$id-$version" "release/$id-$version.zip" "release/$id-$version.zip.sig" \
               --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \

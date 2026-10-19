@@ -27,6 +27,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # A run started by hand from another branch still syncs main, so the pull request holds only the sync.
+          ref: ${{ github.event.repository.default_branch }}
           # npm install runs packages' scripts; keep the token away from them. Pushing passes it explicitly.
           persist-credentials: false
       - uses: actions/setup-node@v4

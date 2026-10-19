@@ -58,19 +58,26 @@ function cancel(tabId: string) {
   timers.delete(tabId)
 }
 
+/** If the editor is mid-entry, try the timed save again after the delay instead. Returns whether it waits. */
+function retryWhenIdle(tabId: string): boolean {
+  if (!getEditor(tabId)?.busy?.()) return false
+  const pending = timers.get(tabId)
+  if (pending) window.clearTimeout(pending.timer)
+  timers.set(tabId, { since: pending?.since ?? Date.now(), timer: window.setTimeout(() => void run(tabId, true), useSettings.getState().autosave.delay * 1000) })
+  return true
+}
+
 /**
  * Save one tab if it has changes autosave covers. Resolves true when it has none left. `timed`
  * (the timer, not quitting or closing): if the editor is mid-entry, wait and try again.
  */
 async function run(tabId: string, timed = false): Promise<boolean> {
-  if (timed && getEditor(tabId)?.busy?.()) {
-    const since = timers.get(tabId)?.since ?? Date.now()
-    timers.set(tabId, { since, timer: window.setTimeout(() => void run(tabId, true), useSettings.getState().autosave.delay * 1000) })
-    return false
-  }
+  if (timed && retryWhenIdle(tabId)) return false
   cancel(tabId)
   // One save per tab at a time; a change made meanwhile is picked up after it.
   while (running.has(tabId)) await running.get(tabId)
+  // The user may have started an entry while that save ran.
+  if (timed && retryWhenIdle(tabId)) return false
   const tab = useWorkspace.getState().tabs.find((t) => t.id === tabId)
   if (!tab) return true
   if (!tab.dirty) return true
