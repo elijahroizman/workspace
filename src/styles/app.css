@@ -2804,3 +2804,116 @@ button {
   gap: 12px;
   flex-wrap: wrap;
 }
+
+/* Focus mode (⌥⌘F): the document and nothing else. Typewriter scrolling (⌥⌘T). */
+.app[data-focus] .titlebar {
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.app[data-focus] .titlebar:hover,
+.app[data-focus] .titlebar:focus-within {
+  opacity: 1;
+}
+
+.app[data-focus] .pane,
+.app[data-focus] .canvas-toggles {
+  display: none;
+}
+
+.app[data-focus] .canvas-bar {
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.app[data-focus] .canvas-bar:hover,
+.app[data-focus] .canvas-bar:focus-within {
+  opacity: 1;
+}
+
+.app[data-focus-dim] .view[data-active='true'] .docx-page-content [data-paragraph-id],
+.app[data-focus-dim] .view[data-active='true'] .cm-line {
+  transition: opacity 0.2s;
+}
+
+.app[data-focus-dim] .view[data-active='true'] .cm-focused .cm-line:not(.cm-activeLine) {
+  opacity: 0.3;
+}
+
+/* Room above the first line and below the last, so either can sit in the middle. */
+.app[data-typewriter] .txt-editor .cm-scroller,
+.app[data-typewriter] .md-source .cm-scroller {
+  padding-top: 42vh;
+  padding-bottom: 52vh;
+}
+
+.app[data-typewriter] .docx-content-mount {
+  padding-top: 40vh;
+  padding-bottom: 50vh;
+}
+
+.focus-hud {
+  position: fixed;
+  top: calc(var(--titlebar-h) + 10px);
+  left: 50%;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--raised);
+  box-shadow: var(--shadow-pop);
+  opacity: 0;
+  transform: translate(-50%, -6px);
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
+  pointer-events: none;
+}
+
+.focus-hud.awake,
+.focus-hud:hover,
+.focus-hud:focus-within {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+
+.focus-hud-label {
+  padding: 0 8px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.focus-hud-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 12px;
+}
+
+.focus-hud-btn:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.focus-hud-btn.on {
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+
+.focus-hud .sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--line);
+}

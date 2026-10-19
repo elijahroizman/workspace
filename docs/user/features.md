@@ -14,6 +14,12 @@ Every file opens as a tab across the top. Each kind of document gets its own sid
 
 Open as many files as you like and switch with ⌘1–⌘9 or ⇧⌘[ / ⇧⌘]. Drag tabs to reorder them. Right-click a tab to duplicate it (⇧⌘D), for example to keep a textbook's questions and answers side by side. Open tabs come back the next time you launch. A restored tab loads its document the first time you look at it.
 
+## Focus mode and typewriter scrolling
+
+**View › Focus Mode** (⌥⌘F) hides the tabs, sidebars, inspector and the bar at the bottom, leaving only the document. Move the pointer to the top of the window to see the tabs and focus mode's controls; leave it with ⌥⌘F or **Exit**. In Word documents, Markdown and text files, every paragraph but the one you're writing fades (turn that off with **Dim**).
+
+**Typewriter scrolling** (⌥⌘T) keeps the line you're typing at the same height on screen, a little above the middle, so your eyes stay put while the page moves. It works with or without focus mode, and Workspace remembers whether it's on.
+
 ## New files
 
 ⌘N asks which kind of file to make, from the plugins you have on. The Home tab has a button for each too. New Word documents are A4.

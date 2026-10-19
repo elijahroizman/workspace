@@ -128,6 +128,10 @@ fn build_with<R: Runtime>(app: &AppHandle<R>, keys: &Shortcuts) -> tauri::Result
         .item(&item(app, keys, "zoom-out", "Zoom Out", Some("CmdOrCtrl+-"))?)
         .item(&item(app, keys, "zoom-reset", "Actual Size", Some("CmdOrCtrl+0"))?)
         .separator()
+        .item(&item(app, keys, "focus-mode", "Focus Mode", Some("CmdOrCtrl+Alt+F"))?)
+        .item(&item(app, keys, "typewriter", "Typewriter Scrolling", Some("CmdOrCtrl+Alt+T"))?)
+        .item(&item(app, keys, "focus-dim", "Dim Other Paragraphs", None)?)
+        .separator()
         .item(&item(app, keys, "toggle-theme", "Toggle Light/Dark", Some("CmdOrCtrl+Shift+L"))?)
         .separator();
     #[cfg(target_os = "macos")]
