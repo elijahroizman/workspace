@@ -27,7 +27,7 @@ ln -s ../dev-samples dist/dev-samples
 npx vite preview --port 1420
 ```
 
-Playwright can drive that build. To test code that only runs in the app (saving, autosave), fake `window.__TAURI_INTERNALS__` in `addInitScript`. Test builds also accept `window.__texFake` in place of the system's TeX.
+Playwright can drive that build. To test code that only runs in the app (saving, autosave), fake `window.__TAURI_INTERNALS__` in `addInitScript`. Test builds also accept `window.__texFake` in place of the system's TeX, and `window.__fsFake` (`{ list(path), isDir(path) }`) as the file system behind Open Folder.
 
 ## Native code
 

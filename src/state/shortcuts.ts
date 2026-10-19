@@ -30,6 +30,8 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'new-tab', label: 'New tab', group: 'Files and tabs', scope: 'app', keys: '⌘T' },
   { id: 'new', label: 'New file…', group: 'Files and tabs', scope: 'app', keys: '⌘N' },
   { id: 'open', label: 'Open…', group: 'Files and tabs', scope: 'app', keys: '⌘O' },
+  { id: 'open-folder', label: 'Open folder…', group: 'Files and tabs', scope: 'app', keys: '⇧⌘O' },
+  { id: 'close-folder', label: 'Close folder', group: 'Files and tabs', scope: 'app', keys: '' },
   { id: 'save', label: 'Save', group: 'Files and tabs', scope: 'app', keys: '⌘S' },
   { id: 'save-as', label: 'Save as…', group: 'Files and tabs', scope: 'app', keys: '⇧⌘S' },
   { id: 'print', label: 'Print…', group: 'Files and tabs', scope: 'app', keys: '⌘P' },
@@ -46,6 +48,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   // ── View
   { id: 'command-palette', label: 'Command palette', group: 'View', scope: 'app', keys: '⇧⌘P' },
   { id: 'find', label: 'Find', group: 'View', scope: 'app', keys: '⌘F' },
+  { id: 'toggle-explorer', label: 'Show or hide the folder', group: 'View', scope: 'app', keys: '⇧⌘E' },
   { id: 'toggle-left', label: 'Show or hide sidebar', group: 'View', scope: 'app', keys: '⌘\\' },
   { id: 'toggle-right', label: 'Show or hide inspector', group: 'View', scope: 'app', keys: '⌥⌘\\' },
   { id: 'zoom-in', label: 'Zoom in', group: 'View', scope: 'app', keys: '⌘=' },

@@ -9,6 +9,7 @@ On Windows and Linux, use Ctrl for ⌘, Alt for ⌥ and Shift for ⇧. Ctrl+Tab 
 | Command palette: search commands, open tabs and recent files | ⇧⌘P |
 | New file (pick the kind) | ⌘N |
 | Open… | ⌘O |
+| Open folder… / show or hide the folder | ⇧⌘O / ⇧⌘E |
 | Save / Save As… | ⌘S / ⇧⌘S |
 | Close tab / Reopen closed tab | ⌘W / ⇧⌘T |
 | Home tab | ⌘T or ⌘1 |

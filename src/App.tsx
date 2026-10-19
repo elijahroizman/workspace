@@ -2,6 +2,7 @@ import { Component, lazy, memo, Suspense, useEffect, useRef, useState } from 're
 import type { ComponentType, ErrorInfo, ReactNode } from 'react'
 import { CommandPalette, usePalette } from './components/CommandPalette'
 import { FocusMode } from './components/FocusMode'
+import { Explorer } from './components/Explorer'
 import { Home } from './components/Home'
 import { showVersionHistory, useVersionHistory, VersionHistory } from './components/VersionHistory'
 import { NewFilePicker, useNewFile } from './components/NewFile'
@@ -15,6 +16,7 @@ import { flushAutosave, startAutosave } from './lib/autosave'
 import { installUpdate, openUpdatePanel, startUpdateChecks } from './lib/updater'
 import { startPlugins } from './state/plugins'
 import { dimming, useFocus } from './state/focus'
+import { chooseFolder, useFolder } from './state/folder'
 import { useExtraFonts } from './state/fonts'
 import { useSettings } from './state/settings'
 import { useSetup } from './state/setup'
@@ -101,6 +103,16 @@ export async function runCommand(id: string) {
       break
     case 'open':
       await ws.openDialog()
+      break
+    case 'open-folder':
+      await chooseFolder()
+      break
+    case 'toggle-explorer':
+      if (useFolder.getState().root) useFolder.getState().toggleVisible()
+      else await runCommand('open-folder')
+      break
+    case 'close-folder':
+      useFolder.getState().close()
       break
     case 'save':
       await ws.save()
@@ -276,6 +288,7 @@ export default function App() {
   const focus = useFocus((s) => s.on)
   const dim = useFocus(dimming)
   const typewriter = useFocus((s) => s.typewriter)
+  const explorer = useFolder((s) => !!s.root && s.visible)
   const started = useRef(false)
 
   // Startup: restore last session, then open anything Finder handed us.
@@ -404,13 +417,16 @@ export default function App() {
   return (
     <div className="app" data-focus={focus || undefined} data-focus-dim={dim || undefined} data-typewriter={typewriter || undefined}>
       <TitleBar />
-      <div className="views">
-        <div className="view" data-active={activeId === HOME_TAB_ID} inert={activeId !== HOME_TAB_ID}>
-          <Home />
+      <div className="app-body">
+        {explorer && <Explorer />}
+        <div className="views">
+          <div className="view" data-active={activeId === HOME_TAB_ID} inert={activeId !== HOME_TAB_ID}>
+            <Home />
+          </div>
+          {tabs.map((tab) => (
+            <EditorSlot key={tab.id} tab={tab} active={tab.id === activeId} />
+          ))}
         </div>
-        {tabs.map((tab) => (
-          <EditorSlot key={tab.id} tab={tab} active={tab.id === activeId} />
-        ))}
       </div>
       {settingsOpen && (
         <Suspense fallback={null}>

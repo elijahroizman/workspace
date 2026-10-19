@@ -201,8 +201,59 @@ export async function fetchBytes(url: string): Promise<Uint8Array> {
   return data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data)
 }
 
+export interface DirEntry {
+  name: string
+  path: string
+  isDir: boolean
+}
+
+/** Test builds can fake a file system for the folder sidebar (see docs/internals/development.md). */
+type FsFake = { list(path: string): DirEntry[]; isDir(path: string): boolean }
+const fsFake = () => (window as unknown as { __fsFake?: FsFake }).__fsFake
+
+/** A folder's contents: subfolders first, then files, hidden ones left out. */
+export async function listDir(path: string): Promise<DirEntry[]> {
+  if (!isTauri) return fsFake()?.list(path) ?? []
+  const { invoke } = await core()
+  return invoke<DirEntry[]>('list_dir', { path })
+}
+
+/** Files under a folder with these extensions, up to `limit` of them. */
+export async function walkDir(root: string, extensions: string[], limit = 5000): Promise<string[]> {
+  if (!isTauri) {
+    const fake = fsFake()
+    if (!fake) return []
+    const out: string[] = []
+    const visit = (dir: string) => {
+      for (const e of fake.list(dir)) {
+        if (e.isDir) visit(e.path)
+        else if (extensions.includes(e.name.split('.').pop()!.toLowerCase())) out.push(e.path)
+      }
+    }
+    visit(root)
+    return out.slice(0, limit)
+  }
+  const { invoke } = await core()
+  return invoke<string[]>('walk_dir', { root, extensions, limit })
+}
+
+export async function isDirectory(path: string): Promise<boolean> {
+  if (!isTauri) return fsFake()?.isDir(path) ?? false
+  const { invoke } = await core()
+  const info = await invoke<{ exists: boolean; isDir: boolean }>('path_info', { path })
+  return info.exists && info.isDir
+}
+
+/** Ask for a folder. Null when cancelled. */
+export async function pickFolder(): Promise<string | null> {
+  if (!isTauri) return fsFake() ? '/fake' : null
+  const { open } = await dialog()
+  const picked = await open({ directory: true, multiple: false })
+  return typeof picked === 'string' ? picked : null
+}
+
 export async function pathExists(path: string): Promise<boolean> {
-  if (!isTauri) return browserFiles.has(path)
+  if (!isTauri) return browserFiles.has(path) || !!fsFake()?.isDir(path)
   const { invoke } = await core()
   const info = await invoke<{ exists: boolean }>('path_info', { path })
   return info.exists

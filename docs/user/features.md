@@ -34,6 +34,12 @@ Open as many files as you like and switch with ⌘1–⌘9 or ⇧⌘[ / ⇧⌘].
 
 **Typewriter scrolling** (⌥⌘T) keeps the line you're typing at the same height on screen, a little above the middle, so your eyes stay put while the page moves. It works with or without focus mode, and Workspace remembers whether it's on.
 
+## Folders
+
+**File › Open Folder…** (⇧⌘O) opens a folder in a sidebar to the left of everything, like a project in a code editor. It lists the folder's documents, with subfolders you can expand; click a file to open it in a tab. Files Workspace can't open are hidden unless you pick **Show All Files** from the sidebar's **⋯** menu. Hidden files and folders such as `.git` and `node_modules` are always left out.
+
+Type in **Find a file** to search every document under the folder by name. ⇧⌘E hides and shows the sidebar. The folder (and which subfolders were expanded) comes back the next time you open Workspace, and Home lists recent folders. Dropping a folder on the window opens it too. The list refreshes when you come back to Workspace from another app, or with the refresh button.
+
 ## New files
 
 ⌘N asks which kind of file to make, from the plugins you have on. The Home tab has a button for each too. New Word documents are A4.

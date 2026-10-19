@@ -3323,3 +3323,234 @@ button {
   font-family: var(--font-ui);
   font-size: 11px;
 }
+
+/* Open folder: a file tree beside the tabs (⇧⌘O, ⇧⌘E) */
+.app-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.app-body > .views {
+  flex: 1;
+  min-width: 0;
+}
+
+.explorer {
+  flex: none;
+  width: var(--explorer-w, 240px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--chrome);
+}
+
+.explorer-header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 38px;
+  padding: 0 6px 0 14px;
+}
+
+.explorer-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--fg-muted);
+}
+
+.explorer-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 8px 6px;
+  padding: 0 8px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--field);
+}
+
+.explorer-filter input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.explorer-clear {
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--fg-muted);
+}
+
+.explorer-tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 6px 12px;
+}
+
+.explorer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 26px;
+  padding-right: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.explorer-row:hover {
+  background: var(--hover);
+}
+
+.explorer-row.active {
+  background: var(--accent-soft);
+}
+
+.explorer-row.dir svg {
+  flex: none;
+  color: var(--fg-muted);
+}
+
+.explorer-row.other {
+  color: var(--fg-faint);
+  cursor: default;
+}
+
+.explorer-chevron {
+  transition: transform 0.12s;
+}
+
+.explorer-chevron.open {
+  transform: rotate(90deg);
+}
+
+.explorer-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+}
+
+.explorer-row.other .explorer-icon {
+  color: var(--fg-faint);
+}
+
+.explorer-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.explorer-row.open .explorer-name {
+  font-weight: 500;
+}
+
+.explorer-detail {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.explorer-empty {
+  margin: 8px;
+  font-size: 12px;
+}
+
+.home-folders {
+  margin-bottom: 32px;
+}
+
+.home-folders h2 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.home-folder-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.home-folder {
+  position: relative;
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+}
+
+.home-folder.on {
+  border-color: var(--accent);
+}
+
+.home-folder > button:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 340px;
+  padding: 7px 26px 7px 10px;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+}
+
+.home-folder-name {
+  font-weight: 500;
+}
+
+.home-folder-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-folder-forget {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: none;
+  place-items: center;
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--fg-muted);
+  transform: translateY(-50%);
+}
+
+.home-folder:hover .home-folder-forget {
+  display: grid;
+}

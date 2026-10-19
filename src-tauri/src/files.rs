@@ -107,6 +107,7 @@ fn agent(global: Option<Duration>, body: Option<Duration>) -> ureq::Agent {
 #[serde(rename_all = "camelCase")]
 pub struct PathInfo {
     exists: bool,
+    is_dir: bool,
     size: u64,
     modified_ms: u64,
 }
@@ -116,6 +117,7 @@ pub fn path_info(path: String) -> PathInfo {
     match fs::metadata(&path) {
         Ok(meta) => PathInfo {
             exists: true,
+            is_dir: meta.is_dir(),
             size: meta.len(),
             modified_ms: meta
                 .modified()
@@ -124,7 +126,117 @@ pub fn path_info(path: String) -> PathInfo {
                 .map(|d| d.as_millis() as u64)
                 .unwrap_or(0),
         },
-        Err(_) => PathInfo { exists: false, size: 0, modified_ms: 0 },
+        Err(_) => PathInfo { exists: false, is_dir: false, size: 0, modified_ms: 0 },
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirEntry {
+    name: String,
+    path: String,
+    is_dir: bool,
+}
+
+/// Folders a document app has no business listing: hidden ones, version control, dependencies.
+fn skipped(name: &str) -> bool {
+    name.starts_with('.') || matches!(name, "node_modules" | "__pycache__" | "target" | "$RECYCLE.BIN" | "System Volume Information")
+}
+
+/// A folder's contents for the folder sidebar: subfolders first, then files, each by name
+/// (natural order, ignoring case). Hidden files are left out.
+#[tauri::command]
+pub fn list_dir(path: String) -> Result<Vec<DirEntry>, String> {
+    let mut entries: Vec<DirEntry> = fs::read_dir(&path)
+        .map_err(|e| format!("Couldn't open the folder “{}”: {e}", display_name(&path)))?
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if skipped(&name) {
+                return None;
+            }
+            // Follows symlinks, so a linked folder opens like a folder.
+            let is_dir = fs::metadata(entry.path()).map(|m| m.is_dir()).unwrap_or(false);
+            Some(DirEntry { path: entry.path().to_string_lossy().into_owned(), name, is_dir })
+        })
+        .collect();
+    entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| natural_cmp(&a.name, &b.name)));
+    Ok(entries)
+}
+
+/// Every file under `root` with one of `extensions`, for searching a folder by name. Stops after
+/// `limit` files or 20 folders deep, so pointing it at a home folder can't run away.
+#[tauri::command]
+pub async fn walk_dir(root: String, extensions: Vec<String>, limit: usize) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let extensions: Vec<String> = extensions.iter().map(|e| e.to_lowercase()).collect();
+        let mut out = Vec::new();
+        let mut stack = vec![(PathBuf::from(&root), 0usize)];
+        while let Some((dir, depth)) = stack.pop() {
+            let Ok(read) = fs::read_dir(&dir) else { continue };
+            let mut subdirs = Vec::new();
+            for entry in read.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if skipped(&name) {
+                    continue;
+                }
+                let Ok(kind) = entry.file_type() else { continue };
+                if kind.is_dir() {
+                    if depth < 20 {
+                        subdirs.push(entry.path());
+                    }
+                } else if let Some(ext) = Path::new(&name).extension() {
+                    if extensions.contains(&ext.to_string_lossy().to_lowercase()) {
+                        out.push(entry.path().to_string_lossy().into_owned());
+                        if out.len() >= limit {
+                            return out;
+                        }
+                    }
+                }
+            }
+            subdirs.sort();
+            stack.extend(subdirs.into_iter().rev().map(|d| (d, depth + 1)));
+        }
+        out
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// "file2" before "file10", ignoring case.
+fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let (mut a, mut b) = (a.chars().peekable(), b.chars().peekable());
+    loop {
+        match (a.peek().copied(), b.peek().copied()) {
+            (None, None) => return std::cmp::Ordering::Equal,
+            (None, _) => return std::cmp::Ordering::Less,
+            (_, None) => return std::cmp::Ordering::Greater,
+            (Some(x), Some(y)) if x.is_ascii_digit() && y.is_ascii_digit() => {
+                let mut na = String::new();
+                while let Some(c) = a.peek().copied().filter(|c| c.is_ascii_digit()) {
+                    na.push(c);
+                    a.next();
+                }
+                let mut nb = String::new();
+                while let Some(c) = b.peek().copied().filter(|c| c.is_ascii_digit()) {
+                    nb.push(c);
+                    b.next();
+                }
+                let (ta, tb) = (na.trim_start_matches('0'), nb.trim_start_matches('0'));
+                let ord = ta.len().cmp(&tb.len()).then_with(|| ta.cmp(tb));
+                if ord != std::cmp::Ordering::Equal {
+                    return ord;
+                }
+            }
+            (Some(x), Some(y)) => {
+                let ord = x.to_lowercase().cmp(y.to_lowercase());
+                if ord != std::cmp::Ordering::Equal {
+                    return ord;
+                }
+                a.next();
+                b.next();
+            }
+        }
     }
 }
 
@@ -178,6 +290,13 @@ mod tests {
     fn decodes_unicode_paths() {
         assert_eq!(percent_decode("%2FUsers%2Fe%2FR%C3%A9sum%C3%A9.docx").unwrap(), "/Users/e/Résumé.docx");
         assert_eq!(percent_decode("plain").unwrap(), "plain");
+    }
+
+    #[test]
+    fn sorts_names_naturally() {
+        let mut names = vec!["file10.md", "File2.md", "file1.md", "notes.md"];
+        names.sort_by(|a, b| natural_cmp(a, b));
+        assert_eq!(names, ["file1.md", "File2.md", "file10.md", "notes.md"]);
     }
 
     #[test]

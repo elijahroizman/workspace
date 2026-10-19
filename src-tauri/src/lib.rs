@@ -138,6 +138,8 @@ pub fn run() {
             files::read_file,
             files::write_file,
             files::path_info,
+            files::list_dir,
+            files::walk_dir,
             files::fetch_bytes,
             history::history_list,
             history::history_read,
