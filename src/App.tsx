@@ -2,7 +2,7 @@ import { Component, lazy, memo, Suspense, useEffect, useRef, useState } from 're
 import type { ComponentType, ErrorInfo, ReactNode } from 'react'
 import { CommandPalette, usePalette } from './components/CommandPalette'
 import { FocusMode } from './components/FocusMode'
-import { Explorer } from './components/Explorer'
+import { Explorer, startFolderPalette } from './components/Explorer'
 import { Home } from './components/Home'
 import { showVersionHistory, useVersionHistory, VersionHistory } from './components/VersionHistory'
 import { NewFilePicker, useNewFile } from './components/NewFile'
@@ -320,6 +320,13 @@ export function commandAvailable(command: string) {
       return !!tab
     case 'install-update':
       return false
+    case 'version-history':
+    case 'split-view':
+      return !!tab
+    case 'close-folder':
+      return !!useFolder.getState().root
+    case 'install-cli':
+      return platform.isTauri && platform.isMac
   }
   return true
 }
@@ -389,9 +396,11 @@ export default function App() {
     void syncMenu()
     const stopUpdateChecks = startUpdateChecks()
     const stopAutosave = startAutosave()
+    const stopFolderPalette = startFolderPalette()
     return () => {
       stopUpdateChecks()
       stopAutosave()
+      stopFolderPalette()
       unlisteners.forEach((u) => void u.then((fn) => fn()))
     }
   }, [])

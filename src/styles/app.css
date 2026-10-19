@@ -3620,3 +3620,8 @@ button {
   background: color-mix(in srgb, var(--tab-active) 55%, transparent);
   border-color: var(--line-soft);
 }
+
+/* Focus mode hides the open folder's sidebar too. */
+.app[data-focus] .explorer {
+  display: none;
+}

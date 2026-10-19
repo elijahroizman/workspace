@@ -4,6 +4,7 @@ import { KINDS, kindFromPath } from '../lib/kinds'
 import type { DirEntry } from '../lib/platform'
 import { basename, dirname, isTauri, listDir, revealInFinder, revealLabel, walkDir } from '../lib/platform'
 import { folderName, useFolder } from '../state/folder'
+import { addPaletteSource } from './CommandPalette'
 import { useWorkspace } from '../state/workspace'
 import { KindIcon } from './Workbench'
 import type { MenuEntry } from './ui'
@@ -239,6 +240,38 @@ function subsequence(q: string, text: string) {
 function relativeDir(root: string, path: string) {
   const dir = dirname(path)
   return dir.length > root.length ? dir.slice(root.length + 1) : ''
+}
+
+/** The open folder's documents in the command palette (⇧⌘P), read in the background. */
+export function startFolderPalette() {
+  let files: string[] = []
+  let root: string | null = null
+  const load = () => {
+    const s = useFolder.getState()
+    root = s.root
+    files = []
+    if (s.root) void folderFiles(s.root, s.rev).then((f) => root === s.root && (files = f))
+  }
+  load()
+  const unsubscribe = useFolder.subscribe((s, prev) => {
+    if (s.root !== prev.root || s.rev !== prev.rev) load()
+  })
+  const removeSource = addPaletteSource(() =>
+    root
+      ? files.map((path) => ({
+          id: `folder:${path}`,
+          label: basename(path),
+          detail: relativeDir(root!, path) || folderName(root!),
+          group: 'Folder' as const,
+          icon: kindFromPath(path) ? <KindIcon kind={kindFromPath(path)!} /> : <File size={14} />,
+          run: () => useWorkspace.getState().openPaths([path]),
+        }))
+      : [],
+  )
+  return () => {
+    unsubscribe()
+    removeSource()
+  }
 }
 
 let walked: { key: string; files: Promise<string[]> } | null = null

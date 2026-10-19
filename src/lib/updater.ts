@@ -49,9 +49,10 @@ let checking = false
  * APT repository, and apt installs new versions (see `aptUpdates`). Dev and the browser can still
  * read the notes.
  */
-export const updatesInstallable = isTauri && !import.meta.env.DEV && !isLinux
+export const updatesInstallable = isTauri && !import.meta.env.DEV && !isLinux && !import.meta.env.VITE_DEV_PREVIEW
 
-const checksUpdates = isTauri && !import.meta.env.DEV
+/** Dev preview builds (the dev-preview workflow) don't check: a release would replace the preview. */
+const checksUpdates = isTauri && !import.meta.env.DEV && !import.meta.env.VITE_DEV_PREVIEW
 
 let aptSource: Promise<boolean> | null = null
 /** A Linux install that came with the APT repository, so the Update button can use apt. */

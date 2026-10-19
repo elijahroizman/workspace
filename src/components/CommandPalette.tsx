@@ -28,7 +28,7 @@ export interface PaletteItem {
   label: string
   /** Shown faintly after the label: a folder, a hint. */
   detail?: string
-  group: 'Tabs' | 'Recent' | 'Commands'
+  group: 'Tabs' | 'Recent' | 'Folder' | 'Commands'
   icon?: ReactNode
   keys?: string
   /** More words that should find it (“dark” finds Light or dark). */
@@ -194,7 +194,7 @@ function Highlight({ text, at }: { text: string; at: number[] }) {
   return <>{parts}</>
 }
 
-const GROUP_ICON = { Tabs: <ArrowRight size={14} />, Recent: <Clock size={14} />, Commands: <Command size={14} /> }
+const GROUP_ICON = { Tabs: <ArrowRight size={14} />, Recent: <Clock size={14} />, Folder: <FileText size={14} />, Commands: <Command size={14} /> }
 
 export function CommandPalette() {
   const initial = usePalette((s) => s.query)
@@ -212,9 +212,9 @@ export function CommandPalette() {
   const shown = useMemo(() => {
     const pool = onlyCommands ? all.filter((i) => i.group === 'Commands') : all
     if (!q) {
-      // Nothing typed: tabs, then a few recent files, then every command.
+      // Nothing typed: tabs, then a few recent files, then every command (a folder's files wait for a search).
       let recent = 0
-      return pool.filter((i) => i.group !== 'Recent' || recent++ < 5).map((item) => ({ item, at: [] as number[] }))
+      return pool.filter((i) => i.group !== 'Folder' && (i.group !== 'Recent' || recent++ < 5)).map((item) => ({ item, at: [] as number[] }))
     }
     const scored: { item: PaletteItem; at: number[]; score: number }[] = []
     for (const item of pool) {
@@ -298,7 +298,7 @@ export function CommandPalette() {
                     <Highlight text={item.label} at={at} />
                   </span>
                   {item.detail && <span className="palette-detail">{item.detail}</span>}
-                  {q && <span className="palette-kind">{item.group === 'Commands' ? 'Command' : item.group === 'Tabs' ? 'Tab' : 'Recent'}</span>}
+                  {q && <span className="palette-kind">{item.group === 'Commands' ? 'Command' : item.group === 'Tabs' ? 'Tab' : item.group}</span>}
                   {item.keys && <span className="kbd">{shortcut(item.keys)}</span>}
                 </button>
               </div>
