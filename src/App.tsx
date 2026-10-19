@@ -1,6 +1,7 @@
 import { Component, lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
 import type { ComponentType, ErrorInfo, ReactNode } from 'react'
 import { CommandPalette, usePalette } from './components/CommandPalette'
+import { FocusMode } from './components/FocusMode'
 import { Home } from './components/Home'
 import { NewFilePicker, useNewFile } from './components/NewFile'
 import { TexInstall, TexRemove } from './components/TexInstall'
@@ -12,6 +13,7 @@ import * as platform from './lib/platform'
 import { flushAutosave, startAutosave } from './lib/autosave'
 import { installUpdate, openUpdatePanel, startUpdateChecks } from './lib/updater'
 import { startPlugins } from './state/plugins'
+import { dimming, useFocus } from './state/focus'
 import { useExtraFonts } from './state/fonts'
 import { useSettings } from './state/settings'
 import { useSetup } from './state/setup'
@@ -155,6 +157,15 @@ export async function runCommand(id: string) {
     case 'view-cycle':
       editor?.viewMode?.('cycle')
       break
+    case 'focus-mode':
+      useFocus.getState().toggle()
+      break
+    case 'typewriter':
+      useFocus.getState().toggleTypewriter()
+      break
+    case 'focus-dim':
+      useFocus.getState().toggleDim()
+      break
     case 'toggle-fullscreen':
       await platform.toggleFullscreen()
       break
@@ -257,6 +268,9 @@ export default function App() {
   const paletteOpen = usePalette((s) => s.open)
   const texOffer = useTex((s) => s.offer)
   const texRemoval = useTex((s) => !!s.removal)
+  const focus = useFocus((s) => s.on)
+  const dim = useFocus(dimming)
+  const typewriter = useFocus((s) => s.typewriter)
   const started = useRef(false)
 
   // Startup: restore last session, then open anything Finder handed us.
@@ -383,7 +397,7 @@ export default function App() {
   }, [])
 
   return (
-    <div className="app">
+    <div className="app" data-focus={focus || undefined} data-focus-dim={dim || undefined} data-typewriter={typewriter || undefined}>
       <TitleBar />
       <div className="views">
         <div className="view" data-active={activeId === HOME_TAB_ID} inert={activeId !== HOME_TAB_ID}>
@@ -407,6 +421,7 @@ export default function App() {
       )}
       {texOffer && <TexInstall />}
       {texRemoval && <TexRemove />}
+      <FocusMode />
       <Dialogs />
       {dropHover && (
         <div className="drop-overlay">

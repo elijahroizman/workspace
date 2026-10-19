@@ -20,6 +20,7 @@ On Windows and Linux, use Ctrl for ⌘, Alt for ⌥ and Shift for ⇧. Ctrl+Tab 
 | Duplicate tab | ⇧⌘D |
 | Markdown, Mermaid, LaTeX: next view / preview only / source and preview / source only | ⌘E / ⌥⌘1 / ⌥⌘2 / ⌥⌘3 |
 | Zoom (Word, PowerPoint, PDF) | Pinch on the trackpad, or ⌘ + scroll |
+| Focus mode / typewriter scrolling | ⌥⌘F / ⌥⌘T |
 | Light / dark appearance | ⇧⌘L |
 | Word: add comment | ⌥⌘A (Ctrl+Alt+M on Windows) |
 | Word: open a link in the browser | ⌘-click (Ctrl+click on Windows) |
