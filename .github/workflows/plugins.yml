@@ -1,15 +1,21 @@
 name: Plugins
 
-# Publishes an optional plugin that is too big to ship inside the app. Push a tag like
-# plugin-excalidraw-0.18.1-1 (the id and the version in plugins/<id>/plugin.json). The workflow
-# builds the plugin, zips and signs it with the updater key, and attaches both files to a
-# pre-release of that name. The app downloads from there when the plugin is turned on
+# Publishes the optional plugins that are too big to ship inside the app. For each plugin version
+# that has no release yet, the workflow builds the plugin, zips and signs it with the updater key,
+# and attaches both files to a pre-release named plugin-<id>-<version> (the id and the version in
+# plugins/<id>/plugin.json). The app downloads from there when the plugin is turned on
 # (archiveUrl in src/state/plugins.ts) and installs only what the signature vouches for.
+#
+# It runs when a plugin.json changes on main (a merged Sync plugins pull request, say), so a new
+# version is published by merging it. Pushing a tag like plugin-excalidraw-0.18.1-1 publishes that
+# one version, as before.
 #
 # Pre-release, so it never becomes the "latest" release the app's updater reads.
 on:
   push:
     tags: ['plugin-*']
+    branches: [main]
+    paths: ['plugins/*/plugin.json']
 
 permissions:
   contents: write
@@ -27,43 +33,61 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Which plugin
-        id: plugin
+      - name: Which plugins
+        id: plugins
         shell: bash
-        run: |
-          set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
-          rest="${tag#plugin-}"
-          for dir in plugins/*/; do
-            id="$(basename "$dir")"
-            if [[ "$rest" == "$id-"* ]]; then
-              version="$(node -p "require('./plugins/$id/plugin.json').version")"
-              if [ "$rest" != "$id-$version" ]; then
-                echo "Tag $tag doesn't match plugins/$id/plugin.json ($version)" >&2
-                exit 1
-              fi
-              echo "id=$id" >> "$GITHUB_OUTPUT"
-              echo "version=$version" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          done
-          echo "No plugin for tag $tag" >&2
-          exit 1
-      - name: Build
-        run: npx vite build --config plugins/${{ steps.plugin.outputs.id }}/vite.config.ts
-      - name: Zip and sign
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: node scripts/pack-plugin.mjs ${{ steps.plugin.outputs.id }}
-      - name: Publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ID: ${{ steps.plugin.outputs.id }}
-          VERSION: ${{ steps.plugin.outputs.version }}
         run: |
           set -euo pipefail
-          gh release create "$GITHUB_REF_NAME" "release/$ID-$VERSION.zip" "release/$ID-$VERSION.zip.sig" \
-            --prerelease --latest=false \
-            --title "Plugin: $ID $VERSION" \
-            --notes "Optional plugin for Workspace. Turn it on in Settings › Plugins; Workspace downloads these files and checks their signature. You don't need to download them yourself."
+          versionOf() { node -p "require('./plugins/$1/plugin.json').version"; }
+          list=""
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            rest="${GITHUB_REF_NAME#plugin-}"
+            for dir in plugins/*/; do
+              id="$(basename "$dir")"
+              if [[ "$rest" == "$id-"* ]]; then
+                version="$(versionOf "$id")"
+                if [ "$rest" != "$id-$version" ]; then
+                  echo "Tag $GITHUB_REF_NAME doesn't match plugins/$id/plugin.json ($version)" >&2
+                  exit 1
+                fi
+                list="$id"
+              fi
+            done
+            if [ -z "$list" ]; then
+              echo "No plugin for tag $GITHUB_REF_NAME" >&2
+              exit 1
+            fi
+          else
+            # Downloaded plugins (not bundled with the app, not the template) without a release yet.
+            for dir in plugins/*/; do
+              id="$(basename "$dir")"
+              [ -f "$dir/plugin.json" ] && [ "$id" != template ] || continue
+              [ "$(node -p "!!require('./$dir/plugin.json').bundled")" = false ] || continue
+              gh release view "plugin-$id-$(versionOf "$id")" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || list="$list $id"
+            done
+          fi
+          echo "Publishing:${list:- nothing}"
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+      - name: Build, sign and publish
+        if: steps.plugins.outputs.list != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          LIST: ${{ steps.plugins.outputs.list }}
+        run: |
+          set -euo pipefail
+          for id in $LIST; do
+            version="$(node -p "require('./plugins/$id/plugin.json').version")"
+            npx vite build --config "plugins/$id/vite.config.ts"
+            node scripts/pack-plugin.mjs "$id"
+            # On a tag the release takes that tag; on main it tags this commit.
+            gh release create "plugin-$id-$version" "release/$id-$version.zip" "release/$id-$version.zip.sig" \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --prerelease --latest=false \
+              --title "Plugin: $id $version" \
+              --notes "Optional plugin for Workspace. Turn it on in Settings › Plugins; Workspace downloads these files and checks their signature. You don't need to download them yourself."
+          done

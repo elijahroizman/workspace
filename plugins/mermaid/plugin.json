@@ -1,5 +1,6 @@
 {
   "id": "mermaid",
   "version": "11.17.2-2",
+  "engine": "mermaid",
   "size": 1179689
 }
