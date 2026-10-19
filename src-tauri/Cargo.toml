@@ -33,6 +33,10 @@ sha2 = "0.10"
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSUserDefaults", "NSString", "NSObject"] }
 
+# A second launch (`workspace notes.md`, a double-click) hands its files to the running copy.
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+tauri-plugin-single-instance = "2"
+
 # Turns off WebView2's browser shortcuts (Ctrl+R reload, Ctrl+F find bar…). Same versions wry uses.
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39"

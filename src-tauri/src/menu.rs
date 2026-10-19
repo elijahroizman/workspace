@@ -150,6 +150,7 @@ fn build_with<R: Runtime>(app: &AppHandle<R>, keys: &Shortcuts) -> tauri::Result
             .separator()
             .item(&item(app, keys, "settings", "Settings…", Some("CmdOrCtrl+,"))?)
             .item(&item(app, keys, "check-updates", "Check for Updates…", None)?)
+            .item(&item(app, keys, "install-cli", "Install Command Line Tool…", None)?)
             .separator()
             .services()
             .separator()

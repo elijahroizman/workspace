@@ -2,7 +2,8 @@ import { ArrowLeft, Blocks, Copy, Keyboard, Monitor, Moon, Palette, Pencil, Plus
 import type { ReactNode } from 'react'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { canSetDefaults, defaultStatus, makeDefault } from '../lib/defaults'
-import { confirmDialog, isLinux, isMac, isTauri, openExternal, shortcut, showError } from '../lib/platform'
+import type { CliStatus } from '../lib/platform'
+import { cliStatus, confirmDialog, isLinux, isMac, isTauri, openExternal, setCliInstalled, shortcut, showError } from '../lib/platform'
 import type { ExtraFont } from '../state/fonts'
 import { EXTRA_FONTS, useExtraFonts } from '../state/fonts'
 import type { Appearance, ThemeDef } from '../lib/themes'
@@ -131,6 +132,8 @@ function GeneralPage() {
 
       <RecentFilesRow />
 
+      <CommandLineRow />
+
       <div className="settings-row">
         <div className="settings-row-text">
           <span className="settings-label">Setup</span>
@@ -155,6 +158,48 @@ function GeneralPage() {
         </div>
       </div>
     </>
+  )
+}
+
+/** The `workspace` shell command: installed from here on a Mac, already there on Linux. */
+function CommandLineRow() {
+  const [status, setStatus] = useState<CliStatus | null>(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    void cliStatus().then(setStatus)
+  }, [])
+  if (!status || (!status.supported && !status.installed)) return null
+  const toggle = async () => {
+    setBusy(true)
+    try {
+      await setCliInstalled(!status.installed)
+    } catch (err) {
+      await showError(String(err), status.installed ? 'Couldn’t remove the command' : 'Couldn’t install the command')
+    } finally {
+      setStatus(await cliStatus())
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="settings-row">
+      <div className="settings-row-text">
+        <span className="settings-label">Command line</span>
+        <span className="settings-hint">
+          {status.taken
+            ? `Something else is already at ${status.path}, so Workspace can’t put its command there.`
+            : status.supported
+              ? `Open files and folders from Terminal: workspace . opens the folder you’re in, workspace notes.md a file. ${status.installed ? `Installed at ${status.path}.` : 'Installing asks for your password.'}`
+              : 'Open files and folders from a terminal: workspace . opens the folder you’re in, workspace notes.md a file.'}
+        </span>
+      </div>
+      {status.supported && !status.taken && (
+        <div className="settings-row-control">
+          <button type="button" className="btn" disabled={busy} onClick={() => void toggle()}>
+            {status.installed ? 'Remove command' : 'Install command'}
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
