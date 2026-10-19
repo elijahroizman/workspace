@@ -2,7 +2,7 @@ import { Rocket } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { isLinux, isMac, openExternal } from '../lib/platform'
-import { checkForUpdates, closeUpdatePanel, newer, toggleUpdatePanel, updatesInstallable, useUpdate, type UpdatePhase } from '../lib/updater'
+import { checkForUpdates, closeUpdatePanel, newer, packageManager, toggleUpdatePanel, updatesInstallable, useUpdate, type LinuxPackage, type UpdatePhase } from '../lib/updater'
 import { runCommand } from '../App'
 import { Spinner } from './ui'
 
@@ -28,16 +28,21 @@ function heading(phase: UpdatePhase, version: string | null): string {
   return version ? `Workspace ${version}` : 'Updates'
 }
 
-function detail(phase: UpdatePhase, error: string | null, publishedAt: string | null, version: string | null): string {
+function detail(phase: UpdatePhase, error: string | null, publishedAt: string | null, version: string | null, linux: LinuxPackage | null): string {
+  const manager = packageManager(linux?.format ?? null)
   const date = formatDate(publishedAt)
   if (phase === 'error') return error ?? "Couldn't check for updates."
   if (phase === 'checking') return 'Looking at the latest GitHub release'
   if (phase === 'downloading') return 'Downloading the update'
-  if (phase === 'installing') return isMac ? 'Workspace will quit and reopen' : isLinux ? 'Installing with apt, then Workspace reopens' : 'The installer will restart Workspace'
+  if (phase === 'installing') return isMac ? 'Workspace will quit and reopen' : isLinux ? `Installing with ${manager}, then Workspace reopens` : 'The installer will restart Workspace'
   if (phase === 'ready' && error) return error
-  if (phase === 'ready' && isLinux) return 'Installs with apt after asking for your password'
+  if (phase === 'ready' && isLinux) return `Installs with ${manager} after asking for your password`
   if (phase === 'ready') return date ? `Ready to install · ${date}` : 'Ready to install'
-  if (isLinux && version && newer(version, __APP_VERSION__)) return `Workspace ${version} is out. Install the new .deb from GitHub, and later versions come through apt.`
+  if (isLinux && version && newer(version, __APP_VERSION__)) {
+    return linux?.format
+      ? `Workspace ${version} is out. Install the new .${linux.format} from GitHub, and later versions come through ${manager}.`
+      : `Workspace ${version} is out. Download it from GitHub.`
+  }
   if (!updatesInstallable) return date ? `Latest GitHub release · ${date}` : 'Latest GitHub release'
   return date ? `This is the newest release · ${date}` : 'This is the newest release'
 }
@@ -63,6 +68,7 @@ export function UpdateButton() {
   const url = useUpdate((s) => s.url)
   const publishedAt = useUpdate((s) => s.publishedAt)
   const error = useUpdate((s) => s.error)
+  const linux = useUpdate((s) => s.linux)
   const button = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ x: 0, y: 0, maxHeight: 420 })
@@ -157,7 +163,7 @@ export function UpdateButton() {
           >
             <header className="update-panel-head">
               <h2 id="update-title">{heading(phase, version)}</h2>
-              <p>{detail(phase, error, publishedAt, version)}</p>
+              <p>{detail(phase, error, publishedAt, version, linux)}</p>
             </header>
             <div
               className="update-notes"

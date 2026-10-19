@@ -27,6 +27,21 @@ To add the repository by hand (for example on a machine that never had the .deb)
 deb [arch=amd64 signed-by=/usr/share/keyrings/workspace-archive-keyring.gpg] https://github.com/elijahroizman/workspace/releases/download/apt/ ./
 ```
 
+## Fedora
+
+Installing the .rpm adds Workspace's dnf repository and its signing key (the same key as the APT repository):
+
+```
+/etc/yum.repos.d/workspace.repo
+/etc/pki/rpm-gpg/RPM-GPG-KEY-workspace
+```
+
+After that, new versions come with your system's other updates (GNOME Software, or `sudo dnf upgrade`). The first time, dnf asks you to accept the key. The **Update** button can also install one: it asks for your password, runs dnf for Workspace alone, and reopens the app.
+
+The repository's index is signed, and dnf refuses an index whose signature doesn't match. The packages themselves aren't signed; the signed index holds their checksums, so a changed package doesn't install either.
+
+To stop updates, set `enabled=0` in `workspace.repo`. Upgrading Workspace leaves the file alone, and removing it deletes the file.
+
 ## Builds you make yourself
 
 A copy you build from source isn't signed and doesn't update itself. Pull the new code and build again.

@@ -75,45 +75,108 @@ fn fetch_latest_release() -> Result<ReleaseNotes, String> {
 #[cfg(target_os = "linux")]
 const APT_SOURCES: &str = "/etc/apt/sources.list.d/workspace.list";
 
-/// Whether this copy came with Workspace's APT repository and it's still on (its `deb` line not
-/// commented out), so apt can install new versions.
-#[tauri::command]
-pub fn apt_updates() -> bool {
-    #[cfg(target_os = "linux")]
-    {
-        let active = std::fs::read_to_string(APT_SOURCES).is_ok_and(|list| list.lines().any(|l| l.trim_start().starts_with("deb ")));
-        active && std::path::Path::new("/usr/bin/apt-get").is_file()
+/// Where the .rpm's install script puts Workspace's dnf repository (src-tauri/linux/rpm-postinst).
+#[cfg(target_os = "linux")]
+const DNF_REPO: &str = "/etc/yum.repos.d/workspace.repo";
+
+/// How this Linux copy was installed: `format` is "deb" or "rpm" (none for a build run from
+/// source), and `repo` says Workspace's own repository is there and on, so the package manager
+/// can install new versions.
+#[derive(Serialize)]
+pub struct LinuxPackage {
+    format: Option<&'static str>,
+    repo: bool,
+}
+
+#[cfg(target_os = "linux")]
+fn installed_version(format: &str) -> Option<String> {
+    let output = match format {
+        "deb" => std::process::Command::new("dpkg-query").args(["-W", "-f=${Version}", "workspace"]).output(),
+        _ => std::process::Command::new("rpm").args(["-q", "--qf", "%{VERSION}-%{RELEASE}", "workspace"]).output(),
+    };
+    output.ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).filter(|v| !v.is_empty())
+}
+
+/// Whether the dnf repo file has Workspace's section switched on (`enabled=1`, the default).
+#[cfg(target_os = "linux")]
+fn dnf_repo_enabled(repo: &str) -> bool {
+    let mut in_section = false;
+    let mut enabled = true;
+    let mut found = false;
+    for line in repo.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_section = line == "[workspace]";
+            found |= in_section;
+        } else if in_section {
+            if let Some((key, value)) = line.split_once('=') {
+                if key.trim() == "enabled" {
+                    enabled = matches!(value.trim(), "1" | "true" | "yes" | "True");
+                }
+            }
+        }
     }
-    #[cfg(not(target_os = "linux"))]
-    {
-        false
+    found && enabled
+}
+
+#[cfg(target_os = "linux")]
+fn linux_package_now() -> LinuxPackage {
+    use std::path::Path;
+    // The binary's path says which package put it there: dpkg and rpm both list their files.
+    let exe = std::env::current_exe().ok();
+    let owned_by = |cmd: &str, args: &[&str]| {
+        exe.as_ref().is_some_and(|exe| std::process::Command::new(cmd).args(args).arg(exe).output().is_ok_and(|o| o.status.success()))
+    };
+    if owned_by("dpkg-query", &["-S"]) {
+        let repo = std::fs::read_to_string(APT_SOURCES).is_ok_and(|list| list.lines().any(|l| l.trim_start().starts_with("deb ")));
+        LinuxPackage { format: Some("deb"), repo: repo && Path::new("/usr/bin/apt-get").is_file() }
+    } else if owned_by("rpm", &["-qf"]) {
+        let repo = std::fs::read_to_string(DNF_REPO).is_ok_and(|repo| dnf_repo_enabled(&repo));
+        LinuxPackage { format: Some("rpm"), repo: repo && Path::new("/usr/bin/dnf").is_file() }
+    } else {
+        LinuxPackage { format: None, repo: false }
     }
 }
 
-/// Installs the newest Workspace from its APT repository, after polkit asks for the password.
-/// Only Workspace's own source is refreshed, so a broken or slow mirror elsewhere can't stop it.
+/// How this copy was installed on Linux, and whether apt or dnf can update it.
 #[tauri::command]
-pub async fn apt_upgrade() -> Result<(), String> {
+pub async fn linux_package() -> LinuxPackage {
+    #[cfg(target_os = "linux")]
+    {
+        tauri::async_runtime::spawn_blocking(linux_package_now).await.unwrap_or(LinuxPackage { format: None, repo: false })
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        LinuxPackage { format: None, repo: false }
+    }
+}
+
+/// Installs the newest Workspace from its APT or dnf repository, after polkit asks for the
+/// password. Only Workspace's own repository is refreshed, so a broken or slow mirror elsewhere
+/// can't stop it.
+#[tauri::command]
+pub async fn package_upgrade() -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         tauri::async_runtime::spawn_blocking(|| {
-            let installed = || {
-                std::process::Command::new("dpkg-query")
-                    .args(["-W", "-f=${Version}", "workspace"])
-                    .output()
-                    .ok()
-                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                    .filter(|v| !v.is_empty())
+            let package = linux_package_now();
+            let (format, line, what) = match package.format {
+                Some("deb") if package.repo => (
+                    "deb",
+                    format!(
+                        "export DEBIAN_FRONTEND=noninteractive; apt-get update -o Dir::Etc::sourcelist={APT_SOURCES} -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0 && apt-get install -y --only-upgrade workspace"
+                    ),
+                    "APT",
+                ),
+                // -y also accepts the repository's key the first time dnf sees it.
+                Some("rpm") if package.repo => ("rpm", "dnf -y --refresh --repo=workspace upgrade workspace".to_string(), "dnf"),
+                _ => return Err("This copy of Workspace didn't come with its update repository.".into()),
             };
-            let before = installed();
-            let line = format!(
-                "export DEBIAN_FRONTEND=noninteractive; apt-get update -o Dir::Etc::sourcelist={APT_SOURCES} -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0 && apt-get install -y --only-upgrade workspace"
-            );
+            let before = installed_version(format);
             crate::tex::pkexec(&line, "Updating Workspace")?;
-            // apt succeeds without doing anything when its repository hasn't got the release yet
-            // (the Linux build finishes after the Mac and Windows ones).
-            if before.is_some() && installed() == before {
-                return Err("The new version isn't in Workspace's APT repository yet. Try again in a few minutes.".into());
+            // apt and dnf succeed without doing anything when the repository hasn't got the
+            // release yet (the Linux build finishes after the Mac and Windows ones).
+            if before.is_some() && installed_version(format) == before {
+                return Err(format!("The new version isn't in Workspace's {what} repository yet. Try again in a few minutes."));
             }
             Ok(())
         })
@@ -122,7 +185,7 @@ pub async fn apt_upgrade() -> Result<(), String> {
     }
     #[cfg(not(target_os = "linux"))]
     {
-        Err("Updates through apt are for Linux.".into())
+        Err("Updates through apt or dnf are for Linux.".into())
     }
 }
 
@@ -217,6 +280,16 @@ mod tests {
     fn quotes_paths_for_the_shell() {
         assert_eq!(sh_quote(std::path::Path::new("/Applications/Workspace.app")), "'/Applications/Workspace.app'");
         assert_eq!(sh_quote(std::path::Path::new("/tmp/O'Hare.app")), "'/tmp/O'\\''Hare.app'");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn reads_the_dnf_repo_switch() {
+        let repo = "[workspace]\nname=Workspace\nbaseurl=https://example.com/\nenabled=1\n";
+        assert!(dnf_repo_enabled(repo));
+        assert!(!dnf_repo_enabled(&repo.replace("enabled=1", "enabled=0")));
+        assert!(!dnf_repo_enabled("[other]\nenabled=1\n"));
+        assert!(!dnf_repo_enabled("[workspace]\nenabled=0\n[other]\nenabled=1\n"));
     }
 
     #[test]

@@ -22,7 +22,7 @@ All of these are Actions secrets. None is in the repository.
 | `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Mac and Windows update bundles, and plugin archives | `plugins.updater.pubkey` in `src-tauri/tauri.conf.json` | Installed copies can't verify new versions or plugins. Everyone reinstalls by hand once. |
 | `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD` | The Mac app (Developer ID Application) | Apple | Make a new certificate in the Apple Developer account. |
 | `APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER` | Notarizing the app and the `.dmg` | Apple | Make a new App Store Connect API key. |
-| `APT_SIGNING_KEY` | The APT repository's `InRelease` and `Release.gpg` (GPG, RSA 4096) | `src-tauri/linux/workspace-archive-keyring.gpg`, installed by the .deb | apt refuses updates. Ship a new keyring in a .deb that people install by hand. |
+| `APT_SIGNING_KEY` | The APT repository's `InRelease` and `Release.gpg`, and the dnf repository's `repomd.xml.asc` (GPG, RSA 4096) | `src-tauri/linux/workspace-archive-keyring.gpg` (installed by the .deb) and its armored copy `src-tauri/linux/RPM-GPG-KEY-workspace` (installed by the .rpm) | apt and dnf refuse updates. Ship a new key in a .deb and .rpm that people install by hand. |
 
 Keep an offline copy of the updater and APT private keys. Windows builds aren't code-signed, so SmartScreen warns on first run.
 

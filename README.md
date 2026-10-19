@@ -19,9 +19,9 @@ Download the latest build from [Releases](https://github.com/elijahroizman/works
 | **Mac** | Open `Workspace_…_aarch64.dmg` and drag Workspace to Applications. |
 | **Windows** | Run `Workspace_…_x64-setup.exe`. If Windows says it protected your PC, click **More info → Run anyway** (the app isn't code-signed for Windows yet). |
 | **Debian, Ubuntu** | `sudo apt install ./Workspace_…_amd64.deb` (Ubuntu 22.04 or Debian 12 and newer). |
-| **Fedora** | `sudo dnf install ./Workspace-…x86_64.rpm`. Updates don't arrive on their own yet: install each new .rpm from Releases. |
+| **Fedora** | `sudo dnf install ./Workspace-…x86_64.rpm` |
 
-Workspace keeps itself up to date. On Mac and Windows, new versions download in the background and install when you quit. On Linux, the .deb adds Workspace's APT repository, so updates come with your system's other updates. See [Updating](docs/user/updating.md).
+Workspace keeps itself up to date. On Mac and Windows, new versions download in the background and install when you quit. On Linux, the .deb adds Workspace's APT repository and the .rpm its dnf repository, so updates come with your system's other updates. See [Updating](docs/user/updating.md).
 
 ## Some notes
 
@@ -74,7 +74,7 @@ Release builds are signed in GitHub Actions. Nothing secret lives in the reposit
 
 - **Updates** are signed with a minisign key (`TAURI_SIGNING_PRIVATE_KEY`). Installed copies check it against the public key in `src-tauri/tauri.conf.json`. Plugin downloads are checked against the same key.
 - **The Mac app** is signed with a Developer ID certificate and notarized by Apple.
-- **The APT repository** is signed with a GPG key (`APT_SIGNING_KEY`). The .deb installs the public half.
+- **The APT and dnf repositories** are signed with a GPG key (`APT_SIGNING_KEY`). The .deb and .rpm install the public half.
 - **Windows** builds aren't code-signed yet.
 
 [Releases and signing](docs/internals/releasing.md) lists every secret and what breaks if one is lost.

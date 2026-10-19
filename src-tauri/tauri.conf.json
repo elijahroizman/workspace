@@ -212,7 +212,12 @@
         "depends": [
           "webkit2gtk4.1",
           "gtk3"
-        ]
+        ],
+        "files": {
+          "/etc/pki/rpm-gpg/RPM-GPG-KEY-workspace": "linux/RPM-GPG-KEY-workspace"
+        },
+        "postInstallScript": "linux/rpm-postinst",
+        "postRemoveScript": "linux/rpm-postrm"
       }
     },
     "macOS": {
