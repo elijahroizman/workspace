@@ -43,6 +43,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'quit', label: 'Quit Workspace', group: 'Files and tabs', scope: 'app', keys: '⌘Q', platform: 'mac' },
 
   // ── View
+  { id: 'command-palette', label: 'Command palette', group: 'View', scope: 'app', keys: '⇧⌘P' },
   { id: 'find', label: 'Find', group: 'View', scope: 'app', keys: '⌘F' },
   { id: 'toggle-left', label: 'Show or hide sidebar', group: 'View', scope: 'app', keys: '⌘\\' },
   { id: 'toggle-right', label: 'Show or hide inspector', group: 'View', scope: 'app', keys: '⌥⌘\\' },
