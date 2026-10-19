@@ -7,7 +7,7 @@
 3. If a downloaded plugin's version in `plugins/<id>/plugin.json` changed, check that its `plugin-<id>-<version>` pre-release exists. The Plugins workflow makes it when the change reaches `main`; if it didn't run, push the tag.
 4. Push a tag like `v0.7.2`.
 
-The **Release** workflow (`.github/workflows/release.yml`) builds the Mac `.dmg`, the Windows `.exe` and the Debian/Ubuntu `.deb`, attaches them to the release, and publishes `latest.json`, the feed installed Mac and Windows copies check. The Linux job also refreshes the APT repository. Running the workflow from the Actions tab only builds, unless "publish" is ticked.
+The **Release** workflow (`.github/workflows/release.yml`) builds the Mac `.dmg`, the Windows `.exe`, the Debian/Ubuntu `.deb` and the Fedora `.rpm`, attaches them to the release, and publishes `latest.json`, the feed installed Mac and Windows copies check. The Linux job also refreshes the APT and dnf repositories. Running the workflow from the Actions tab only builds, unless "publish" is ticked.
 
 The **Plugins** workflow (`.github/workflows/plugins.yml`) publishes downloaded plugins. When a `plugin.json` changes on `main`, it builds, zips and signs every plugin version that has no pre-release yet, and attaches it to a new `plugin-<id>-<version>` pre-release. A `plugin-*` tag publishes that one version.
 

@@ -2,6 +2,15 @@
 
 Every release's notes. The release workflow copies a version's section into its GitHub release, and the app's update panel shows it.
 
+## 0.9.1 — 2026-10-19
+
+### Fedora
+- Workspace now comes as an `.rpm` for Fedora: `sudo dnf install ./Workspace-…x86_64.rpm`. It adds Workspace's dnf repository, so new versions arrive with your system's other updates, and the **Update** button installs them with dnf.
+
+### Fixes
+- The setup screen fits in a short window. Continue no longer sits below the bottom edge until you go full screen.
+- On Linux, the update panel names the right package (.deb or .rpm) and package manager.
+
 ## 0.9.0 — 2026-10-19
 
 ### Command palette
