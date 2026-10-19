@@ -4,12 +4,14 @@
 
 1. Add the version's section to the top of [CHANGELOG.md](../../CHANGELOG.md), headed `## 0.7.2 — 2026-10-18`. The release workflow copies that section into the GitHub release, and the app's update panel shows it. A version without a section isn't released.
 2. Bump the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` (and `package-lock.json`, `src-tauri/Cargo.lock`).
-3. If a plugin's version in `plugins/<id>/plugin.json` changed, push its `plugin-<id>-<version>` tag first, so the archive the new app asks for exists.
+3. If a downloaded plugin's version in `plugins/<id>/plugin.json` changed, check that its `plugin-<id>-<version>` pre-release exists. The Plugins workflow makes it when the change reaches `main`; if it didn't run, push the tag.
 4. Push a tag like `v0.7.2`.
 
 The **Release** workflow (`.github/workflows/release.yml`) builds the Mac `.dmg`, the Windows `.exe` and the Debian/Ubuntu `.deb`, attaches them to the release, and publishes `latest.json`, the feed installed Mac and Windows copies check. The Linux job also refreshes the APT repository. Running the workflow from the Actions tab only builds, unless "publish" is ticked.
 
-The **Plugins** workflow (`.github/workflows/plugins.yml`) runs on `plugin-*` tags: it builds, zips and signs that plugin and attaches it to a pre-release.
+The **Plugins** workflow (`.github/workflows/plugins.yml`) publishes downloaded plugins. When a `plugin.json` changes on `main`, it builds, zips and signs every plugin version that has no pre-release yet, and attaches it to a new `plugin-<id>-<version>` pre-release. A `plugin-*` tag publishes that one version.
+
+The **Sync plugins** workflow (`.github/workflows/sync-plugins.yml`) runs every Thursday at 00:00 UTC, and from the Actions tab. When the engine behind a downloaded plugin (the `engine` in its `plugin.json`: Excalidraw, Mermaid) has a newer release, `scripts/sync-plugins.mjs` installs it, bumps the plugin's version and size, and the workflow opens or refreshes a pull request from `automation/sync-plugins`. Merging it publishes the plugin; users get it with the next app release. It needs **Settings › Actions › General › Allow GitHub Actions to create and approve pull requests**. Pull requests opened by Actions don't start other workflows.
 
 ## Signing keys
 

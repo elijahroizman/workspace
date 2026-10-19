@@ -2,6 +2,25 @@
 
 Every release's notes. The release workflow copies a version's section into its GitHub release, and the app's update panel shows it.
 
+## 0.8.0 — 2026-10-19
+
+### Images
+- A new optional plugin opens **PNG, JPEG and HEIC** pictures: zoom, fit to the window, and a few touch-ups (highlight, draw, box, crop, turn) with undo. ⌘C copies the picture, or the part you selected. An unchanged file is saved back exactly as it was.
+- HEIC photos open for viewing (Workspace can't write HEIC); **Edit a JPEG copy** opens one to mark up. Turn Images on in **Settings › Plugins**.
+
+### Plugins and fonts in one place
+- **Settings › Plugins** now has two lists, file types and fonts, each with a switch. The fonts moved there from General, and the list of built-in file types is gone.
+- Six more optional fonts for Word and PowerPoint: **Ubuntu**, **JetBrains Mono**, **Atkinson Hyperlegible**, **Courier Prime**, **Instrument Serif** and **Comic Neue**. Each downloads when you turn it on and is checked before use.
+
+### PDFs autosave
+- PDFs now autosave like other files. Saving keeps your place, and autosave waits while you're typing into a form field or text box, or drawing. If you never changed the PDF setting, it's now on; turn it off in **Settings › Autosave**.
+- Opening a LaTeX document's PDF in a tab again starts at the top; while you edit, it keeps updating where you are.
+
+### Also
+- A new app icon.
+- The autosave status in the title bar is just a status; clicking it no longer opens Settings.
+- Plugin engines (Excalidraw, Mermaid) are checked for new releases every week, and an update arrives as a pull request.
+
 ## 0.7.2 — 2026-10-18
 
 > **LaTeX on Windows may still have bugs.** Installing TeX with winget, the MiKTeX fallback and turning the LaTeX plugin off on Windows are still being tested. If something goes wrong, please [open an issue](https://github.com/elijahroizman/workspace/issues) with the message Workspace shows.

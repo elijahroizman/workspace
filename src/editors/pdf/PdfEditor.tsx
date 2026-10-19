@@ -21,7 +21,7 @@ import {
   Type,
   Undo2,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { EditorProps } from '../../App'
 import { FindBar, InspectorHeader, Workbench, formatZoom } from '../../components/Workbench'
 import type { MenuEntry } from '../../components/ui'
@@ -93,6 +93,11 @@ export default function PdfEditor({ tab, active }: EditorProps) {
   const [selected, setSelected] = useState<{ key: number; id: string } | null>(null)
   const [ink, setInk] = useState<{ key: number; strokes: Stroke[]; committing?: boolean } | null>(null)
   const [draft, setDraft] = useState<{ key: number; x: number; y: number } | null>(null)
+  // For autosave's busy(): what's on screen, so updated once React commits it.
+  const draftRef = useRef(draft)
+  useLayoutEffect(() => {
+    draftRef.current = draft
+  }, [draft])
   const [awake, setAwake] = useState(true)
   const [, setHistoryVersion] = useState(0)
   const history = useRef(new History())
@@ -603,6 +608,12 @@ export default function PdfEditor({ tab, active }: EditorProps) {
           const bytes = await saveBytes()
           lastWritten.current = bytes
           return bytes
+        },
+        // Autosave waits while you're drawing or typing into a form field or text box, since
+        // saving commits them (getBytes above) and would take the focus away mid-word.
+        busy: () => {
+          const focus = document.activeElement
+          return !!(inkRef.current && !inkRef.current.committing) || !!draftRef.current || (isEditable(focus) && !!stageRef.current?.contains(focus))
         },
         markSaved: () => {
           cleanBytes.current = lastWritten.current

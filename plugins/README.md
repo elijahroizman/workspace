@@ -10,7 +10,7 @@ Fields marked optional in `api.ts` can be missing in an older app, so check them
 
 ## Bundled or downloaded
 
-- **Small (under about 1 MB): bundled.** Set `source: { type: 'bundled' }` in the catalog and `"bundled": true` in its `plugin.json`, and add its build to the `plugins:bundled` script (the dev server serves it from there). The app's build builds it into `plugins/<id>/dist` and copies that to `/plugins/<id>/`, so it comes with every install and turning it on is instant. EPUB is one.
+- **Small (under about 1 MB): bundled.** Set `source: { type: 'bundled' }` in the catalog and `"bundled": true` in its `plugin.json`, and add its build to the `plugins:bundled` script (the dev server serves it from there). The app's build builds it into `plugins/<id>/dist` and copies that to `/plugins/<id>/`, so it comes with every install and turning it on is instant. EPUB and Images are bundled. Images' HEIC decoder is 2 MB, but it's a chunk of its own that only loads for HEIC photos.
 - **Bigger: downloaded.** Excalidraw is 16 MB with its fonts, so it's `source: { type: 'download' }`. The app fetches `plugin-<id>-<version>/<id>-<version>.zip` from this repository's releases, checks its `.sig` against the updater's public key, unpacks it into its data folder and loads it through the `wsplugin:` scheme (`src-tauri/src/plugins.rs`).
 
 ## API reference
@@ -67,7 +67,7 @@ The `plugins/shared` folder has reusable helpers:
 6. Add your npm packages to `PLUGIN_PACKAGES` in `scripts/licenses.mjs`.
 7. Add your build command to the `plugins` npm script in `package.json`.
 8. Run `npm run typecheck` and `npm run build` to verify.
-9. For downloaded plugins: set `size` in `plugin.json` to the size of the zipped `plugins/<id>/dist` in bytes (a plain zip is fine for measuring). The release package must be signed: the Plugins workflow does that when you push the `plugin-<id>-<version>` tag (`scripts/pack-plugin.mjs` with the updater key), and the app refuses an archive without a matching `.sig`.
+9. For downloaded plugins: set `size` in `plugin.json` to the size of the zipped `plugins/<id>/dist` in bytes (a plain zip is fine for measuring). The release package must be signed: the Plugins workflow does that when the new version reaches `main`, or when you push the `plugin-<id>-<version>` tag (`scripts/pack-plugin.mjs` with the updater key), and the app refuses an archive without a matching `.sig`. If the plugin wraps one npm package, name it as `engine` in `plugin.json`: the Sync plugins workflow then proposes its new releases every week (`scripts/sync-plugins.mjs`; versions are `<engine version>-<n>`).
 10. Test in the browser (`npm run dev`) and the real app (`npm run app:dev`).
 
 ## Checklist
@@ -81,7 +81,7 @@ Before releasing a plugin:
 - [ ] Build command added to `plugins` npm script
 - [ ] `plugin.json` size set after `scripts/pack-plugin.mjs` (for downloaded plugins)
 - [ ] Version bumped in `plugin.json` when behavior changes
-- [ ] Tag `plugin-<id>-<version>` pushed before an app release (for downloaded plugins)
+- [ ] `plugin-<id>-<version>` pre-release published before an app release (for downloaded plugins; merging to `main` does it)
 - [ ] Tested in browser and real app
 
 ## Rules learned

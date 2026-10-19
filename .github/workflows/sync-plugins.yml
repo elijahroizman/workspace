@@ -1,0 +1,73 @@
+name: Sync plugins
+
+# Every Thursday at midnight (UTC), checks whether the engines the downloaded plugins wrap
+# (Excalidraw, Mermaid: the `engine` in plugins/<id>/plugin.json) have a newer release. If one
+# does, scripts/sync-plugins.mjs installs it, bumps the plugin's version and size, and this opens
+# (or refreshes) a pull request. Review it like any other: a major version can break a plugin.
+# Merging it publishes the new plugin releases (plugins.yml), and the next app release asks for
+# them. Run it by hand from the Actions tab too.
+#
+# Needs Settings › Actions › General › "Allow GitHub Actions to create and approve pull requests".
+on:
+  schedule:
+    - cron: '0 0 * * 4'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency: sync-plugins
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      BRANCH: automation/sync-plugins
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A run started by hand from another branch still syncs main, so the pull request holds only the sync.
+          ref: ${{ github.event.repository.default_branch }}
+          # npm install runs packages' scripts; keep the token away from them. Pushing passes it explicitly.
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Update plugins
+        id: sync
+        run: node scripts/sync-plugins.mjs
+      - name: Check the app still builds
+        if: steps.sync.outputs.changed == 'true'
+        run: |
+          npm run typecheck
+          npm run build
+      - name: Open a pull request
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898+github-actions[bot]@users.noreply.github.com'
+          git checkout -B "$BRANCH"
+          git add package.json package-lock.json plugins/*/plugin.json
+          git commit -m "Update plugin engines" -m "$(cat release/plugin-sync.md)"
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
+          {
+            echo 'Newer releases of the engines behind these plugins:'
+            echo
+            cat release/plugin-sync.md
+            echo
+            echo 'Type check and build pass. Try each plugin before merging (`npm run plugins`, then `npm run dev`). Merging publishes the plugin releases; users get them with the next app release.'
+            echo
+            echo '- **Model:** none (scripts/sync-plugins.mjs)'
+            echo '- **Harness:** GitHub Actions (Sync plugins workflow)'
+          } > release/pr-body.md
+          if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')" ]; then
+            gh pr edit "$BRANCH" --body-file release/pr-body.md
+          else
+            gh pr create --head "$BRANCH" --title "Update plugin engines" --body-file release/pr-body.md
+          fi

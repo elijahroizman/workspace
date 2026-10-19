@@ -37,6 +37,11 @@ export interface EditorHandle {
   print?(): Promise<void>
   /** Source-and-preview editors (Markdown, Mermaid, LaTeX): read, split, write, or cycle through them. */
   viewMode?(mode: 'read' | 'split' | 'write' | 'cycle'): void
+  /**
+   * True while the user is partway through an entry that saving would cut short (typing into a
+   * PDF form field or text box). Autosave waits for it; the Save command doesn't.
+   */
+  busy?(): boolean
   /** Editor shortcuts by id (see state/shortcuts.ts). One that can't run right now answers false, and the key goes on to the document. */
   actions?: Record<string, () => boolean | void>
 }
@@ -86,8 +91,9 @@ interface WorkspaceState {
   openDialog(): Promise<void>
   /**
    * Open bytes that aren't a file yet (a plugin's compiled PDF) as an unsaved tab of the kind
-   * `name`'s extension says. Passing the id this returned last time updates that tab instead,
-   * if it's still open and unchanged. Returns the tab's id, or null if no plugin opens the kind.
+   * `name`'s extension says. Passing the id this returned last time reopens that tab instead
+   * (from the top, under a new id), if it's still open and unchanged. Returns the tab's id, or
+   * null if no plugin opens the kind.
    */
   openUnsaved(bytes: Uint8Array, name: string, replace?: string | null): string | null
   /**
@@ -289,8 +295,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       if (!kind || !kindEnabled(kind)) return null
       const existing = replace ? get().tabs.find((t) => t.id === replace && !t.path && !t.dirty && t.kind === kind) : undefined
       if (existing) {
-        set({ tabs: get().tabs.map((t) => (t.id === existing.id ? { ...t, bytes, loadId: t.loadId + 1 } : t)), activeId: existing.id })
-        return existing.id
+        // Opening it again starts at the top, so it gets a new id: a viewer finds its old place by
+        // tab id (refreshUnsaved keeps the id, so a rebuild stays where you were).
+        const id = newId()
+        set({ tabs: get().tabs.map((t) => (t.id === existing.id ? { ...t, id, bytes, loadId: t.loadId + 1 } : t)), activeId: id })
+        return id
       }
       const id = newId()
       addTab({ id, kind, title: stripExtension(name), path: null, bytes, loadId: 0, dirty: false })

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { canSetDefaults, defaultStatus, makeDefault } from '../lib/defaults'
 import { confirmDialog, isLinux, isMac, isTauri, openExternal, shortcut, showError } from '../lib/platform'
+import type { ExtraFont } from '../state/fonts'
 import { EXTRA_FONTS, useExtraFonts } from '../state/fonts'
 import type { Appearance, ThemeDef } from '../lib/themes'
 import { isHex, orbBackground } from '../lib/themes'
@@ -130,8 +131,6 @@ function GeneralPage() {
 
       <RecentFilesRow />
 
-      <ExtraFontRows />
-
       <div className="settings-row">
         <div className="settings-row-text">
           <span className="settings-label">Setup</span>
@@ -155,47 +154,6 @@ function GeneralPage() {
           </button>
         </div>
       </div>
-    </>
-  )
-}
-
-/** Fonts Workspace downloads from their makers (state/fonts.ts), for Word and PowerPoint. */
-function ExtraFontRows() {
-  const installed = useExtraFonts((s) => s.installed)
-  const busy = useExtraFonts((s) => s.busy)
-  const errors = useExtraFonts((s) => s.errors)
-  const { install, remove } = useExtraFonts.getState()
-  if (!isTauri) return null
-  return (
-    <>
-      {EXTRA_FONTS.map((f) => (
-        <div key={f.id} className="settings-row">
-          <div className="settings-row-text">
-            <span className="settings-label" style={{ fontFamily: installed[f.id] ? `'${f.family}', serif` : undefined }}>
-              {f.family} font <span className="faint">· {f.maker}</span>
-            </span>
-            <span className="settings-hint">
-              {installed[f.id] ? 'In the font menus for Word and PowerPoint.' : `${f.about} ${formatSize(f.size)}.`}{' '}
-              <button type="button" className="link-btn" onClick={() => void openExternal(f.licenseUrl)}>
-                {f.maker}’s license
-              </button>
-            </span>
-            {errors[f.id] && <span className="plugin-error">{errors[f.id]}</span>}
-          </div>
-          <div className="settings-row-control">
-            {installed[f.id] ? (
-              <button type="button" className="btn" onClick={() => void remove(f.id)}>
-                Remove
-              </button>
-            ) : (
-              <button type="button" className="btn" disabled={busy[f.id]} onClick={() => void install(f.id)}>
-                {busy[f.id] ? <Spinner size={13} /> : null}
-                {busy[f.id] ? 'Downloading…' : 'Download'}
-              </button>
-            )}
-          </div>
-        </div>
-      ))}
     </>
   )
 }
@@ -297,17 +255,21 @@ function DefaultAppsRow() {
   )
 }
 
+/** Everything optional in one place: plugins for more file types, and fonts to download. */
 function PluginsPage() {
   const enabled = usePlugins((s) => s.enabled)
   const progress = usePlugins((s) => s.progress)
+  const fonts = useExtraFonts((s) => s.installed)
   const { enable, disable } = usePlugins.getState()
-  const builtIn = PLUGINS.filter(isBuiltIn)
   const optional = PLUGINS.filter((p) => !isBuiltIn(p))
+  const count = (on: number, all: number) => <span className="plugin-count">{on ? `${on} of ${all} on` : 'All off'}</span>
   return (
     <>
-      <p className="settings-intro">Plugins add file types. Built-in ones are always there; turn on others when you need them.</p>
+      <p className="settings-intro">Turn on only what you need. Word, PowerPoint, PDF, Markdown and text files always open.</p>
       <section className="plugin-group">
-        <h4>Optional</h4>
+        <h4>
+          File types {count(optional.filter((p) => enabled[p.id]).length, optional.length)}
+        </h4>
         {optional.map((p) => (
           <PluginRow
             key={p.id}
@@ -332,12 +294,54 @@ function PluginsPage() {
         ))}
       </section>
       <section className="plugin-group">
-        <h4>Built in</h4>
-        {builtIn.map((p) => (
-          <PluginRow key={p.id} plugin={p} control={<span className="faint">Built in</span>} />
+        <h4>
+          Fonts {count(EXTRA_FONTS.filter((f) => fonts[f.id]).length, EXTRA_FONTS.length)}
+        </h4>
+        <p className="settings-hint plugin-group-hint">
+          {isTauri ? 'Downloaded when you turn one on, then in the font menus for Word and PowerPoint.' : 'Fonts download in the app, not in the browser version.'}
+        </p>
+        {EXTRA_FONTS.map((f) => (
+          <FontRow key={f.id} font={f} />
         ))}
       </section>
     </>
+  )
+}
+
+/** A font Workspace downloads from its maker (state/fonts.ts): on downloads it, off removes it. */
+function FontRow({ font }: { font: ExtraFont }) {
+  const installed = useExtraFonts((s) => !!s.installed[font.id])
+  const busy = useExtraFonts((s) => !!s.busy[font.id])
+  const error = useExtraFonts((s) => s.errors[font.id])
+  const { install, remove } = useExtraFonts.getState()
+  // Shown in the font itself once it's there.
+  const face = installed ? `'${font.family}', ${font.fallback}` : undefined
+  return (
+    <div className="plugin-row">
+      <span className="font-badge" style={{ fontFamily: face }} aria-hidden="true">
+        Aa
+      </span>
+      <span className="plugin-text">
+        <span className="settings-label" style={{ fontFamily: face }}>
+          {font.family}
+        </span>
+        <span className="settings-hint">{font.about}</span>
+        <span className="settings-hint plugin-meta">
+          {font.maker} · {formatSize(font.size)} download ·{' '}
+          <button type="button" className="link-btn" onClick={() => void openExternal(font.licenseUrl)}>
+            License
+          </button>
+        </span>
+        {error && <span className="plugin-error">{error}</span>}
+      </span>
+      <span className="plugin-control">
+        {busy ? (
+          <Spinner size={16} />
+        ) : (
+          <Switch label={`Use the ${font.family} font`} checked={installed} disabled={!isTauri} onChange={(on) => void (on ? install(font.id) : remove(font.id))} />
+        )}
+      </span>
+    </div>
   )
 }
 
@@ -440,7 +444,7 @@ function AutosavePage() {
         <div className="settings-row column">
           <div className="settings-row-text">
             <span className="settings-label">Autosave these files</span>
-            <span className="settings-hint">Saving a PDF rewrites the whole file, so PDFs start out off.</span>
+            <span className="settings-hint">Files you untick wait for {shortcut('Save')}.</span>
           </div>
           <div className="kind-checks">
             {enabledKinds(plugins).map((k) => (

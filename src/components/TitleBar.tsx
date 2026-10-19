@@ -176,7 +176,7 @@ export function TitleBar() {
   )
 }
 
-/** Where the active tab autosaves to, and how the last autosave went. Opens Settings. */
+/** Where the active tab autosaves to, and how the last autosave went. Just a status: clicking it does nothing. */
 function AutosaveChip() {
   const tabs = useWorkspace((s) => s.tabs)
   const activeId = useWorkspace((s) => s.activeId)
@@ -206,9 +206,9 @@ function AutosaveChip() {
     text = 'Saved'
   }
   return (
-    <button type="button" className={`autosave-chip ${tone}`} title={`${title}\nClick to change autosave settings.`} onClick={() => useSettings.getState().setOpen(true)}>
+    <span className={`autosave-chip ${tone}`} role="status" title={title}>
       {icon}
       {text && <span>{text}</span>}
-    </button>
+    </span>
   )
 }
