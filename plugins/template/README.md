@@ -6,7 +6,7 @@ Copy this folder to `plugins/<your-id>` and follow this checklist to make a real
 
 - [ ] Rename the folder to your plugin id (lowercase letters, digits, dashes only)
 - [ ] Update `plugin.json`: set your `id` and `version`. Keep `"size": 0` until you've built and zipped the plugin, then replace it with the zip's size in bytes
-- [ ] Decide: bundled (under ~1 MB) or downloaded? Add `"bundled": true` for bundled
+- [ ] Leave this as a downloaded plugin (the scaffolder prints `source: { type: 'download' }`). `"bundled": true` is only for a plugin that ships inside the app, like Images
 - [ ] Update `vite.config.ts`: add any plugins or config your plugin needs
 - [ ] Replace `index.ts` with your editor implementation
 - [ ] Add your plugin to `src/plugins/catalog.ts` (see the scaffolder's output for the entry)

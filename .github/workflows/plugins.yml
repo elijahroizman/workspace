@@ -6,9 +6,8 @@ name: Plugins
 # plugins/<id>/plugin.json). The app downloads from there when the plugin is turned on
 # (archiveUrl in src/state/plugins.ts) and installs only what the signature vouches for.
 #
-# It runs when a plugin.json changes on main (a merged Sync plugins pull request, say), so a new
-# version is published by merging it. Pushing a tag like plugin-excalidraw-0.18.1-1 publishes that
-# one version, as before.
+# It runs when a plugin.json changes on main, so a new version is published by merging it.
+# Pushing a tag like plugin-latex-1.0.1 publishes that one version.
 #
 # Pre-release, so it never becomes the "latest" release the app's updater reads.
 on:

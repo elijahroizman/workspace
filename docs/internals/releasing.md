@@ -11,8 +11,6 @@ The **Release** workflow (`.github/workflows/release.yml`) builds the Mac `.dmg`
 
 The **Plugins** workflow (`.github/workflows/plugins.yml`) publishes downloaded plugins. When a `plugin.json` changes on `main`, it builds, zips and signs every plugin version that has no pre-release yet, and attaches it to a new `plugin-<id>-<version>` pre-release. A `plugin-*` tag publishes that one version.
 
-The **Sync plugins** workflow (`.github/workflows/sync-plugins.yml`) runs every Thursday at 00:00 UTC, and from the Actions tab. When the engine behind a downloaded plugin (the `engine` in its `plugin.json`: Excalidraw, Mermaid) has a newer release, `scripts/sync-plugins.mjs` installs it, bumps the plugin's version and size, and the workflow opens or refreshes a pull request from `automation/sync-plugins`. Merging it publishes the plugin; users get it with the next app release. It needs **Settings › Actions › General › Allow GitHub Actions to create and approve pull requests**. Pull requests opened by Actions don't start other workflows.
-
 ## Signing keys
 
 All of these are Actions secrets. None is in the repository.

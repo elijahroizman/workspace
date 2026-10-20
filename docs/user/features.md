@@ -50,7 +50,7 @@ Type in **Find a file** to search every document under the folder by name. ⇧�
 
 ## Split view
 
-**View › Split View** (⇧⌘\) shows two Word documents or PDFs side by side. It asks what goes beside the one in front: another open tab, a recent file, a file from the open folder, **Choose a file…**, or a second copy of the same document, so you can keep a textbook's questions on one side and its answers on the other. Right-click a tab and pick **Open to the side…** to put it beside the document you were looking at. Markdown, Mermaid and LaTeX have their own source-and-preview split instead (⌥⌘2), which ⇧⌘\ switches to.
+**View › Split View** (⇧⌘\) shows two Word documents or PDFs side by side. It asks what goes beside the one in front: another open tab, a recent file, a file from the open folder, **Choose a file…**, or a second copy of the same document, so you can keep a textbook's questions on one side and its answers on the other. Right-click a tab and pick **Open to the side…** to put it beside the document you were looking at. Markdown and LaTeX have their own source-and-preview split instead (⌥⌘2), which ⇧⌘\ switches to.
 
 Click in a pane to work in it: a blue line along its top shows which one, and Save, Find, Zoom and the other commands go to it. Clicking another Word or PDF tab in the tab bar puts it in that pane; any other tab goes back to one pane. Drag the line between the panes to resize them (double-click it for half and half). Each pane starts without its sidebar and inspector, to leave room for both documents; the buttons at its top corners show them in that pane. ⇧⌘\ again, or closing either tab, goes back to one pane, with the sidebars as they were.
 
@@ -66,7 +66,7 @@ In **Settings › Autosave** you can turn it off, change the delay, or leave som
 
 ## Version history
 
-Each time a file is saved, by you or by autosave, Workspace keeps a copy of that version. **File › Version History…** (or right-click a tab and pick **Version history…**) lists them by day. Pick one to see what's different: **Compare with now** shows what going back would undo, and **What changed in this save** shows that save's own changes. Text, Markdown, LaTeX and Mermaid files compare line by line; Word documents and PowerPoint presentations compare their text paragraph by paragraph. PDFs and pictures can be opened or restored but not compared.
+Each time a file is saved, by you or by autosave, Workspace keeps a copy of that version. **File › Version History…** (or right-click a tab and pick **Version history…**) lists them by day. Pick one to see what's different: **Compare with now** shows what going back would undo, and **What changed in this save** shows that save's own changes. Text, Markdown and LaTeX files compare line by line; Word documents and PowerPoint presentations compare their text paragraph by paragraph. PDFs and pictures can be opened or restored but not compared.
 
 - **Save version** saves now, with a description if you type one, like a commit message.
 - **Restore** puts that version back. What the document was before is kept in the history too, so restoring can be undone.

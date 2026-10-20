@@ -48,9 +48,8 @@ src/
   editors/{docx,pptx,pdf,markdown,text}/   built-in editors, each loaded the first time it's needed
   plugins/catalog.ts      every plugin and the file types it opens
   plugins/api.ts          the contract an optional plugin's editor implements
-plugins/<id>/             optional plugins, built and released apart from the app
+plugins/<id>/             plugin bundles (Images ships in the app; LaTeX is downloaded)
 scripts/licenses.mjs      collects license texts for Settings (runs in npm run build)
-scripts/sync-plugins.mjs  moves downloaded plugins to their engine's latest release (the weekly Sync plugins workflow)
 src-tauri/
   src/lib.rs              app setup, Open With handling
   src/plugins.rs          downloads, checks and serves optional plugins (wsplugin: scheme)

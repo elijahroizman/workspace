@@ -23,7 +23,7 @@ if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(id)) {
 }
 
 if (!/^[a-z0-9]+$/i.test(ext)) {
-  console.error('The extension is letters and digits, without the dot (mmd, tex)')
+  console.error('The extension is letters and digits, without the dot (tex)')
   process.exit(1)
 }
 

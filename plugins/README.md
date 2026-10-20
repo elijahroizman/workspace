@@ -1,17 +1,19 @@
 # Plugin authoring guide
 
-Each folder here is a plugin that adds a file type to Workspace without being part of the app itself. A plugin is listed in `src/plugins/catalog.ts` and its editor follows the contract in `src/plugins/api.ts`: an ES module that exports `apiVersion` and `mount(element, context)`, renders into the element with whatever it likes (it brings its own React), and hands back `getBytes()`, `destroy()` and optional find, zoom, print and theme hooks.
+Each folder here is a plugin that adds a file type. A plugin is listed in `src/plugins/catalog.ts` and its editor follows the contract in `src/plugins/api.ts`: an ES module that exports `apiVersion` and `mount(element, context)`, renders into the element with whatever it likes (it brings its own React), and hands back `getBytes()`, `destroy()` and optional find, zoom, print and theme hooks.
 
 ## What a plugin is
 
-A plugin is an optional feature that adds support for a file format. The app loads the plugin's `index.js` at runtime, calls its `mount` function with an element and a context object, and the plugin renders into that element. The plugin can use any UI framework it wants (React, Vue, plain DOM) because it's a self-contained ES module. Mermaid and LaTeX use plain DOM and the shared kit below.
+The app loads the plugin's `index.js` at runtime, calls its `mount` function with an element and a context object, and the plugin renders into that element. The plugin can use any UI framework it wants (React, Vue, plain DOM) because it's a self-contained ES module. LaTeX uses plain DOM and the shared kit below. Images does too, and is built in. Word, PowerPoint, PDF, Markdown and text have their editors in `src/editors` instead.
 
 Fields marked optional in `api.ts` can be missing in an older app, so check them (`context.sidebar?.…`).
 
-## Bundled or downloaded
+## Built in or downloaded
 
-- **Small (under about 1 MB): bundled.** Set `source: { type: 'bundled' }` in the catalog and `"bundled": true` in its `plugin.json`, and add its build to the `plugins:bundled` script (the dev server serves it from there). The app's build builds it into `plugins/<id>/dist` and copies that to `/plugins/<id>/`, so it comes with every install and turning it on is instant. EPUB and Images are bundled. Images' HEIC decoder is 2 MB, but it's a chunk of its own that only loads for HEIC photos.
-- **Bigger: downloaded.** Excalidraw is 16 MB with its fonts, so it's `source: { type: 'download' }`. The app fetches `plugin-<id>-<version>/<id>-<version>.zip` from this repository's releases, checks its `.sig` against the updater's public key, unpacks it into its data folder and loads it through the `wsplugin:` scheme (`src-tauri/src/plugins.rs`).
+A plugin's files are a separate build (`plugins/<id>/dist`). The catalog's `source` says how they reach the user:
+
+- **Built in** (`source: { type: 'builtin' }`): always on. Set `"bundled": true` in `plugin.json` and add the build to the `plugins:bundled` script. The app's build copies `dist` to `/plugins/<id>/` (see `bundledPlugins` in `vite.config.ts`), and the dev server serves it from there. Images works this way: it isn't in `BUILT_IN_EDITORS`, so `PluginEditor` loads `/plugins/images/index.js`. Its HEIC decoder is 2 MB, but it's a chunk of its own that only loads for HEIC photos.
+- **Downloaded** (`source: { type: 'download' }`): off until the user turns it on. LaTeX is the one that ships this way. The app fetches `plugin-<id>-<version>/<id>-<version>.zip` from this repository's releases, checks its `.sig` against the updater's public key, unpacks it into its data folder and loads it through the `wsplugin:` scheme (`src-tauri/src/plugins.rs`).
 
 ## API reference
 
@@ -55,7 +57,7 @@ Fields marked optional in `api.ts` can be missing in an older app, so check them
 The `plugins/shared` folder has reusable helpers:
 
 - `vite.ts`: `pluginConfig(import.meta.url)` is the one-line Vite config every plugin uses
-- `source-preview.ts`: `mountSourcePreview()` gives you a CodeMirror editor on the left and a preview pane on the right, with view switching (read/split/write) and idle delays. Use it for text-to-rendered formats like Markdown, Mermaid, LaTeX. It also exports `sidebarSection` (pass `{ list: true }` for rows made with `sidebarItem`), `sidebarItem`, and `sidebarHint` for styling sidebar content to match Workspace. Show errors in the sidebar, not in a popup over the preview. A plugin that opens a copy of its output in a tab (`openDocument`) can keep it current with `updateDocument`.
+- `source-preview.ts`: `mountSourcePreview()` gives you a CodeMirror editor on the left and a preview pane on the right, with view switching (read/split/write) and idle delays. Use it for text-to-rendered formats like Markdown and LaTeX. It also exports `sidebarSection` (pass `{ list: true }` for rows made with `sidebarItem`), `sidebarItem`, and `sidebarHint` for styling sidebar content to match Workspace. Show errors in the sidebar, not in a popup over the preview. A plugin that opens a copy of its output in a tab (`openDocument`) can keep it current with `updateDocument`.
 
 ## Making a plugin
 
@@ -65,9 +67,9 @@ The `plugins/shared` folder has reusable helpers:
 4. Add the CSS variable `--kind-<id>` to `src/styles/app.css` (pick a color).
 5. Add file associations to `src-tauri/tauri.conf.json`.
 6. Add your npm packages to `PLUGIN_PACKAGES` in `scripts/licenses.mjs`.
-7. Add your build command to the `plugins` npm script in `package.json`.
+7. Add your build command to the `plugins` npm script in `package.json` (or `plugins:bundled`, if the plugin ships inside the app).
 8. Run `npm run typecheck` and `npm run build` to verify.
-9. For downloaded plugins: set `size` in `plugin.json` to the size of the zipped `plugins/<id>/dist` in bytes (a plain zip is fine for measuring). The release package must be signed: the Plugins workflow does that when the new version reaches `main`, or when you push the `plugin-<id>-<version>` tag (`scripts/pack-plugin.mjs` with the updater key), and the app refuses an archive without a matching `.sig`. If the plugin wraps one npm package, name it as `engine` in `plugin.json`: the Sync plugins workflow then proposes its new releases every week (`scripts/sync-plugins.mjs`; versions are `<engine version>-<n>`).
+9. For downloaded plugins: set `size` in `plugin.json` to the size of the zipped `plugins/<id>/dist` in bytes (a plain zip is fine for measuring). The release package must be signed: the Plugins workflow does that when the new version reaches `main`, or when you push the `plugin-<id>-<version>` tag (`scripts/pack-plugin.mjs` with the updater key), and the app refuses an archive without a matching `.sig`.
 10. Test in the browser (`npm run dev`) and the real app (`npm run app:dev`).
 
 ## Checklist
@@ -86,7 +88,7 @@ Before releasing a plugin:
 
 ## Rules learned
 
-- Never write `new URL('./', import.meta.url)` in a plugin entry: Vite inlines it as a `data:` asset. For the plugin's own folder use `import.meta.url.replace(/[^/]*$/, '')` (see `plugins/excalidraw/index.ts`).
+- Never write `new URL('./', import.meta.url)` in a plugin entry: Vite inlines it as a `data:` asset. For the plugin's own folder use `import.meta.url.replace(/[^/]*$/, '')`.
 - Nothing loads from the network: the app's CSP blocks it. Bundle fonts and other files with the plugin.
 - Plugins bring their own framework. The app's React isn't shared.
 - Keep `src/plugins/api.ts` import-free so plugins can compile against it.

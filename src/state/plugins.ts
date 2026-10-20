@@ -158,9 +158,10 @@ export function enabledKinds(enabled = usePlugins.getState().enabled) {
 }
 
 /**
- * At launch: learn what's on disk, and bring downloaded plugins up to the version this build
- * wants (an app update can come with a new plugin version). Until it arrives, a plugin that is
- * still on disk keeps working.
+ * At launch: learn what's on disk, delete anything this build doesn't offer as a download (a
+ * plugin that was removed), and bring downloaded plugins up to the version this build wants
+ * (an app update can come with a new plugin version). Until it arrives, a plugin that is still
+ * on disk keeps working.
  */
 export async function startPlugins() {
   if (!isTauri) return
@@ -172,7 +173,21 @@ export async function startPlugins() {
   })
   try {
     const list = await invoke<{ id: string; version: string }[]>('installed_plugins')
-    usePlugins.setState({ installed: Object.fromEntries(list.map((p) => [p.id, p.version])) })
+    const downloadIds = new Set(PLUGINS.filter((p) => p.source.type === 'download').map((p) => p.id))
+    const installed: Record<string, string> = {}
+    for (const plugin of list) {
+      if (downloadIds.has(plugin.id)) {
+        installed[plugin.id] = plugin.version
+        continue
+      }
+      // Files from a plugin this build no longer downloads. A failure is tried again next launch.
+      try {
+        await invoke('remove_plugin', { id: plugin.id })
+      } catch {
+        /* leave it off `installed`; installed_plugins will list it again */
+      }
+    }
+    usePlugins.setState({ installed })
   } catch {
     return
   }

@@ -330,7 +330,7 @@ function PluginsPage() {
   const count = (on: number, all: number) => <span className="plugin-count">{`${on} of ${all} on`}</span>
   return (
     <>
-      <p className="settings-intro">Turn on only what you need. Word, PowerPoint, PDF, Markdown and text files always open.</p>
+      <p className="settings-intro">Turn on only what you need. Word, PowerPoint, PDF, Markdown, text and image files always open.</p>
       <section className="plugin-group">
         <h4>
           File types {count(optional.filter((p) => enabled[p.id]).length, optional.length)}

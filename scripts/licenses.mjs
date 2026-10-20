@@ -13,19 +13,7 @@ const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 
 /** npm packages each plugin bundles (plugins/<id>/vite.config.ts builds them). */
 const PLUGIN_PACKAGES = {
-  Excalidraw: ['@excalidraw/excalidraw', 'react', 'react-dom'],
-  EPUB: ['jszip', 'dompurify'],
-  Images: ['libheif-js'],
-  Mermaid: ['mermaid', '@codemirror/commands', '@codemirror/language', '@codemirror/search', '@codemirror/view'],
   LaTeX: ['@codemirror/commands', '@codemirror/legacy-modes', '@codemirror/language', '@codemirror/search', '@codemirror/view'],
-}
-
-/** Copyright holders for packages that name none (no author field, no license file). */
-const HOLDERS = {
-  '@excalidraw/excalidraw': 'Excalidraw',
-  '@excalidraw/laser-pointer': 'Excalidraw',
-  '@excalidraw/mermaid-to-excalidraw': 'Excalidraw',
-  '@excalidraw/random-username': 'Excalidraw',
 }
 
 const TEMPLATES = {
@@ -48,7 +36,6 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 }
 
 function holderOf(meta) {
-  if (HOLDERS[meta.name]) return HOLDERS[meta.name]
   const author = typeof meta.author === 'string' ? meta.author.replace(/\s*[<(].*$/, '') : meta.author?.name
   return author || `the ${meta.name} authors`
 }
@@ -159,7 +146,8 @@ function cratePackages() {
 
 const byName = (a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version)
 const packages = [
-  ...npmPackages(Object.keys(pkg.dependencies), 'App').sort(byName),
+  // libheif-js decodes HEIC in the Images viewer, which ships inside the app.
+  ...npmPackages([...Object.keys(pkg.dependencies), 'libheif-js'], 'App').sort(byName),
   ...Object.entries(PLUGIN_PACKAGES).flatMap(([plugin, names]) => npmPackages(names, `${plugin} plugin`).sort(byName)),
   ...cratePackages().sort(byName),
 ]

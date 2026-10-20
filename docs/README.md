@@ -4,7 +4,7 @@
 
 - [What each editor can do](user/features.md)
 - [Keyboard shortcuts](user/keyboard-shortcuts.md)
-- [Plugins: Excalidraw, EPUB, Images, Mermaid, LaTeX and fonts](user/plugins.md)
+- [Plugins: images, LaTeX and fonts](user/plugins.md)
 - [Updating, and the APT repository](user/updating.md)
 - [What it doesn't do yet](user/limitations.md)
 

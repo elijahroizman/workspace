@@ -8,7 +8,7 @@ export const PLUGIN_API_VERSION = 1
 
 export type Theme = 'light' | 'dark'
 
-/** Source-and-preview editors (Markdown, Mermaid, LaTeX): the preview, both side by side, or the source. */
+/** Source-and-preview editors (Markdown, LaTeX): the preview, both side by side, or the source. */
 export type ViewMode = 'read' | 'split' | 'write'
 
 export interface PluginEditorContext {

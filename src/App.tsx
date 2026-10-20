@@ -37,8 +37,9 @@ export interface EditorProps {
 }
 
 // Each editor (and its heavy engine) loads only when a tab of that type opens,
-// which keeps launch fast. Built-in plugins' editors are part of the app; optional plugins
-// run in PluginEditor (see plugins/api.ts).
+// which keeps launch fast. Word, PowerPoint, PDF, Markdown and text live here.
+// Images is built in too, but its viewer is the plugin bundle at /plugins/images/,
+// so that kind falls through to PluginEditor, as optional plugins do (see plugins/api.ts).
 const BUILT_IN_EDITORS: Record<string, React.LazyExoticComponent<ComponentType<EditorProps>>> = {
   md: lazy(() => import('./editors/markdown/MarkdownEditor')),
   txt: lazy(() => import('./editors/text/TextEditor')),
@@ -135,7 +136,7 @@ function SplitDivider() {
 
 /**
  * ⇧⌘\: pick the Word document or PDF to show beside this one; again to go back to one pane.
- * Markdown, Mermaid and LaTeX switch to their own source-and-preview split instead.
+ * Markdown and LaTeX switch to their own source-and-preview split instead.
  */
 async function toggleSplit() {
   const ws = useWorkspace.getState()
@@ -410,7 +411,7 @@ export function editorHandles(command: string) {
   const editor = getEditor(useWorkspace.getState().activeId)
   if (command.startsWith('view-')) return !!editor?.viewMode
   if (command.startsWith('zoom-')) return !!editor?.zoom
-  // A plugin without its own find or print keeps the keys for itself (Excalidraw searches the canvas).
+  // A plugin without its own find or print keeps the keys for itself.
   if (command === 'find') return !!editor?.find
   if (command === 'replace') return !!editor?.replace
   if (command === 'print') return !!editor?.print

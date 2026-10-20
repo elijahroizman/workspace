@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { DocKind } from '../lib/kinds'
-import { KINDS, kindFromPath, stripExtension } from '../lib/kinds'
+import { KINDS, isKnownKind, kindFromPath, stripExtension } from '../lib/kinds'
 import * as platform from '../lib/platform'
 import type { PluginInfo } from '../plugins/catalog'
 import { pluginForKind } from '../plugins/catalog'
@@ -11,7 +11,7 @@ import { useSettings } from './settings'
 export const HOME_TAB_ID = 'home'
 
 /**
- * The kinds that open side by side in split view. Markdown, Mermaid and LaTeX have their own
+ * The kinds that open side by side in split view. Markdown and LaTeX have their own
  * source-and-preview split instead.
  */
 export const SPLIT_KINDS: ReadonlySet<DocKind> = new Set<DocKind>(['docx', 'pdf'])
@@ -45,7 +45,7 @@ export interface EditorHandle {
   replace?(): void
   zoom?(direction: 'in' | 'out' | 'reset'): void
   print?(): Promise<void>
-  /** Source-and-preview editors (Markdown, Mermaid, LaTeX): read, split, write, or cycle through them. */
+  /** Source-and-preview editors (Markdown, LaTeX): read, split, write, or cycle through them. */
   viewMode?(mode: 'read' | 'split' | 'write' | 'cycle'): void
   /**
    * True while the user is partway through an entry that saving would cut short (typing into a
@@ -171,6 +171,15 @@ function load<T>(key: string, fallback: T): T {
   }
 }
 
+/** Recents from the last session, without kinds this build no longer opens. */
+function loadRecents(): RecentFile[] {
+  const saved = load<RecentFile[]>(STORAGE.recents, [])
+  if (!Array.isArray(saved)) return []
+  const recents = saved.filter((r) => r && typeof r.kind === 'string' && isKnownKind(r.kind))
+  if (recents.length !== saved.length) localStorage.setItem(STORAGE.recents, JSON.stringify(recents))
+  return recents
+}
+
 const defaultPanels = {
   left: Object.fromEntries(Object.values(KINDS).map((k) => [k.id, k.panels.left])) as Record<DocKind, boolean>,
   right: Object.fromEntries(Object.values(KINDS).map((k) => [k.id, k.panels.right])) as Record<DocKind, boolean>,
@@ -233,7 +242,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     split: null,
     splitPanels: {},
     splitRatio: 0.5,
-    recents: load<RecentFile[]>(STORAGE.recents, []),
+    recents: loadRecents(),
     closedPaths: [],
     theme: initialThemeMode === 'system' ? systemTheme() : initialThemeMode,
     themeMode: initialThemeMode,
@@ -654,7 +663,11 @@ export async function restoreSession() {
 async function reopen(session: { paths: string[]; active: string | null }) {
   if (!session.paths.length) return
   const existing = []
-  for (const path of session.paths) if (await platform.pathExists(path)) existing.push(path)
+  for (const path of session.paths) {
+    // A kind this build no longer has (a plugin that was removed) is left out, with no error.
+    if (!kindFromPath(path)) continue
+    if (await platform.pathExists(path)) existing.push(path)
+  }
   const { openPaths } = useWorkspace.getState()
   // Open in order without moving focus around, then focus the tab that was active.
   useWorkspace.setState({ activeId: HOME_TAB_ID })

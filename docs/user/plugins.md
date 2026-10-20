@@ -1,24 +1,16 @@
 # Plugins
 
-Word, PowerPoint, PDF, Markdown and text are built in. The rest are optional and off until you turn them on, in the setup screen on first launch or later in **Settings › Plugins**. The same page has optional [fonts](#fonts).
+Word, PowerPoint, PDF, Markdown, text and images are built in. LaTeX is optional and off until you turn it on, in the setup screen on first launch or later in **Settings › Plugins**. The same page has optional [fonts](#fonts).
 
 | Plugin | Opens | Size | How it arrives |
 | --- | --- | --- | --- |
-| [Excalidraw](https://excalidraw.com) | `.excalidraw` drawings | about 16 MB, mostly fonts | Downloaded from this repository's releases when you turn it on |
-| EPUB | `.epub` books | about 200 KB | Comes with the app; turns on instantly |
-| Images | `.png`, `.jpg`, `.jpeg`, `.heic`, `.heif` pictures | about 20 KB, and 2 MB for HEIC | Comes with the app |
-| [Mermaid](https://mermaid.js.org) | `.mmd`, `.mermaid` diagrams | about 1.2 MB | Downloaded |
 | LaTeX | `.tex` documents | about 120 KB (TeX itself is separate) | Downloaded |
 
 Workspace checks every downloaded plugin's signature before installing it. Turning a downloaded plugin off removes its files; turning it back on downloads it again. Tabs using a plugin close first (Workspace asks about unsaved changes).
 
-## EPUB
-
-A book shows as one scrolling column, with its table of contents in the sidebar. Find and zoom work, and the book reopens where you left off. Nothing in a book runs or loads from the web.
-
 ## Images
 
-A plain viewer for PNG, JPEG and HEIC, made with Mermaid exports in mind but fine for photos. Pinch or ⌘-scroll to zoom, double-click to switch between fitting the window and 100%, and drag to move around.
+A plain viewer for PNG, JPEG and HEIC. Pinch or ⌘-scroll to zoom, double-click to switch between fitting the window and 100%, and drag to move around.
 
 The toolbar has a few touch-ups: **highlight**, **draw**, **line**, **arrow**, **box**, **select** (to crop, or to copy part of the picture), and **turn** left or right. Hold Shift while highlighting or drawing for a straight line, or while drawing a line or arrow to keep it level, upright or at 45°. ⌘Z undoes, ⌘C copies the picture (or the selection). Changes save into the same file and format; a file you haven't changed is saved back exactly as it was. **⋯** saves a copy as PNG or JPEG, or prints.
 
@@ -26,11 +18,9 @@ Workspace can read HEIC photos but can't write them, so they open for viewing. *
 
 It doesn't pick out text in pictures (OCR).
 
-## Mermaid and LaTeX
+## LaTeX
 
-Both work like Markdown: source and preview side by side, and ⌘E (Ctrl+E on Windows and Linux) switches between the preview, both, and the source.
-
-Mermaid draws the diagram as you type and exports SVG or PNG.
+LaTeX works like Markdown: source and preview side by side, and ⌘E (Ctrl+E on Windows and Linux) switches between the preview, both, and the source.
 
 LaTeX compiles with the TeX installed on your computer a few seconds after you stop typing (set how long in **Settings › Plugins**). The PDF shows in Workspace's own viewer, and errors and the outline are in the sidebar. A document compiles from the folder it's saved in, so `\input` and pictures beside it work.
 
