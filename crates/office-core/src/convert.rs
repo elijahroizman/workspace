@@ -178,152 +178,242 @@ fn body_box(size: SlideSize) -> Xfrm {
     }
 }
 
-/// A slide for each page (split at page breaks and top-level headings), with the paragraphs in
-/// a text box and each table and picture as its own frame below them.
-fn flow_to_slides(blocks: &[Block]) -> Body {
-    let size = SlideSize::default();
-    let mut slides: Vec<Vec<&Block>> = vec![Vec::new()];
-    for b in blocks {
-        let starts = match b {
-            Block::Paragraph(p) => {
-                p.content.iter().any(|i| matches!(i, Inline::Break { kind: BreakKind::Page }))
-                    || matches!(p.props.style.as_deref(), Some("Title" | "Heading1"))
-            }
-            _ => false,
-        };
-        if starts && slides.last().is_some_and(|s| !s.is_empty()) {
-            slides.push(Vec::new());
-        }
-        slides.last_mut().unwrap().push(b);
-    }
-    let slides = slides
-        .into_iter()
-        .filter(|s| !s.is_empty())
-        .map(|blocks| {
-            let mut frames = Vec::new();
-            let mut text = Vec::new();
-            let area = body_box(size);
-            let mut next_y = area.y;
-            let mut id = 2;
-            let flush = |text: &mut Vec<Paragraph>, frames: &mut Vec<Frame>, id: &mut u32, next_y: &mut Emu| {
-                if text.iter().all(|p| p.plain_text().trim().is_empty()) {
-                    text.clear();
-                    return;
-                }
-                // Each line as tall as its largest text (18 pt where a run doesn't say), with the
-                // paragraph's line and paragraph spacing, inside the box's 0.1 in insets.
-                let lines: i64 = text
-                    .iter()
-                    .map(|p| {
-                        let largest = p.runs().map(|r| r.props.size.map(|s| s.points()).unwrap_or(18.0)).fold(f64::NAN, f64::max);
-                        // An empty paragraph is as tall as its mark.
-                        let size = if largest.is_nan() {
-                            p.mark.as_ref().and_then(|m| m.size).map(|s| s.points()).unwrap_or(18.0)
-                        } else {
-                            largest
-                        };
-                        let spacing = match p.props.line_spacing {
-                            Some(LineSpacing::Multiple(m)) => m.fraction().max(1.0),
-                            _ => 1.0,
-                        };
-                        let count = 1.0 + p.plain_text().matches('\n').count() as f64;
-                        let around = p.props.space_before.unwrap_or_default().0 + p.props.space_after.unwrap_or_default().0;
-                        Emu::from_points(size * 1.2 * spacing * count).0 + around
-                    })
-                    .sum::<i64>()
-                    + 2 * 91_440;
-                let height = Emu(lines.min(area.height.0));
-                frames.push(Frame::text_box(*id, Xfrm { y: *next_y, height, ..area.clone() }, std::mem::take(text)));
-                *id += 1;
-                *next_y = *next_y + height;
-            };
-            for b in blocks {
-                match b {
-                    Block::Paragraph(p) => {
-                        let mut p = p.clone();
-                        p.content.retain(|i| !matches!(i, Inline::Break { .. }));
-                        let images: Vec<Image> =
-                            p.content.iter().filter_map(|i| if let Inline::Image(img) = i { Some(img.clone()) } else { None }).collect();
-                        p.content.retain(|i| !matches!(i, Inline::Image(_)));
-                        p.origin = Origin::default();
-                        text.push(p);
-                        for image in images {
-                            flush(&mut text, &mut frames, &mut id, &mut next_y);
-                            let xfrm = Xfrm { x: area.x, y: next_y, width: image.width, height: image.height, ..Default::default() };
-                            next_y = next_y + image.height;
-                            frames.push(Frame {
-                                id,
-                                name: format!("Picture {id}"),
-                                description: image.description.clone(),
-                                hidden: false,
-                                shape: ShapeProps { xfrm: Some(xfrm), preset: Some("rect".into()), ..Default::default() },
-                                placeholder: None,
-                                content: FrameContent::Picture { image },
-                                origin: Origin::default(),
-                            });
-                            id += 1;
-                        }
-                    }
-                    Block::Table(t) => {
-                        flush(&mut text, &mut frames, &mut id, &mut next_y);
-                        let mut t = t.clone();
-                        let total: i64 = t.columns.iter().map(|c| c.0).sum();
-                        // Fit the table to the slide's width.
-                        if total > area.width.0 && total > 0 {
-                            for c in &mut t.columns {
-                                c.0 = c.0 * area.width.0 / total;
-                            }
-                        }
-                        let height = Emu(t.rows.len() as i64 * 370_840);
-                        let xfrm =
-                            Xfrm { x: area.x, y: next_y, width: Emu(t.columns.iter().map(|c| c.0).sum()), height, ..Default::default() };
-                        next_y = next_y + height;
-                        frames.push(Frame {
-                            id,
-                            name: format!("Table {id}"),
-                            description: None,
-                            hidden: false,
-                            shape: ShapeProps { xfrm: Some(xfrm), ..Default::default() },
-                            placeholder: None,
-                            content: FrameContent::Table { table: t },
-                            origin: Origin::default(),
-                        });
-                        id += 1;
-                    }
-                    Block::Raw { .. } => {}
-                }
-            }
-            flush(&mut text, &mut frames, &mut id, &mut next_y);
-            Slide { frames, ..Default::default() }
-        })
-        .collect();
-    Body::Slides { size, slides }
+/// The height a row of a converted table gets: PowerPoint's default.
+const ROW: i64 = 370_840;
+
+/// About how tall a paragraph is in a text box: each line as tall as its largest text (18 pt
+/// where a run doesn't say), with its line and paragraph spacing.
+fn paragraph_height(p: &Paragraph) -> i64 {
+    let largest = p.runs().map(|r| r.props.size.map(|s| s.points()).unwrap_or(18.0)).fold(f64::NAN, f64::max);
+    // An empty paragraph is as tall as its mark.
+    let size = if largest.is_nan() { p.mark.as_ref().and_then(|m| m.size).map(|s| s.points()).unwrap_or(18.0) } else { largest };
+    let spacing = match p.props.line_spacing {
+        Some(LineSpacing::Multiple(m)) => m.fraction().max(1.0),
+        _ => 1.0,
+    };
+    let lines = 1.0 + p.plain_text().matches('\n').count() as f64;
+    let around = p.props.space_before.unwrap_or_default().0 + p.props.space_after.unwrap_or_default().0;
+    Emu::from_points(size * 1.2 * spacing * lines).0 + around
 }
 
-/// A slide per visible sheet, each holding the sheet as a table.
-fn sheets_to_slides(sheets: &[Sheet]) -> Body {
-    let size = SlideSize::default();
-    let area = body_box(size);
-    let slides = sheets
-        .iter()
-        .filter(|s| !s.hidden)
-        .map(|s| {
-            let table = sheet_to_table(s, area.width);
-            let height = Emu(table.rows.len() as i64 * 370_840);
-            let frame = Frame {
-                id: 2,
-                name: s.name.clone(),
+/// A text box's insets, top and bottom.
+const INSETS: i64 = 2 * 91_440;
+
+/// Lays frames out down slides, starting a new slide when the next frame doesn't fit.
+struct Deck {
+    area: Xfrm,
+    slides: Vec<Slide>,
+    frames: Vec<Frame>,
+    y: i64,
+    id: u32,
+}
+
+impl Deck {
+    fn new(size: SlideSize) -> Deck {
+        let area = body_box(size);
+        Deck { y: area.y.0, area, slides: Vec::new(), frames: Vec::new(), id: 2 }
+    }
+
+    fn room(&self) -> i64 {
+        self.area.y.0 + self.area.height.0 - self.y
+    }
+
+    fn new_slide(&mut self) {
+        if !self.frames.is_empty() {
+            self.slides.push(Slide { frames: std::mem::take(&mut self.frames), ..Default::default() });
+        }
+        self.y = self.area.y.0;
+        self.id = 2;
+    }
+
+    /// Puts a frame `height` tall at the next free place, on a new slide if it doesn't fit here.
+    fn place(&mut self, width: i64, height: i64, make: impl FnOnce(u32, Xfrm) -> Frame) {
+        if height > self.room() && !self.frames.is_empty() {
+            self.new_slide();
+        }
+        let xfrm = Xfrm { x: self.area.x, y: Emu(self.y), width: Emu(width), height: Emu(height), ..Default::default() };
+        self.frames.push(make(self.id, xfrm));
+        self.id += 1;
+        self.y += height;
+    }
+
+    /// Paragraphs in text boxes, as many to a box as fit, the rest on the next slides.
+    fn text(&mut self, paragraphs: Vec<Paragraph>) {
+        if paragraphs.iter().all(|p| p.plain_text().trim().is_empty()) {
+            return;
+        }
+        let mut chunk: Vec<Paragraph> = Vec::new();
+        let mut height = INSETS;
+        for p in paragraphs {
+            let h = paragraph_height(&p);
+            if !chunk.is_empty() && height + h > self.room() {
+                self.flush_text(std::mem::take(&mut chunk), height);
+                self.new_slide();
+                height = INSETS;
+            }
+            height += h;
+            chunk.push(p);
+        }
+        self.flush_text(chunk, height);
+    }
+
+    fn flush_text(&mut self, chunk: Vec<Paragraph>, height: i64) {
+        if chunk.is_empty() {
+            return;
+        }
+        let (width, height) = (self.area.width.0, height.min(self.area.height.0));
+        self.place(width, height, |id, xfrm| Frame::text_box(id, xfrm, chunk));
+    }
+
+    /// A table, split across slides by rows when it's too tall, the header row on each part.
+    fn table(&mut self, t: Table) {
+        let total: i64 = t.columns.iter().map(|c| c.0).sum();
+        let mut t = t;
+        // Fit the table to the slide's width.
+        if total > self.area.width.0 && total > 0 {
+            for c in &mut t.columns {
+                c.0 = c.0 * self.area.width.0 / total;
+            }
+        }
+        let width: i64 = t.columns.iter().map(|c| c.0).sum();
+        let header = t.rows.first().is_some_and(|r| r.header);
+        let per_slide = (self.area.height.0 / ROW).max(2) as usize;
+        let mut start = 0;
+        while start < t.rows.len() {
+            let room = ((self.room() / ROW) as usize).max(if self.frames.is_empty() { per_slide } else { 0 });
+            // Too little room for more than the header: begin on a new slide.
+            let fits = room.saturating_sub(if header && start > 0 { 1 } else { 0 });
+            if fits == 0 {
+                self.new_slide();
+                continue;
+            }
+            let end = (start + fits).min(t.rows.len());
+            let mut part = slice_table(&t, start, end);
+            if header && start > 0 {
+                part.rows.insert(0, t.rows[0].clone());
+            }
+            let height = part.rows.len() as i64 * ROW;
+            self.place(width, height, |id, xfrm| Frame {
+                id,
+                name: format!("Table {id}"),
                 description: None,
                 hidden: false,
-                shape: ShapeProps { xfrm: Some(Xfrm { height, ..area.clone() }), ..Default::default() },
+                shape: ShapeProps { xfrm: Some(xfrm), ..Default::default() },
                 placeholder: None,
-                content: FrameContent::Table { table },
+                content: FrameContent::Table { table: part },
                 origin: Origin::default(),
-            };
-            Slide { frames: vec![frame], name: Some(s.name.clone()), ..Default::default() }
-        })
-        .collect();
-    Body::Slides { size, slides }
+            });
+            start = end;
+            if start < t.rows.len() {
+                self.new_slide();
+            }
+        }
+    }
+
+    /// A picture, shrunk to fit the slide if it's bigger, keeping its shape.
+    fn picture(&mut self, image: Image) {
+        let (w, h) = (image.width.0.max(1), image.height.0.max(1));
+        let scale = (self.area.width.0 as f64 / w as f64).min(self.area.height.0 as f64 / h as f64).min(1.0);
+        let (w, h) = ((w as f64 * scale) as i64, (h as f64 * scale) as i64);
+        self.place(w, h, |id, xfrm| Frame {
+            id,
+            name: format!("Picture {id}"),
+            description: image.description.clone(),
+            hidden: false,
+            shape: ShapeProps { xfrm: Some(xfrm), preset: Some("rect".into()), ..Default::default() },
+            placeholder: None,
+            content: FrameContent::Picture { image: Image { width: Emu(w), height: Emu(h), ..image } },
+            origin: Origin::default(),
+        });
+    }
+
+    fn finish(mut self) -> Vec<Slide> {
+        self.new_slide();
+        self.slides
+    }
+}
+
+/// Rows `start..end` of a table, with spans that cross the cut ended there: a row span from
+/// above gives its first cell in the slice back, and one running past the end is cut short.
+fn slice_table(t: &Table, start: usize, end: usize) -> Table {
+    let mut part =
+        Table { columns: t.columns.clone(), rows: t.rows[start..end].to_vec(), style: t.style.clone(), origin: Origin::default() };
+    for (i, row) in part.rows.iter_mut().enumerate() {
+        row.origin = Origin::default();
+        let r = start + i;
+        for (c, cell) in row.cells.iter_mut().enumerate() {
+            cell.origin = Origin::default();
+            if cell.covered {
+                if let Some((or, oc)) = t.owner(r, c) {
+                    // The owner is above the slice: the top row of what it covers here takes over.
+                    if or < start && r == start {
+                        let owner = &t.rows[or].cells[oc];
+                        if c == oc {
+                            cell.covered = false;
+                            cell.col_span = owner.col_span;
+                            cell.row_span = (or + owner.row_span as usize - start) as u32;
+                        }
+                    }
+                }
+            }
+            if !cell.covered {
+                cell.row_span = cell.row_span.min((end - r) as u32).max(1);
+            }
+        }
+    }
+    part
+}
+
+/// A slide for each page (split at page breaks and top-level headings), with the paragraphs in
+/// text boxes and each table and picture as its own frame below them, carried over onto more
+/// slides when a page holds more than one slide does.
+fn flow_to_slides(blocks: &[Block]) -> Body {
+    let size = SlideSize::default();
+    let mut deck = Deck::new(size);
+    let mut text: Vec<Paragraph> = Vec::new();
+    for b in blocks {
+        match b {
+            Block::Paragraph(p) => {
+                let starts = p.content.iter().any(|i| matches!(i, Inline::Break { kind: BreakKind::Page }))
+                    || matches!(p.props.style.as_deref(), Some("Title" | "Heading1"));
+                if starts {
+                    deck.text(std::mem::take(&mut text));
+                    deck.new_slide();
+                }
+                let mut p = p.clone();
+                p.origin = Origin::default();
+                let images: Vec<Image> =
+                    p.content.iter().filter_map(|i| if let Inline::Image(img) = i { Some(img.clone()) } else { None }).collect();
+                p.content.retain(|i| !matches!(i, Inline::Image(_) | Inline::Break { .. }));
+                text.push(p);
+                for image in images {
+                    deck.text(std::mem::take(&mut text));
+                    deck.picture(image);
+                }
+            }
+            Block::Table(t) => {
+                deck.text(std::mem::take(&mut text));
+                deck.table(t.clone());
+            }
+            Block::Raw { .. } => {}
+        }
+    }
+    deck.text(text);
+    Body::Slides { size, slides: deck.finish() }
+}
+
+/// Each visible sheet as a table, on as many slides as it takes.
+fn sheets_to_slides(sheets: &[Sheet]) -> Body {
+    let size = SlideSize::default();
+    let mut deck = Deck::new(size);
+    for s in sheets.iter().filter(|s| !s.hidden) {
+        deck.new_slide();
+        let table = sheet_to_table(s, deck.area.width);
+        if !table.rows.is_empty() {
+            deck.table(table);
+        }
+    }
+    Body::Slides { size, slides: deck.finish() }
 }
 
 /// The document's text: paragraphs on lines, table cells split by tabs, slides and sheets one
@@ -391,5 +481,54 @@ mod tests {
         let from_slides = to_kind(&slides, Kind::Word).unwrap();
         assert_eq!(plain_text(&from_slides).replace('\u{c}', ""), "Report\nIntro\nk\tv\nn\t2\n\nPage two");
         assert!(plain_text(&to_kind(&sheets, Kind::Slides).unwrap()).contains("n\t2"));
+    }
+
+    #[test]
+    fn long_pages_carry_onto_more_slides() {
+        let mut word = Document::new(Kind::Word);
+        let mut blocks: Vec<Block> = (0..40).map(|i| Block::Paragraph(Paragraph::text(format!("Line {i}")))).collect();
+        let mut t = Table::from_text(&(0..30).map(|i| vec![format!("r{i}"), "x".into()]).collect::<Vec<_>>(), Emu(20_000_000));
+        t.rows[0].header = true;
+        // A row span across where the table will be cut.
+        t.rows[10].cells[1].row_span = 4;
+        for r in 11..14 {
+            t.rows[r].cells[1].covered = true;
+        }
+        blocks.push(Block::Table(t));
+        word.body = Body::Flow { blocks };
+        let doc = to_kind(&word, Kind::Slides).unwrap();
+        let Body::Slides { slides, size } = &doc.body else { panic!() };
+        assert!(slides.len() >= 4, "{} slides", slides.len());
+        let bottom = size.height.0 - MARGIN;
+        for s in slides {
+            for f in &s.frames {
+                let x = f.shape.xfrm.as_ref().unwrap();
+                assert!(x.y.0 + x.height.0 <= bottom, "a frame runs off the slide");
+                assert!(x.x.0 + x.width.0 <= size.width.0 - MARGIN, "or off its side");
+            }
+        }
+        // Every line and every row made it, and later parts of the table start with its header.
+        let text = plain_text(&doc);
+        assert!((0..40).all(|i| text.contains(&format!("Line {i}\n")) || text.ends_with(&format!("Line {i}"))));
+        // (Rows whose second cell a span covers have only the first.)
+        assert!((0..30).all(|i| text.lines().any(|l| l == format!("r{i}\tx") || l == format!("r{i}"))));
+        let tables: Vec<&Table> = slides
+            .iter()
+            .flat_map(|s| &s.frames)
+            .filter_map(|f| if let FrameContent::Table { table } = &f.content { Some(table) } else { None })
+            .collect();
+        assert!(tables.len() >= 2);
+        assert!(tables[1..].iter().all(|t| t.rows[0].cells[0].plain_text() == "r0"));
+        // Spans never run past a part's last row, and no covered cell is left without its owner.
+        for t in tables {
+            for (r, row) in t.rows.iter().enumerate() {
+                for (c, cell) in row.cells.iter().enumerate() {
+                    assert!(r + cell.row_span as usize <= t.rows.len());
+                    if cell.covered {
+                        assert!(t.owner(r, c).is_some());
+                    }
+                }
+            }
+        }
     }
 }

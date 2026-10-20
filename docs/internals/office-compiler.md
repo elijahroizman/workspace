@@ -143,7 +143,7 @@ These are the core's own, not the layers':
 - **Excel's phonetic guides** (`rPh`, for Japanese) survive on strings that don't change; a string whose text changes is written without them.
 - **Word runs split by a page break** are written back as separate runs, and a changed hyperlink is written with `w:history`. Both mean the same to Word.
 - **Characters XML can't hold** (control characters other than tab and line breaks) are dropped from Word and PowerPoint text. Excel keeps them with its `_xHHHH_` escape.
-- **Converting between kinds** lays slides out simply: a text box for each page's paragraphs, then each table and picture below. Numbers in converted sheets show without their number format until the Excel layer applies it.
+- **Converting between kinds** lays slides out simply: each page's paragraphs in text boxes, then each table and picture below, carried onto more slides when they don't fit (tables split by rows, repeating a header row; pictures shrink to fit). Heights are estimated from type sizes, not measured, since the core does no text layout. Numbers in converted sheets show without their number format unless the Excel layer formats them.
 
 ## Testing
 

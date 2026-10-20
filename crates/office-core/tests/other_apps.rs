@@ -150,6 +150,14 @@ fn edited_samples_open() {
 #[ignore]
 fn conversions_open() {
     let dir = scratch();
+    // A page longer than a slide, and a table longer than a slide, become several slides.
+    let mut long = Document::new(Kind::Word);
+    let mut blocks: Vec<office_core::model::Block> =
+        (0..30).map(|i| office_core::model::Block::Paragraph(office_core::model::Paragraph::text(format!("Paragraph {i}")))).collect();
+    let rows: Vec<Vec<String>> = (0..40).map(|i| vec![format!("Row {i}"), (i * i).to_string()]).collect();
+    blocks.push(office_core::model::Block::Table(office_core::model::Table::from_text(&rows, office_core::units::Emu::from_inches(6.0))));
+    long.body = Body::Flow { blocks };
+    check(&long, Kind::Slides, "long-as-pptx", &dir);
     for (name, doc) in [("word", common::word()), ("slides", common::slides()), ("sheets", common::sheets())] {
         for kind in [Kind::Word, Kind::Slides, Kind::Sheets] {
             if kind != doc.kind {
