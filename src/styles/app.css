@@ -739,6 +739,224 @@ select optgroup {
   font-family: var(--font-mono);
 }
 
+/* ───────────────────────── Design system (components/ui.tsx) ───────────────────────── */
+
+.logo {
+  flex: none;
+  display: block;
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--wordmark-size) * 0.32);
+}
+
+.wordmark-name {
+  font-size: calc(var(--wordmark-size) * 0.84);
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--fg);
+}
+
+.doc-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 26%;
+  color: #fff;
+}
+
+kbd.kbd {
+  font-family: var(--font-ui);
+}
+
+.hint {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.empty-state {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--fg-faint);
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* Black barely darkens the dark title bar; dim it more so the tabs read as out of reach. */
+:root[data-theme='dark'] .modal-backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.modal-backdrop.modal-top {
+  align-items: flex-start;
+  padding-top: 13vh;
+}
+
+.modal-backdrop.modal-dim-light {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+:root[data-theme='dark'] .modal-backdrop.modal-dim-light {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.modal-backdrop.modal-dim-blur {
+  background: color-mix(in srgb, var(--chrome) 88%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.modal-layer-sheet {
+  z-index: 90;
+}
+
+.modal-layer-picker {
+  z-index: 96;
+}
+
+.modal-layer-welcome {
+  z-index: 120;
+}
+
+.modal-layer-dialog {
+  z-index: 300;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.action-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  text-align: left;
+  transition: border-color 0.12s, background 0.12s, transform 0.12s;
+}
+
+.action-card:hover {
+  border-color: color-mix(in srgb, var(--fg) 22%, transparent);
+  background: var(--raised);
+}
+
+.action-card:active {
+  transform: scale(0.99);
+}
+
+.action-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: var(--field);
+  color: var(--fg);
+  flex: none;
+}
+
+.action-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.action-card-text strong {
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.action-card-text .muted {
+  font-size: 12px;
+}
+
+.action-card .kbd {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+
+.pill-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.pill-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-muted);
+}
+
+.pill-tabs button:hover {
+  color: var(--fg);
+}
+
+.pill-tabs button.on {
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
+  color: var(--fg);
+}
+
+.pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.step-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.step-dots button {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fg) 20%, transparent);
+  transition: width 0.2s, background 0.2s;
+}
+
+.step-dots button.past {
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.step-dots button.on {
+  width: 20px;
+  background: var(--accent);
+}
+
+.step-dots button:disabled {
+  cursor: default;
+}
+
 .spin {
   animation: spin 0.9s linear infinite;
 }

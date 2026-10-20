@@ -8,7 +8,7 @@ import { useSetup } from '../state/setup'
 import { keysFor } from '../state/shortcuts'
 import { useWorkspace } from '../state/workspace'
 import { PluginRow } from './PluginList'
-import { DocBadge } from './Workbench'
+import { DocBadge } from './ui'
 import { Spinner } from './ui'
 
 type Step = 'plugins' | 'defaults' | 'done'

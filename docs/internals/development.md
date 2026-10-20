@@ -72,4 +72,4 @@ npx tauri icon assets/app-icon.svg -o /tmp/icons
 cp /tmp/icons/{32x32.png,128x128.png,128x128@2x.png,icon.icns,icon.ico,icon.png} src-tauri/icons/
 ```
 
-`public/favicon.svg` is a simplified copy for small sizes, used by the browser version.
+`public/favicon.svg` is the same mark, full bleed for small sizes, used by the browser version.

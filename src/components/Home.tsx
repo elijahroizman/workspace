@@ -9,7 +9,7 @@ import { enabledKinds, usePlugins } from '../state/plugins'
 import { useSettings } from '../state/settings'
 import type { RecentFile } from '../state/workspace'
 import { useWorkspace } from '../state/workspace'
-import { DocBadge, KindIcon } from './Workbench'
+import { DocBadge, KindIcon } from './ui'
 import { IconButton, PopoverMenu } from './ui'
 
 export function Home() {

@@ -23,7 +23,7 @@ import { useFolder } from '../state/folder'
 import { useWorkspace } from '../state/workspace'
 import { PluginRow } from './PluginList'
 import { formatSize as formatVersionSize } from './VersionHistory'
-import { DocBadge } from './Workbench'
+import { DocBadge } from './ui'
 import { IconButton, Segmented, Spinner, Switch } from './ui'
 
 const LicensesPage = lazy(() => import('./Licenses'))

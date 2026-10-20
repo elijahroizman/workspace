@@ -1,26 +1,12 @@
-import { FileText, PanelLeft, PanelRight, Search, X, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react'
+import { PanelLeft, PanelRight, Search, X, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type { DocKind } from '../lib/kinds'
-import { KINDS } from '../lib/kinds'
 import type { DocTab } from '../state/workspace'
 import { useWorkspace } from '../state/workspace'
 import { withKeys } from '../state/shortcuts'
 import { shortcut } from '../lib/platform'
-import { IconButton } from './ui'
-
-export function KindIcon({ kind, size = 14 }: { kind: DocKind; size?: number }) {
-  const Icon = KINDS[kind]?.icon ?? FileText
-  return <Icon size={size} strokeWidth={1.75} />
-}
-
-export function DocBadge({ kind, size = 22 }: { kind: DocKind; size?: number }) {
-  return (
-    <span className="doc-icon" style={{ background: KINDS[kind].color, width: size, height: size }}>
-      <KindIcon kind={kind} size={Math.round(size * 0.62)} />
-    </span>
-  )
-}
+import { DocBadge, IconButton } from './ui'
 
 const WIDTH_KEY = 'workspace.sidebarWidths'
 const savedWidths = (() => {

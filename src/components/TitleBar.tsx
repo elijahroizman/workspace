@@ -10,7 +10,7 @@ import type { DocKind } from '../lib/kinds'
 import { pickSplit } from '../App'
 import { UpdateButton } from './UpdateButton'
 import { showVersionHistory } from './VersionHistory'
-import { KindIcon } from './Workbench'
+import { KindIcon } from './ui'
 import { PopoverMenu } from './ui'
 
 export function TitleBar() {

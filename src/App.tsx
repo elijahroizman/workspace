@@ -2,7 +2,7 @@ import { Component, lazy, memo, Suspense, useEffect, useRef, useState } from 're
 import type { ComponentType, ErrorInfo, ReactNode } from 'react'
 import type { PaletteItem } from './components/CommandPalette'
 import { CommandPalette, recentItems, sourceItems, usePalette } from './components/CommandPalette'
-import { KindIcon } from './components/Workbench'
+import { KindIcon } from './components/ui'
 import { FocusMode } from './components/FocusMode'
 import { Explorer, startFolderPalette } from './components/Explorer'
 import { Home } from './components/Home'

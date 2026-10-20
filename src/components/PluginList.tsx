@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { PluginInfo } from '../plugins/catalog'
 import { formatSize, usePlugins } from '../state/plugins'
-import { DocBadge } from './Workbench'
+import { DocBadge } from './ui'
 
 /** SPDX ids as words: “MIT, (MPL-2.0 OR Apache-2.0)” reads “Licenses: MIT and (MPL-2.0 or Apache-2.0)”. */
 function licenseText(spdx: string) {

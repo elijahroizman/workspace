@@ -71,7 +71,7 @@ import { useSettings } from '../state/settings'
 import type { Scope } from '../state/shortcuts'
 import { SHORTCUTS, keysFor } from '../state/shortcuts'
 import { getEditor, HOME_TAB_ID, useWorkspace } from '../state/workspace'
-import { KindIcon } from './Workbench'
+import { KindIcon } from './ui'
 
 /**
  * ⌘K: one box to find anything. Type to search commands, open tabs and recent files; start
