@@ -163,3 +163,12 @@ fn places_children_in_schema_order() {
     sp.clear(ns::A, &["noFill", "solidFill"]);
     assert_eq!(sp.elements().count(), 4);
 }
+
+#[test]
+fn same_content_ignores_layout() {
+    let a = parse_element("<a>\n  <b x=\"1\">\n  </b>\n  <t> </t>\n</a>").unwrap();
+    let b = parse_element("<a><b x=\"1\"/><t> </t></a>").unwrap();
+    let c = parse_element("<a><b x=\"1\"/><t></t></a>").unwrap();
+    assert!(a.same_content(&b));
+    assert!(!b.same_content(&c), "a space in text is text");
+}

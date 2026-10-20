@@ -101,3 +101,17 @@ fn front_ends_read_the_samples() {
         }
     }
 }
+
+#[test]
+fn saving_unchanged_samples_changes_no_part() {
+    for (path, bytes) in samples(&["docx", "pptx", "xlsx"]) {
+        let name = path.file_name().unwrap().to_str().unwrap();
+        let doc = office_core::read(&bytes, Some(name)).unwrap();
+        let saved = office_core::write(&doc, doc.kind).unwrap();
+        let (a, b) = (Package::read(&bytes).unwrap(), Package::read(&saved).unwrap());
+        assert_eq!(a.part_names().collect::<Vec<_>>(), b.part_names().collect::<Vec<_>>(), "{}", path.display());
+        for part in a.part_names() {
+            assert!(a.part(part).unwrap() == b.part(part).unwrap(), "{}: {part} was rewritten", path.display());
+        }
+    }
+}

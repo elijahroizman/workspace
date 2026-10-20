@@ -1,0 +1,496 @@
+use std::collections::HashMap;
+
+use super::props::escape;
+use crate::drawing::Theme;
+use crate::formats::common::{origin_as, put_if_changed, rel_attr, Out, PartCtx};
+use crate::model::{format_number, Baseline, Body, CellRef, Document, Kind, Range, Run, Sheet, SheetCell, Value};
+use crate::opc::content_types::types;
+use crate::opc::{rels::kind, Package};
+use crate::xml::{ns, Element, Node, XmlDoc};
+use crate::{Error, Result};
+
+/// The children of `worksheet`, in schema order.
+const WORKSHEET: &[&[&str]] = &[
+    &["sheetPr"],
+    &["dimension"],
+    &["sheetViews"],
+    &["sheetFormatPr"],
+    &["cols"],
+    &["sheetData"],
+    &["sheetCalcPr"],
+    &["sheetProtection"],
+    &["protectedRanges"],
+    &["scenarios"],
+    &["autoFilter"],
+    &["sortState"],
+    &["dataConsolidate"],
+    &["customSheetViews"],
+    &["mergeCells"],
+    &["phoneticPr"],
+    &["conditionalFormatting"],
+    &["dataValidations"],
+    &["hyperlinks"],
+    &["printOptions"],
+    &["pageMargins"],
+    &["pageSetup"],
+    &["headerFooter"],
+    &["rowBreaks"],
+    &["colBreaks"],
+    &["customProperties"],
+    &["cellWatches"],
+    &["ignoredErrors"],
+    &["smartTags"],
+    &["drawing"],
+    &["legacyDrawing"],
+    &["legacyDrawingHF"],
+    &["drawingHF"],
+    &["picture"],
+    &["oleObjects"],
+    &["controls"],
+    &["webPublishItems"],
+    &["tableParts"],
+    &["extLst"],
+];
+
+/// The shared string table being built: each distinct string once, in first-use order.
+#[derive(Default)]
+struct Strings {
+    items: Vec<Element>,
+    index: HashMap<String, usize>,
+    uses: usize,
+}
+
+/// What makes two strings the same string: their text and, for rich text, each run's formatting.
+fn string_key(value: &Value) -> String {
+    match value {
+        Value::Rich(runs) => format!("{:?}", runs.iter().map(|r| (&r.text, &r.props)).collect::<Vec<_>>()),
+        v => format!("t:{}", v.display()),
+    }
+}
+
+impl Strings {
+    /// Starts from the table the workbook has, as it is, so strings keep their numbers and
+    /// cells that didn't change don't either.
+    fn from_table(sst: &Element) -> Strings {
+        let mut s = Strings::default();
+        for si in sst.children_named(ns::X, "si") {
+            s.items.push(si.clone());
+            s.index.entry(string_key(&super::props::read_string(si))).or_insert(s.items.len() - 1);
+        }
+        s
+    }
+
+    fn add(&mut self, value: &Value) -> usize {
+        self.uses += 1;
+        let key = string_key(value);
+        if let Some(&i) = self.index.get(&key) {
+            return i;
+        }
+        self.items.push(string_item("si", value));
+        self.index.insert(key, self.items.len() - 1);
+        self.items.len() - 1
+    }
+}
+
+/// `si` (shared) or `is` (inline): `t` for plain text, `r` runs for rich text.
+fn string_item(local: &str, value: &Value) -> Element {
+    let t = |text: &str| {
+        let mut t = Element::new(ns::X, "t").with_text(escape(text));
+        if text.starts_with(char::is_whitespace) || text.ends_with(char::is_whitespace) {
+            t.set_attr(ns::XML, "space", "preserve");
+        }
+        t
+    };
+    let mut el = Element::new(ns::X, local);
+    match value {
+        Value::Rich(runs) => {
+            for r in runs {
+                let mut run = Element::new(ns::X, "r");
+                if let Some(pr) = run_props(r) {
+                    run.push(pr);
+                }
+                el.push(run.with_child(t(&r.text)));
+            }
+        }
+        v => {
+            el.push(t(&v.display()));
+        }
+    }
+    el
+}
+
+/// A rich-text run's `rPr`, in the order SpreadsheetML's font elements go.
+fn run_props(run: &Run) -> Option<Element> {
+    let p = &run.props;
+    if p.is_empty() {
+        return None;
+    }
+    let val = |local: &str, v: String| Element::new(ns::X, local).with_attr("", "val", v);
+    let flag = |local: &str, on: Option<bool>| on.map(|on| if on { Element::new(ns::X, local) } else { val(local, "0".into()) });
+    let mut el = Element::new(ns::X, "rPr");
+    let children = [
+        p.font.as_ref().filter(|f| !f.starts_with('+')).map(|f| val("rFont", f.clone())),
+        flag("b", p.bold),
+        flag("i", p.italic),
+        p.strike.map(|s| if s == crate::model::Strike::None { val("strike", "0".into()) } else { Element::new(ns::X, "strike") }),
+        p.color.as_ref().map(color),
+        p.size.map(|s| val("sz", format_number(s.points()))),
+        p.underline.as_ref().map(|u| {
+            if u == "single" {
+                Element::new(ns::X, "u")
+            } else {
+                val("u", if u == "double" { u.clone() } else { "single".into() })
+            }
+        }),
+        p.baseline.map(|b| val("vertAlign", if b == Baseline::Superscript { "superscript" } else { "subscript" }.into())),
+    ];
+    for c in children.into_iter().flatten() {
+        el.push(c);
+    }
+    Some(el)
+}
+
+/// A SpreadsheetML color: Excel's numbered theme colors and tint where it can say the color
+/// that way, else the value.
+fn color(c: &crate::drawing::Color) -> Element {
+    use crate::drawing::ColorBase;
+    let mut el = Element::new(ns::X, "color");
+    let slot = match &c.base {
+        ColorBase::Scheme { name } => {
+            let name = match name.as_str() {
+                "tx1" => "dk1",
+                "bg1" => "lt1",
+                "tx2" => "dk2",
+                "bg2" => "lt2",
+                n => n,
+            };
+            super::props::THEME_INDEX.iter().position(|s| *s == name)
+        }
+        _ => None,
+    };
+    let tint = match c.transforms.as_slice() {
+        [] => Some(0.0),
+        [m] if m.kind == "lumMod" => Some(m.value as f64 / 100_000.0 - 1.0),
+        [m, o] if m.kind == "lumMod" && o.kind == "lumOff" => Some(o.value as f64 / 100_000.0),
+        _ => None,
+    };
+    match (slot, tint) {
+        (Some(i), Some(t)) => {
+            el.set_attr("", "theme", i.to_string());
+            if t != 0.0 {
+                el.set_attr("", "tint", format_number(t));
+            }
+        }
+        _ => {
+            let rgb = c.resolve(&|n| Theme::office().scheme_color(n)).rgb;
+            el.set_attr("", "rgb", format!("FF{}", rgb.hex()));
+        }
+    }
+    el
+}
+
+pub fn write(doc: &Document) -> Result<Package> {
+    let Body::Workbook { sheets } = &doc.body else {
+        return Err(Error::Invalid("only a workbook can be saved as .xlsx".into()));
+    };
+    let same = doc.kind == Kind::Sheets && doc.package.is_some();
+    let pkg = if same { doc.package.clone().unwrap() } else { scaffold(doc.theme.as_ref().unwrap_or(&Theme::office()))? };
+    let mut out = Out::new(doc, pkg, same, "xl/media");
+    let main = out.pkg.main_part()?;
+    let mut workbook = out.pkg.xml(&main)?;
+    if let Some(origin) = origin_as(&doc.origin, ns::X, "workbook").filter(|_| same) {
+        workbook.root = origin;
+    }
+    let mut ctx = PartCtx::load(&out.pkg, &main)?;
+    let sst_part = out.pkg.related(&main, kind::SHARED_STRINGS)?.into_iter().next().map(|(_, p)| p).filter(|p| out.pkg.has(p));
+    let mut strings = match &sst_part {
+        Some(p) if same => Strings::from_table(&out.pkg.xml(p)?.root),
+        _ => Strings::default(),
+    };
+
+    // Sheets that are gone.
+    let kept: Vec<&str> = sheets.iter().filter_map(|s| s.part.as_deref()).filter(|_| same).collect();
+    for rel in ctx.rels.of_kind(kind::WORKSHEET).cloned().collect::<Vec<_>>() {
+        let Some(part) = out.pkg.target(&main, &rel) else { continue };
+        if !kept.contains(&part.as_str()) {
+            out.pkg.remove(&part);
+            ctx.rels.remove(&rel.id);
+        }
+    }
+
+    let old_list = workbook.root.child(ns::X, "sheets").cloned();
+    let old_sheets: Vec<&Element> = old_list.iter().flat_map(|l| l.children_named(ns::X, "sheet")).collect();
+    let mut next_id = old_sheets.iter().filter_map(|s| s.attr("sheetId")?.parse::<u32>().ok()).max().unwrap_or(0) + 1;
+    let mut list = old_list.clone().unwrap_or_else(|| Element::new(ns::X, "sheets"));
+    // Chart sheets aren't in the model; they keep their place at the end.
+    list.children.retain(
+        |n| matches!(n, Node::Element(e) if rel_attr(e, "id").and_then(|id| ctx.rels.get(id)).is_some_and(|r| !r.is(kind::WORKSHEET))),
+    );
+    let mut entries = Vec::new();
+    for sheet in sheets {
+        let part = match sheet.part.as_deref().filter(|p| same && out.pkg.has(p)) {
+            Some(p) => p.to_string(),
+            None => out.pkg.unused_name("xl/worksheets/sheet{}.xml"),
+        };
+        write_sheet(sheet, &part, &mut strings, same, &mut out)?;
+        let rid = ctx.relate(kind::WORKSHEET, &part);
+        let mut el = old_sheets.iter().find(|s| rel_attr(s, "id") == Some(rid.as_str())).map(|e| (*e).clone()).unwrap_or_else(|| {
+            let id = next_id;
+            next_id += 1;
+            Element::new(ns::X, "sheet").with_attr("", "name", "").with_attr("", "sheetId", id.to_string()).with_attr(
+                ns::R,
+                "id",
+                rid.clone(),
+            )
+        });
+        if el.attr("name") != Some(sheet.name.as_str()) {
+            el.set_attr("", "name", &sheet.name);
+        }
+        let hidden_now = matches!(el.attr("state"), Some("hidden" | "veryHidden"));
+        if hidden_now != sheet.hidden {
+            crate::formats::dml::set_opt(&mut el, "state", sheet.hidden.then(|| "hidden".to_string()));
+        }
+        entries.push(Node::Element(el));
+    }
+    list.children.splice(0..0, entries);
+    const WORKBOOK: &[&[&str]] = &[
+        &["fileVersion"],
+        &["fileSharing"],
+        &["workbookPr"],
+        &["workbookProtection"],
+        &["bookViews"],
+        &["sheets"],
+        &["functionGroups"],
+        &["externalReferences"],
+        &["definedNames"],
+        &["calcPr"],
+        &["oleSize"],
+        &["customWorkbookViews"],
+        &["pivotCaches"],
+        &["smartTagPr"],
+        &["smartTagTypes"],
+        &["webPublishing"],
+        &["fileRecoveryPr"],
+        &["webPublishObjects"],
+        &["extLst"],
+    ];
+    workbook.root.place(list, WORKBOOK);
+
+    // The shared strings, if anything uses them or the workbook had a table.
+    let sst_part = sst_part.or_else(|| (!strings.items.is_empty()).then(|| "xl/sharedStrings.xml".to_string()));
+    if let Some(part) = sst_part {
+        let mut sst = Element::new(ns::X, "sst");
+        sst.declare(None, ns::X);
+        sst.set_attr("", "count", strings.uses.to_string());
+        sst.set_attr("", "uniqueCount", strings.items.len().to_string());
+        sst.children = strings.items.into_iter().map(Node::Element).collect();
+        put_if_changed(&mut out.pkg, &part, XmlDoc::new(sst), types::XLSX_SHARED_STRINGS)?;
+        ctx.relate(kind::SHARED_STRINGS, &part);
+    }
+    put_if_changed(&mut out.pkg, &main, workbook, types::XLSX_MAIN)?;
+    ctx.finish(&mut out.pkg);
+    doc.properties.write(&mut out.pkg)?;
+    Ok(std::mem::take(&mut out.pkg))
+}
+
+fn write_sheet(sheet: &Sheet, part: &str, strings: &mut Strings, same: bool, out: &mut Out) -> Result<()> {
+    let mut root = origin_as(&sheet.origin, ns::X, "worksheet").filter(|_| same).unwrap_or_else(|| {
+        let mut ws = Element::new(ns::X, "worksheet");
+        ws.declare(None, ns::X);
+        ws.declare(Some("r"), ns::R);
+        ws
+    });
+    let mut data = Element::new(ns::X, "sheetData");
+    for row in &sheet.rows {
+        let mut r = origin_as(&row.origin, ns::X, "row").filter(|_| same).unwrap_or_else(|| Element::new(ns::X, "row"));
+        r.children.clear();
+        r.set_attr("", "r", (row.index + 1).to_string());
+        // `spans` is an optional hint of the row's first and last columns; keep it right.
+        if r.attr("spans").is_some() {
+            match (row.cells.first(), row.cells.last()) {
+                (Some(f), Some(l)) => r.set_attr("", "spans", format!("{}:{}", f.col + 1, l.col + 1)),
+                _ => {
+                    r.remove_attr("", "spans");
+                }
+            }
+        }
+        for cell in &row.cells {
+            r.push(write_cell(cell, CellRef::new(row.index, cell.col), strings, same));
+        }
+        data.push(r);
+    }
+    if let Some(existing) = root.child_mut(ns::X, "sheetData") {
+        data.attrs = existing.attrs.clone();
+    }
+    root.place(data, WORKSHEET);
+
+    let dimension = sheet.used_range().unwrap_or(Range { start: CellRef::new(0, 0), end: CellRef::new(0, 0) });
+    let dim = root.child(ns::X, "dimension").and_then(|d| d.attr("ref")).and_then(Range::parse);
+    if dim != Some(dimension) {
+        root.place(Element::new(ns::X, "dimension").with_attr("", "ref", dimension.to_string()), WORKSHEET);
+    }
+    root.remove_children(ns::X, "mergeCells");
+    if !sheet.merges.is_empty() {
+        let merges =
+            sheet.merges.iter().fold(Element::new(ns::X, "mergeCells").with_attr("", "count", sheet.merges.len().to_string()), |m, r| {
+                m.with_child(Element::new(ns::X, "mergeCell").with_attr("", "ref", r.to_string()))
+            });
+        root.place(merges, WORKSHEET);
+    }
+    // A sheet needs sheetData even if it's empty, and Excel asks for page margins.
+    if root.child(ns::X, "pageMargins").is_none() && !same {
+        let margins = [("left", "0.7"), ("right", "0.7"), ("top", "0.75"), ("bottom", "0.75"), ("header", "0.3"), ("footer", "0.3")];
+        root.place(margins.iter().fold(Element::new(ns::X, "pageMargins"), |el, (k, v)| el.with_attr("", k, *v)), WORKSHEET);
+    }
+    let changed = !out.pkg.has(part) || !out.pkg.xml(part).map(|d| d.root.same_content(&root)).unwrap_or(false);
+    if changed {
+        // Excel's calculation chain lists formula cells; once cells change it may be wrong, and
+        // Excel rebuilds a missing one.
+        if let Some((_, chain)) = out.pkg.related(&out.pkg.main_part()?, "calcChain")?.into_iter().next() {
+            out.pkg.remove(&chain);
+            let main = out.pkg.main_part()?;
+            let mut rels = out.pkg.rels(&main)?;
+            rels.0.retain(|r| !r.is("calcChain"));
+            out.pkg.put_rels(&main, &rels);
+        }
+    }
+    put_if_changed(&mut out.pkg, part, XmlDoc::new(root), types::XLSX_SHEET)
+}
+
+fn write_cell(cell: &SheetCell, at: CellRef, strings: &mut Strings, same: bool) -> Element {
+    let origin = origin_as(&cell.origin, ns::X, "c").filter(|_| same);
+    let old_formula = origin.as_ref().and_then(|o| o.child(ns::X, "f").cloned());
+    let inline = origin.as_ref().and_then(|o| o.attr("t")) == Some("inlineStr");
+    let empty_v = origin.as_ref().and_then(|o| o.child(ns::X, "v")).is_some_and(|v| v.text().is_empty());
+    let mut c = origin.unwrap_or_else(|| Element::new(ns::X, "c"));
+    c.children.retain(|n| !matches!(n, Node::Element(e) if e.is(ns::X, "f") || e.is(ns::X, "v") || e.is(ns::X, "is")));
+    c.set_attr("", "r", at.to_string());
+    match cell.style.filter(|_| same) {
+        Some(s) => c.set_attr("", "s", s.to_string()),
+        None => {
+            c.remove_attr("", "s");
+        }
+    }
+    // The formula: kept as it was if it hasn't changed (or if the cell is part of a shared
+    // formula, which has no text of its own), else written plain.
+    let formula = match (&cell.formula, old_formula) {
+        (Some(f), Some(old)) if old.text() == *f => Some(old),
+        (None, Some(old)) if old.text().is_empty() => Some(old),
+        (Some(f), _) => Some(Element::new(ns::X, "f").with_text(f.clone())),
+        (None, _) => None,
+    };
+    let has_formula = formula.is_some();
+    if let Some(f) = formula {
+        c.children.insert(0, Node::Element(f));
+    }
+    let v = |text: String| Element::new(ns::X, "v").with_text(text);
+    let (t, value) = match &cell.value {
+        Value::Empty => (None, empty_v.then(|| Element::new(ns::X, "v"))),
+        Value::Number(n) => (None, Some(v(xlsx_number(*n)))),
+        Value::Bool(b) => (Some("b"), Some(v(if *b { "1" } else { "0" }.into()))),
+        Value::Error(e) => (Some("e"), Some(v(e.clone()))),
+        // A formula's text result is a plain string, not a shared one.
+        Value::Text(s) if has_formula => (Some("str"), Some(v(escape(s)))),
+        value @ (Value::Text(_) | Value::Rich(_)) if inline => (Some("inlineStr"), Some(string_item("is", value))),
+        value @ (Value::Text(_) | Value::Rich(_)) => (Some("s"), Some(v(strings.add(value).to_string()))),
+    };
+    // No type is a number; some writers say so with t="n".
+    if t != c.attr("t").filter(|t| *t != "n") {
+        crate::formats::dml::set_opt(&mut c, "t", t.map(str::to_string));
+    }
+    if let Some(value) = value {
+        // v (or is) goes after f, before extLst.
+        let at = c.children.iter().position(|n| matches!(n, Node::Element(e) if e.is(ns::X, "extLst"))).unwrap_or(c.children.len());
+        c.children.insert(at, Node::Element(value));
+    }
+    c
+}
+
+/// A number the way Excel writes one: the shortest form that reads back the same, with an
+/// exponent for the very large and very small.
+fn xlsx_number(n: f64) -> String {
+    if n != 0.0 && (n.abs() >= 1e15 || n.abs() < 1e-6) {
+        format!("{n:E}")
+    } else {
+        format_number(n)
+    }
+}
+
+/// A new package with what Excel needs around sheets: the workbook, a theme, and the smallest
+/// style sheet Excel opens (one font, the two fills it insists on, one border, one format).
+fn scaffold(theme: &Theme) -> Result<Package> {
+    let mut pkg = Package::new();
+    let main = "xl/workbook.xml";
+    let mut wb = Element::new(ns::X, "workbook");
+    wb.declare(None, ns::X);
+    wb.declare(Some("r"), ns::R);
+    wb.push(Element::new(ns::X, "bookViews").with_child(Element::new(ns::X, "workbookView")));
+    wb.push(Element::new(ns::X, "sheets"));
+    pkg.put_xml(main, &XmlDoc::new(wb), types::XLSX_MAIN);
+    pkg.relate("", kind::OFFICE_DOCUMENT, main)?;
+
+    let font = theme.fonts.minor.latin.clone();
+    let el = |local: &str| Element::new(ns::X, local);
+    let val = |local: &str, v: &str| el(local).with_attr("", "val", v);
+    let list = |local: &str, items: Vec<Element>| items.into_iter().fold(el(local).with_attr("", "count", "0"), |l, i| l.with_child(i));
+    let mut styles = el("styleSheet");
+    styles.declare(None, ns::X);
+    let mut parts = vec![
+        list(
+            "fonts",
+            vec![el("font")
+                .with_child(val("sz", "11"))
+                .with_child(el("color").with_attr("", "theme", "1"))
+                .with_child(val("name", if font.is_empty() { "Calibri" } else { &font }))
+                .with_child(val("family", "2"))
+                .with_child(val("scheme", "minor"))],
+        ),
+        list(
+            "fills",
+            vec![
+                el("fill").with_child(el("patternFill").with_attr("", "patternType", "none")),
+                el("fill").with_child(el("patternFill").with_attr("", "patternType", "gray125")),
+            ],
+        ),
+        list(
+            "borders",
+            vec![el("border")
+                .with_child(el("left"))
+                .with_child(el("right"))
+                .with_child(el("top"))
+                .with_child(el("bottom"))
+                .with_child(el("diagonal"))],
+        ),
+        list(
+            "cellStyleXfs",
+            vec![el("xf")
+                .with_attr("", "numFmtId", "0")
+                .with_attr("", "fontId", "0")
+                .with_attr("", "fillId", "0")
+                .with_attr("", "borderId", "0")],
+        ),
+        list(
+            "cellXfs",
+            vec![el("xf")
+                .with_attr("", "numFmtId", "0")
+                .with_attr("", "fontId", "0")
+                .with_attr("", "fillId", "0")
+                .with_attr("", "borderId", "0")
+                .with_attr("", "xfId", "0")],
+        ),
+        list(
+            "cellStyles",
+            vec![el("cellStyle").with_attr("", "name", "Normal").with_attr("", "xfId", "0").with_attr("", "builtinId", "0")],
+        ),
+    ];
+    for p in &mut parts {
+        let n = p.elements().count();
+        p.set_attr("", "count", n.to_string());
+    }
+    styles.children.extend(parts.into_iter().map(Node::Element));
+    pkg.put_xml("xl/styles.xml", &XmlDoc::new(styles), types::XLSX_STYLES);
+    pkg.relate(main, kind::STYLES, "xl/styles.xml")?;
+    pkg.put_xml("xl/theme/theme1.xml", &theme.to_xml(), types::THEME);
+    pkg.relate(main, kind::THEME, "xl/theme/theme1.xml")?;
+    Ok(pkg)
+}

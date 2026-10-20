@@ -9,7 +9,7 @@ pub mod xlsx;
 
 use crate::model::{Document, Kind};
 use crate::opc::Package;
-use crate::{Error, Result};
+use crate::Result;
 
 /// What a back end produces: a package (which layers may still add parts to), or finished bytes.
 pub enum Output {
@@ -35,6 +35,8 @@ pub fn read(bytes: &[u8], kind: Kind, name: Option<&str>) -> Result<Document> {
 pub fn write(doc: &Document, kind: Kind) -> Result<Output> {
     match kind {
         Kind::Csv => csv::write(doc).map(Output::Bytes),
-        Kind::Word | Kind::Slides | Kind::Sheets => Err(Error::Invalid(format!("writing .{} isn't written yet", kind.extension()))),
+        Kind::Slides => pptx::write(doc).map(Output::Package),
+        Kind::Word => docx::write(doc).map(Output::Package),
+        Kind::Sheets => xlsx::write(doc).map(Output::Package),
     }
 }

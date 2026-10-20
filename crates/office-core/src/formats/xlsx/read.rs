@@ -107,6 +107,7 @@ fn read_cell(c: &Element, col: u32, strings: &[Value]) -> Result<SheetCell, Stri
         value,
         formula,
         style: c.attr("s").and_then(|s| s.parse().ok()),
-        origin: shell(c, |e| e.is(ns::X, "v") || e.is(ns::X, "is")),
+        // The origin keeps `v`, so the writer can tell an uncalculated formula's empty value.
+        origin: shell(c, |e| e.is(ns::X, "is")),
     })
 }

@@ -100,8 +100,24 @@ fn inline_picture(r: &Element) -> Option<&Element> {
     inline.descendant(ns::PIC, "pic").and(Some(inline))
 }
 
+/// A plain run's text and formatting, if it reads as one model run (no page or column break
+/// splits it): what the writer compares a run with to see if it can reuse the run's origin.
+pub(super) fn single_run(r: &Element) -> Option<(String, crate::model::RunProps)> {
+    if !r.is(ns::W, "r")
+        || !is_plain_run(r)
+        || r.children_named(ns::W, "br").any(|b| matches!(b.attr_ns(ns::W, "type"), Some("page" | "column")))
+    {
+        return None;
+    }
+    let mut out = Vec::new();
+    read_text_run(r, None, &mut out);
+    match out.pop() {
+        Some(Inline::Text(run)) if out.is_empty() => Some((run.text, run.props)),
+        _ => None,
+    }
+}
+
 fn read_run(r: &Element, link: Option<&Link>, rels: &PartRels, doc: &mut Document, out: &mut Vec<Inline>) {
-    let props = r.child(ns::W, "rPr").map(read_run_props).unwrap_or_default();
     if let Some(inline) = inline_picture(r) {
         if let Some(image) = read_inline_picture(r, inline, rels, doc) {
             out.push(Inline::Image(image));
@@ -112,8 +128,14 @@ fn read_run(r: &Element, link: Option<&Link>, rels: &PartRels, doc: &mut Documen
         out.push(Inline::Raw { xml: r.clone() });
         return;
     }
-    // A run's text, split where a page or column break sits inside it.
-    let origin = shell(r, |c| !c.is(ns::W, "rPr"));
+    read_text_run(r, link, out);
+}
+
+fn read_text_run(r: &Element, link: Option<&Link>, out: &mut Vec<Inline>) {
+    let props = r.child(ns::W, "rPr").map(read_run_props).unwrap_or_default();
+    // A run's text, split where a page or column break sits inside it. The whole run is the
+    // origin, so the writer can put an untouched run back exactly as it was.
+    let origin = Origin::new(r.clone());
     let push = |text: &mut String, out: &mut Vec<Inline>| {
         if !text.is_empty() {
             out.push(Inline::Text(Run { text: std::mem::take(text), props: props.clone(), link: link.cloned(), origin: origin.clone() }));
@@ -176,18 +198,17 @@ fn read_table(tbl: &Element, rels: &PartRels, doc: &mut Document) -> Table {
     let style = tbl.path(ns::W, &["tblPr", "tblStyle"]).and_then(val).map(str::to_string);
 
     let mut rows: Vec<Row> = Vec::new();
-    // For each row, the grid column each cell starts at, and whether it continues a row span.
-    let mut grid: Vec<Vec<(usize, Option<bool>)>> = Vec::new();
+    // Whether each grid slot continues a row span from above (Word's bare `w:vMerge`).
+    let mut continues: Vec<Vec<bool>> = Vec::new();
     for tr in tbl.children_named(ns::W, "tr") {
         let trpr = tr.child(ns::W, "trPr");
         let mut cells = Vec::new();
-        let mut at = Vec::new();
-        let mut col = 0;
+        let mut cont = Vec::new();
         for tc in tr.children_named(ns::W, "tc") {
             let tcpr = tc.child(ns::W, "tcPr");
             let span: u32 = tcpr.and_then(|p| p.child(ns::W, "gridSpan")).and_then(val).and_then(|v| v.parse().ok()).unwrap_or(1).max(1);
             // vMerge="restart" starts a row span; a bare vMerge continues one.
-            let vmerge = tcpr.and_then(|p| p.child(ns::W, "vMerge")).map(|m| val(m) != Some("restart"));
+            let continued = tcpr.and_then(|p| p.child(ns::W, "vMerge")).is_some_and(|m| val(m) != Some("restart"));
             let fill = tcpr
                 .and_then(|p| p.child(ns::W, "shd"))
                 .and_then(|s| s.attr_ns(ns::W, "fill"))
@@ -195,14 +216,19 @@ fn read_table(tbl: &Element, rels: &PartRels, doc: &mut Document) -> Table {
                 .map(crate::drawing::Color::rgb);
             cells.push(Cell {
                 blocks: read_blocks(tc, rels, doc, |e| e.is(ns::W, "tcPr")),
-                col_span: span,
+                // A covered cell's span is its owner's business.
+                col_span: if continued { 1 } else { span },
                 row_span: 1,
-                covered: vmerge == Some(true),
+                covered: continued,
                 fill,
                 origin: shell(tc, |c| !c.is(ns::W, "tcPr")),
             });
-            at.push((col, vmerge));
-            col += span as usize;
+            cont.push(continued);
+            // The grid slots under the span, which Word doesn't store.
+            for _ in 1..span {
+                cells.push(Cell { covered: true, ..Default::default() });
+                cont.push(continued);
+            }
         }
         rows.push(Row {
             cells,
@@ -213,16 +239,16 @@ fn read_table(tbl: &Element, rels: &PartRels, doc: &mut Document) -> Table {
             header: trpr.and_then(|p| super::props::toggle(p, "tblHeader")).unwrap_or(false),
             origin: shell(tr, |c| c.is(ns::W, "tc")),
         });
-        grid.push(at);
+        continues.push(cont);
     }
-    // A restart cell spans down over the continuing cells at its grid column.
+    // A cell that isn't covered spans down over the rows that continue it at its column.
     for r in 0..rows.len() {
-        for (i, &(col, vmerge)) in grid[r].clone().iter().enumerate() {
-            if vmerge != Some(false) {
+        for c in 0..rows[r].cells.len() {
+            if rows[r].cells[c].covered {
                 continue;
             }
-            let below = (r + 1..rows.len()).take_while(|&b| grid[b].iter().any(|&(c, v)| c == col && v == Some(true))).count();
-            rows[r].cells[i].row_span = 1 + below as u32;
+            let below = (r + 1..rows.len()).take_while(|&b| continues[b].get(c) == Some(&true)).count();
+            rows[r].cells[c].row_span = 1 + below as u32;
         }
     }
     Table { columns, rows, style, origin: shell(tbl, |c| c.is(ns::W, "tblGrid") || c.is(ns::W, "tr")) }

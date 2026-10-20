@@ -77,3 +77,106 @@ pub fn read_theme(pkg: &Package, part: &str) -> crate::Result<Option<crate::draw
     }
     Ok(crate::drawing::Theme::parse(&pkg.xml(&theme)?))
 }
+
+// ---- writing ----
+
+/// The origin's element, if it's `local` in `ns`. Origins from another format (a Word run in a
+/// document being saved as PowerPoint) don't apply, and the writer starts fresh.
+pub fn origin_as(origin: &Origin, ns: &str, local: &str) -> Option<Element> {
+    origin.get().filter(|e| e.is(ns, local)).cloned()
+}
+
+/// A package being written, with where each of the document's media went.
+pub struct Out<'a> {
+    pub doc: &'a Document,
+    pub pkg: Package,
+    /// Whether `pkg` started as the document's own package.
+    pub same: bool,
+    media: std::collections::HashMap<String, String>,
+    media_folder: &'static str,
+}
+
+impl<'a> Out<'a> {
+    pub fn new(doc: &'a Document, pkg: Package, same: bool, media_folder: &'static str) -> Out<'a> {
+        Out { doc, pkg, same, media: Default::default(), media_folder }
+    }
+
+    /// The part holding media `id` in the package being written, copying or adding it if needed.
+    pub fn media_part(&mut self, id: &str) -> crate::Result<String> {
+        if let Some(part) = self.media.get(id) {
+            return Ok(part.clone());
+        }
+        let m = self.doc.media(id).ok_or_else(|| crate::Error::MissingPart(id.to_string()))?;
+        let part = if self.same && matches!(m.data, MediaData::InPackage) && self.pkg.has(id) {
+            id.to_string()
+        } else {
+            let ext = crate::opc::content_types::types::extension_for(&m.content_type).unwrap_or_else(|| crate::opc::names::extension(id));
+            let ext = if ext.is_empty() { "bin".to_string() } else { ext };
+            let part = self.pkg.unused_name(&format!("{}/image{{}}.{ext}", self.media_folder));
+            let bytes = self.doc.media_bytes(id)?;
+            self.pkg.put(&part, bytes.to_vec(), &m.content_type);
+            part
+        };
+        self.media.insert(id.to_string(), part.clone());
+        Ok(part)
+    }
+}
+
+/// One part's relationships while the part is written: read once, updated in memory, written
+/// back by [`PartCtx::finish`].
+pub struct PartCtx {
+    pub part: String,
+    pub rels: Relationships,
+}
+
+impl PartCtx {
+    pub fn load(pkg: &Package, part: &str) -> crate::Result<PartCtx> {
+        Ok(PartCtx { part: part.to_string(), rels: pkg.rels(part)? })
+    }
+
+    pub fn finish(self, pkg: &mut Package) {
+        pkg.put_rels(&self.part, &self.rels);
+    }
+
+    pub fn url(&self, id: &str) -> Option<&str> {
+        self.rels.get(id).filter(|r| r.external).map(|r| r.target.as_str())
+    }
+
+    /// The id of an external hyperlink to `url`, made if there isn't one.
+    pub fn link(&mut self, url: &str) -> String {
+        if let Some(r) = self.rels.of_kind(kind::HYPERLINK).find(|r| r.external && r.target == url) {
+            return r.id.clone();
+        }
+        self.rels.add(kind::HYPERLINK, url, true)
+    }
+
+    /// The id of a relationship of type `kind_` to `part`, made if there isn't one.
+    pub fn relate(&mut self, kind_: &str, part: &str) -> String {
+        let me = self.part.clone();
+        if let Some(r) = self.rels.of_kind(kind_).find(|r| !r.external && crate::opc::names::resolve(&me, &r.target) == part) {
+            return r.id.clone();
+        }
+        self.rels.add(kind_, crate::opc::names::relative(&me, part), false)
+    }
+
+    /// The id to use for picture `media`, from this part.
+    pub fn image(&mut self, out: &mut Out, media: &str) -> crate::Result<String> {
+        let part = out.media_part(media)?;
+        Ok(self.relate(kind::IMAGE, &part))
+    }
+}
+
+/// Writes a part unless it says the same as it does now, so an untouched part keeps its bytes.
+/// A part that's there already keeps its declaration and whatever surrounds its root.
+pub fn put_if_changed(pkg: &mut Package, part: &str, mut doc: crate::xml::XmlDoc, media: &str) -> crate::Result<()> {
+    if let Some(old) = pkg.has(part).then(|| pkg.xml(part).ok()).flatten() {
+        doc.declaration = old.declaration.clone();
+        doc.before = old.before.clone();
+        doc.after = old.after.clone();
+        if old.root.same_content(&doc.root) {
+            return Ok(());
+        }
+    }
+    pkg.put_xml(part, &doc, media);
+    Ok(())
+}

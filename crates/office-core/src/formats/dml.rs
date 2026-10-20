@@ -1,10 +1,11 @@
 //! DrawingML text (`a:p`, `a:r`, `a:rPr`, `a:pPr`): the text in PowerPoint's shapes and table
 //! cells, and in Word's and Excel's drawings.
 
-use super::common::{rel_attr, shell, PartRels};
+use super::common::{origin_as, rel_attr, shell, PartCtx, PartRels};
 use crate::drawing::Color;
 use crate::model::{
-    underline_from_drawingml, Align, Baseline, Inline, LineSpacing, Link, ParaProps, Paragraph, Run, RunProps, Strike, TextBody,
+    underline_from_drawingml, underline_to_drawingml, Align, Baseline, Inline, LineSpacing, Link, ParaProps, Paragraph, Run, RunProps,
+    Strike, TextBody,
 };
 use crate::units::{parse_bool, Emu, FontSize, Percent};
 use crate::xml::{ns, Element};
@@ -34,7 +35,8 @@ pub fn read_paragraph(p: &Element, rels: Option<&PartRels>) -> Paragraph {
                     text,
                     props: rpr.map(read_run_props).unwrap_or_default(),
                     link: rpr.and_then(|r| read_link(r, rels)),
-                    origin: shell(child, |c| c.is(ns::A, "t")),
+                    // The whole run, so an untouched one can be written back as it was.
+                    origin: crate::model::Origin::new(child.clone()),
                 }));
             }
             // Fields (slide numbers, dates) and anything else, whole.
@@ -132,6 +134,286 @@ pub fn read_para_props(el: &Element) -> ParaProps {
             }
         }),
         rtl: el.attr("rtl").and_then(parse_bool),
+    }
+}
+
+// ---- writing ----
+
+/// The children of `a:rPr`, in schema order.
+const RPR: &[&[&str]] = &[
+    &["ln"],
+    &["noFill", "solidFill", "gradFill", "blipFill", "pattFill", "grpFill"],
+    &["effectLst", "effectDag"],
+    &["highlight"],
+    &["uLnTx", "uLn"],
+    &["uFillTx", "uFill"],
+    &["latin"],
+    &["ea"],
+    &["cs"],
+    &["sym"],
+    &["hlinkClick"],
+    &["hlinkMouseOver"],
+    &["rtl"],
+    &["extLst"],
+];
+
+/// The children of `a:pPr`, in schema order.
+const PPR: &[&[&str]] = &[
+    &["lnSpc"],
+    &["spcBef"],
+    &["spcAft"],
+    &["buClrTx", "buClr"],
+    &["buSzTx", "buSzPct", "buSzPts"],
+    &["buFontTx", "buFont"],
+    &["buNone", "buAutoNum", "buChar", "buBlip"],
+    &["tabLst"],
+    &["defRPr"],
+    &["extLst"],
+];
+
+/// Sets an attribute, or removes it for `None`.
+pub(crate) fn set_opt(el: &mut Element, local: &str, value: Option<String>) {
+    match value {
+        Some(v) => el.set_attr("", local, v),
+        None => {
+            el.remove_attr("", local);
+        }
+    }
+}
+
+/// Writes `text` (a `p:txBody` or `a:txBody`, by `ns`) from its origin or from scratch.
+pub fn write_text_body(body: &TextBody, ns_: &str, ctx: &mut PartCtx) -> Element {
+    let mut el = origin_as(&body.origin, ns_, "txBody").unwrap_or_else(|| {
+        Element::new(ns_, "txBody").with_child(Element::new(ns::A, "bodyPr")).with_child(Element::new(ns::A, "lstStyle"))
+    });
+    for p in &body.paragraphs {
+        el.push(write_paragraph(p, ctx));
+    }
+    // A text body must have a paragraph.
+    if body.paragraphs.is_empty() {
+        el.push(Element::new(ns::A, "p"));
+    }
+    el
+}
+
+pub fn write_paragraph(p: &Paragraph, ctx: &mut PartCtx) -> Element {
+    let mut el = origin_as(&p.origin, ns::A, "p").unwrap_or_else(|| Element::new(ns::A, "p"));
+    let mut ppr = el.child(ns::A, "pPr").cloned();
+    let mut end = el.child(ns::A, "endParaRPr").cloned();
+    el.children.clear();
+
+    if !p.props.is_empty() || ppr.is_some() {
+        let mut e = ppr.take().unwrap_or_else(|| Element::new(ns::A, "pPr"));
+        patch_para_props(&p.props, &mut e);
+        el.push(e);
+    }
+    for inline in &p.content {
+        match inline {
+            Inline::Text(run) => write_run(run, ctx, &mut el),
+            Inline::Break { .. } => {
+                el.push(Element::new(ns::A, "br"));
+            }
+            Inline::Raw { xml } if xml.in_ns(ns::A) => {
+                el.push(xml.clone());
+            }
+            // Pictures can't sit in DrawingML text, and other formats' markup means nothing here.
+            Inline::Image(_) | Inline::Raw { .. } => {}
+        }
+    }
+    if let Some(mark) = &p.mark {
+        let mut e = end.take().unwrap_or_else(|| Element::new(ns::A, "endParaRPr"));
+        patch_run_props(mark, &mut e);
+        el.push(e);
+    }
+    el
+}
+
+fn write_run(run: &Run, ctx: &mut PartCtx, para: &mut Element) {
+    let origin = run.origin.get().filter(|e| e.in_ns(ns::A) && (e.local == "r" || e.local == "br"));
+    if let Some(o) = origin {
+        let text = if o.local == "br" { "\n".to_string() } else { o.child(ns::A, "t").map(Element::text).unwrap_or_default() };
+        let rpr = o.child(ns::A, "rPr");
+        let same_link = run.link == rpr.and_then(|r| current_link(r, ctx));
+        if text == run.text && rpr.map(read_run_props).unwrap_or_default() == run.props && same_link {
+            para.push(o.clone());
+            return;
+        }
+    }
+    let had_rpr = origin.and_then(|o| o.child(ns::A, "rPr")).is_some();
+    let mut rpr = origin.and_then(|o| o.child(ns::A, "rPr")).cloned().unwrap_or_else(|| Element::new(ns::A, "rPr"));
+    patch_run_props(&run.props, &mut rpr);
+    patch_link(run.link.as_ref(), &mut rpr, ctx);
+    let keep_rpr = had_rpr || !rpr.attrs.is_empty() || rpr.elements().next().is_some();
+    let attrs = origin.filter(|o| o.local == "r").map(|o| o.attrs.clone()).unwrap_or_default();
+
+    for (i, piece) in run.text.split('\n').enumerate() {
+        if i > 0 {
+            let mut br = Element::new(ns::A, "br");
+            if keep_rpr {
+                br.push(rpr.clone());
+            }
+            para.push(br);
+        }
+        // A line break alone is just the a:br.
+        if piece.is_empty() && (i > 0 || run.text.starts_with('\n')) {
+            continue;
+        }
+        let mut r = Element::new(ns::A, "r");
+        r.attrs = attrs.clone();
+        if keep_rpr {
+            r.push(rpr.clone());
+        }
+        r.push(Element::new(ns::A, "t").with_text(piece));
+        para.push(r);
+    }
+}
+
+/// A run's URL hyperlink, changed only if it differs from what `rpr` has.
+fn current_link(rpr: &Element, ctx: &PartCtx) -> Option<Link> {
+    let c = rpr.child(ns::A, "hlinkClick")?;
+    let url = ctx.url(rel_attr(c, "id")?)?.to_string();
+    Some(Link { url: Some(url), anchor: None, tooltip: c.attr("tooltip").map(str::to_string) })
+}
+
+fn patch_link(link: Option<&Link>, rpr: &mut Element, ctx: &mut PartCtx) {
+    let click = rpr.child(ns::A, "hlinkClick");
+    let current = current_link(rpr, ctx);
+    // Links to slides and actions aren't the model's; leave them be.
+    if current.is_none() && click.is_some() {
+        return;
+    }
+    let wanted = link.filter(|l| l.url.is_some()).cloned();
+    if wanted == current {
+        return;
+    }
+    rpr.clear(ns::A, &["hlinkClick"]);
+    if let Some(l) = wanted {
+        let id = ctx.link(l.url.as_deref().unwrap_or_default());
+        let mut c = Element::new(ns::A, "hlinkClick").with_attr(ns::R, "id", id);
+        if let Some(t) = &l.tooltip {
+            c.set_attr("", "tooltip", t);
+        }
+        rpr.place(c, RPR);
+    }
+}
+
+/// Updates `a:rPr` (or `a:endParaRPr`, `a:defRPr`) to say `props`, touching only what changed.
+pub fn patch_run_props(props: &RunProps, el: &mut Element) {
+    let old = read_run_props(el);
+    let face = |el: &mut Element, local: &str, value: &Option<String>| match value {
+        Some(f) => el.place(Element::new(ns::A, local).with_attr("", "typeface", f), RPR),
+        None => el.clear(ns::A, &[local]),
+    };
+    if props.font != old.font {
+        face(el, "latin", &props.font);
+    }
+    if props.font_east_asian != old.font_east_asian {
+        face(el, "ea", &props.font_east_asian);
+    }
+    if props.font_complex != old.font_complex {
+        face(el, "cs", &props.font_complex);
+    }
+    if props.size != old.size {
+        set_opt(el, "sz", props.size.map(|s| s.0.to_string()));
+    }
+    let flag = |b: Option<bool>| b.map(|b| if b { "1" } else { "0" }.to_string());
+    if props.bold != old.bold {
+        set_opt(el, "b", flag(props.bold));
+    }
+    if props.italic != old.italic {
+        set_opt(el, "i", flag(props.italic));
+    }
+    if props.underline != old.underline {
+        set_opt(el, "u", props.underline.as_deref().map(|u| underline_to_drawingml(u).to_string()));
+    }
+    if props.strike != old.strike {
+        let s = props.strike.map(|s| match s {
+            Strike::None => "noStrike",
+            Strike::Single => "sngStrike",
+            Strike::Double => "dblStrike",
+        });
+        set_opt(el, "strike", s.map(str::to_string));
+    }
+    if (props.caps, props.small_caps) != (old.caps, old.small_caps) {
+        let cap = match (props.caps, props.small_caps) {
+            (Some(true), _) => Some("all"),
+            (_, Some(true)) => Some("small"),
+            (Some(false), _) | (_, Some(false)) => Some("none"),
+            _ => None,
+        };
+        set_opt(el, "cap", cap.map(str::to_string));
+    }
+    if props.color != old.color {
+        match &props.color {
+            Some(c) => el.place(Element::new(ns::A, "solidFill").with_child(c.to_drawingml()), RPR),
+            None => el.clear(ns::A, RPR[1]),
+        }
+    }
+    if props.highlight != old.highlight {
+        match &props.highlight {
+            Some(c) => el.place(Element::new(ns::A, "highlight").with_child(c.to_drawingml()), RPR),
+            None => el.clear(ns::A, &["highlight"]),
+        }
+    }
+    if props.baseline != old.baseline {
+        let b = props.baseline.map(|b| match b {
+            Baseline::Superscript => "30000",
+            Baseline::Subscript => "-25000",
+        });
+        set_opt(el, "baseline", b.map(str::to_string));
+    }
+    if props.lang != old.lang {
+        set_opt(el, "lang", props.lang.clone());
+    }
+}
+
+/// Updates `a:pPr` to say `props`, touching only what changed.
+pub fn patch_para_props(props: &ParaProps, el: &mut Element) {
+    let old = read_para_props(el);
+    if props.align != old.align {
+        let a = props.align.map(|a| match a {
+            Align::Left => "l",
+            Align::Center => "ctr",
+            Align::Right => "r",
+            Align::Justify => "just",
+            Align::Distribute => "dist",
+        });
+        set_opt(el, "algn", a.map(str::to_string));
+    }
+    if props.level != old.level {
+        set_opt(el, "lvl", props.level.map(|l| l.to_string()));
+    }
+    if props.indent_start != old.indent_start {
+        set_opt(el, "marL", props.indent_start.map(|e| e.0.to_string()));
+    }
+    if props.indent_end != old.indent_end {
+        set_opt(el, "marR", props.indent_end.map(|e| e.0.to_string()));
+    }
+    if props.indent_first_line != old.indent_first_line {
+        set_opt(el, "indent", props.indent_first_line.map(|e| e.0.to_string()));
+    }
+    if props.rtl != old.rtl {
+        set_opt(el, "rtl", props.rtl.map(|b| if b { "1" } else { "0" }.to_string()));
+    }
+    // Points in hundredths, as DrawingML writes them.
+    let points = |e: Emu| Element::new(ns::A, "spcPts").with_attr("", "val", ((e.points() * 100.0).round() as i64).to_string());
+    for (local, new, before) in [("spcBef", props.space_before, old.space_before), ("spcAft", props.space_after, old.space_after)] {
+        if new != before {
+            match new {
+                Some(e) => el.place(Element::new(ns::A, local).with_child(points(e)), PPR),
+                None => el.clear(ns::A, &[local]),
+            }
+        }
+    }
+    if props.line_spacing != old.line_spacing {
+        match props.line_spacing {
+            Some(LineSpacing::Multiple(p)) => {
+                el.place(Element::new(ns::A, "lnSpc").with_child(Element::new(ns::A, "spcPct").with_attr("", "val", p.0.to_string())), PPR)
+            }
+            // DrawingML has no "at least"; exact is the nearest it can say.
+            Some(LineSpacing::Exactly(e) | LineSpacing::AtLeast(e)) => el.place(Element::new(ns::A, "lnSpc").with_child(points(e)), PPR),
+            None => el.clear(ns::A, &["lnSpc"]),
+        }
     }
 }
 

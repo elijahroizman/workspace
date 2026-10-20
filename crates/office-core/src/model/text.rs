@@ -214,6 +214,23 @@ impl Paragraph {
         out
     }
 
+    /// Joins neighboring runs with the same formatting and link into one, as the formats split
+    /// text differently: PowerPoint keeps each line break as a run of its own, Word splits runs
+    /// for spell checking and revision marks. The joined run keeps the first run's origin.
+    pub fn merge_runs(&mut self) {
+        let mut merged: Vec<Inline> = Vec::with_capacity(self.content.len());
+        for inline in self.content.drain(..) {
+            if let (Some(Inline::Text(prev)), Inline::Text(run)) = (merged.last_mut(), &inline) {
+                if prev.props == run.props && prev.link == run.link {
+                    prev.text.push_str(&run.text);
+                    continue;
+                }
+            }
+            merged.push(inline);
+        }
+        self.content = merged;
+    }
+
     pub fn runs(&self) -> impl Iterator<Item = &Run> {
         self.content.iter().filter_map(|i| match i {
             Inline::Text(r) => Some(r),

@@ -4,6 +4,8 @@
 
 mod props;
 mod read;
+mod write;
 
-pub use props::{read_para_props, read_run_props};
+pub use props::{patch_para_props, patch_run_props, read_para_props, read_run_props, write_color};
 pub use read::read;
+pub use write::write;

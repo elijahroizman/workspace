@@ -324,6 +324,50 @@ fn collect_text(el: &Element, out: &mut String) {
     }
 }
 
+/// Whitespace that only lays the markup out, as pretty-printed files have: whitespace between
+/// tags, or a line break. A space as an element's only content (`<a:t> </a:t>`) is text; Office
+/// XML never mixes text and elements, so nothing else is.
+fn is_layout(n: &Node, between_tags: bool) -> bool {
+    matches!(n, Node::Text(t) if t.trim().is_empty() && (between_tags || t.contains('\n')))
+}
+
+impl Element {
+    /// Whether two elements say the same thing: the same names by namespace (whatever their
+    /// prefixes), the same attributes in any order, and the same content, ignoring layout
+    /// whitespace between tags.
+    pub fn same_content(&self, other: &Element) -> bool {
+        fn key(a: &Attr) -> (String, &str, &str) {
+            // Declarations by what they declare; other attributes by namespace.
+            let space = if a.is_ns_decl() {
+                format!("xmlns:{}", a.qname())
+            } else {
+                a.ns.as_deref().map(|n| ns::canonical(n).to_string()).unwrap_or_default()
+            };
+            (space, a.local.as_str(), a.value.as_str())
+        }
+        fn sorted(e: &Element) -> Vec<(String, &str, &str)> {
+            let mut a: Vec<_> = e.attrs.iter().map(key).collect();
+            a.sort();
+            a
+        }
+        if self.local != other.local || !same_ns(&self.ns, &other.ns) || sorted(self) != sorted(other) {
+            return false;
+        }
+        let tags = |e: &Element| e.children.iter().any(|n| matches!(n, Node::Element(_)));
+        let (ta, tb) = (tags(self), tags(other));
+        let mut a = self.children.iter().filter(|n| !is_layout(n, ta));
+        let mut b = other.children.iter().filter(|n| !is_layout(n, tb));
+        loop {
+            match (a.next(), b.next()) {
+                (None, None) => return true,
+                (Some(Node::Element(x)), Some(Node::Element(y))) if x.same_content(y) => {}
+                (Some(x), Some(y)) if !matches!(x, Node::Element(_)) && x == y => {}
+                _ => return false,
+            }
+        }
+    }
+}
+
 impl XmlDoc {
     /// A part with the usual declaration and `root`.
     pub fn new(root: Element) -> XmlDoc {

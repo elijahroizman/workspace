@@ -25,6 +25,27 @@ pub mod types {
     pub const XLSX_SHARED_STRINGS: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml";
     pub const XLSX_STYLES: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml";
 
+    /// The usual extension for a media type, the other way from [`for_extension`].
+    pub fn extension_for(media: &str) -> Option<String> {
+        Some(
+            match media {
+                "image/png" => "png",
+                "image/jpeg" => "jpeg",
+                "image/gif" => "gif",
+                "image/bmp" => "bmp",
+                "image/tiff" => "tiff",
+                "image/svg+xml" => "svg",
+                "image/webp" => "webp",
+                "image/x-emf" => "emf",
+                "image/x-wmf" => "wmf",
+                "video/mp4" => "mp4",
+                "audio/mpeg" => "mp3",
+                _ => return None,
+            }
+            .to_string(),
+        )
+    }
+
     /// The media type for a picture or other binary part, by extension.
     pub fn for_extension(ext: &str) -> Option<&'static str> {
         Some(match ext {
