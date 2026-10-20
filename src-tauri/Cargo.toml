@@ -63,9 +63,10 @@ windows = { version = "0.62", features = [
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
 
+# Thin LTO and the default codegen units: a few minutes off each CI build, for a slightly bigger
+# binary. Full LTO with codegen-units = 1 is smallest, if size ever matters more than build time.
 [profile.release]
-codegen-units = 1
-lto = true
+lto = "thin"
 opt-level = "s"
 panic = "abort"
 strip = true
