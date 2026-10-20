@@ -239,6 +239,43 @@ impl Element {
         before - self.children.len()
     }
 
+    /// Puts `child` where the schema wants it. `order` lists the element's child slots in schema
+    /// order, each slot the names that can fill it (a fill is one of `noFill`, `solidFill`…).
+    /// Whatever fills `child`'s slot now is replaced; otherwise `child` goes before the first child
+    /// in a later slot. Children in no slot (extensions, unknown markup) stay where they are.
+    pub fn place(&mut self, child: Element, order: &[&[&str]]) {
+        let slot_of = |e: &Element| order.iter().position(|names| names.contains(&e.local.as_str()));
+        let Some(slot) = slot_of(&child) else {
+            self.children.push(Node::Element(child));
+            return;
+        };
+        let child_ns = child.ns.clone();
+        let same = |n: &Node| matches!(n, Node::Element(e) if slot_of(e) == Some(slot) && same_ns(&e.ns, &child_ns));
+        if let Some(i) = self.children.iter().position(same) {
+            self.children[i] = Node::Element(child);
+            let mut seen = false;
+            self.children.retain(|n| {
+                if !same(n) {
+                    return true;
+                }
+                let keep = !seen;
+                seen = true;
+                keep
+            });
+            return;
+        }
+        let at = self.children.iter().position(|n| matches!(n, Node::Element(e) if slot_of(e).is_some_and(|s| s > slot)));
+        match at {
+            Some(i) => self.children.insert(i, Node::Element(child)),
+            None => self.children.push(Node::Element(child)),
+        }
+    }
+
+    /// Removes the children in `ns` named any of `names` (one slot of a [`Element::place`] order).
+    pub fn clear(&mut self, ns: &str, names: &[&str]) {
+        self.children.retain(|n| !matches!(n, Node::Element(e) if e.in_ns(ns) && names.contains(&e.local.as_str())));
+    }
+
     /// The element's text and its descendants', concatenated.
     pub fn text(&self) -> String {
         let mut out = String::new();
@@ -266,6 +303,14 @@ impl Element {
     /// This element alone as XML, with every namespace it uses declared on it.
     pub fn to_xml_string(&self) -> String {
         write::element_to_string(self)
+    }
+}
+
+fn same_ns(a: &Option<Arc<str>>, b: &Option<Arc<str>>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => ns::same(a, b),
+        (None, None) => true,
+        _ => false,
     }
 }
 

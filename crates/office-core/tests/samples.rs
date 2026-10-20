@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 
+use office_core::drawing::Theme;
 use office_core::opc::Package;
 use office_core::xml;
 
@@ -41,5 +42,18 @@ fn packages_and_parts_round_trip() {
         }
         let saved = pkg.to_bytes().unwrap();
         assert_eq!(Package::read(&saved).unwrap().to_bytes().unwrap(), saved, "{}", path.display());
+    }
+}
+
+#[test]
+fn themes_parse() {
+    for (path, bytes) in samples(&["docx", "pptx", "xlsx"]) {
+        let pkg = Package::read(&bytes).unwrap();
+        for name in pkg.part_names().filter(|n| n.contains("theme/theme")) {
+            let theme = Theme::parse(&pkg.xml(name).unwrap()).unwrap_or_else(|| panic!("{} {name}", path.display()));
+            assert_eq!(theme.colors.len(), 12, "{} {name}", path.display());
+            assert!(theme.scheme_color("accent1").is_some());
+            assert!(!theme.fonts.minor.latin.is_empty());
+        }
     }
 }

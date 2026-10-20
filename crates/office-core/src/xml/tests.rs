@@ -147,3 +147,19 @@ fn serde_as_xml_text() {
     let back: Element = serde_json::from_str(&json).unwrap();
     assert!(back.is(ns::A, "t"));
 }
+
+#[test]
+fn places_children_in_schema_order() {
+    const ORDER: &[&[&str]] = &[&["xfrm"], &["prstGeom", "custGeom"], &["noFill", "solidFill"], &["ln"]];
+    let mut sp = parse_element(&format!(r#"<a:spPr xmlns:a="{}"><a:prstGeom prst="rect"/><a:extLst/><a:ln/></a:spPr>"#, ns::A)).unwrap();
+    sp.place(Element::new(ns::A, "solidFill"), ORDER);
+    sp.place(Element::new(ns::A, "xfrm"), ORDER);
+    let names: Vec<_> = sp.elements().map(|e| e.local.as_str()).collect();
+    assert_eq!(names, ["xfrm", "prstGeom", "extLst", "solidFill", "ln"]);
+    // Replacing a slot swaps the alternative in place.
+    sp.place(Element::new(ns::A, "noFill"), ORDER);
+    let names: Vec<_> = sp.elements().map(|e| e.local.as_str()).collect();
+    assert_eq!(names, ["xfrm", "prstGeom", "extLst", "noFill", "ln"]);
+    sp.clear(ns::A, &["noFill", "solidFill"]);
+    assert_eq!(sp.elements().count(), 4);
+}
