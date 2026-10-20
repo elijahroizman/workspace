@@ -95,6 +95,22 @@ export function LinkButton({ className = '', children, ...rest }: ButtonHTMLAttr
   )
 }
 
+/** A tall button in an insert or annotate grid: an icon with a short label under it. `active` marks the selected tool. */
+export function ToolButton({
+  icon,
+  label,
+  active,
+  className = '',
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & { icon: ReactNode; label: ReactNode; active?: boolean }) {
+  return (
+    <button type="button" className={`tool-btn ${active ? 'on' : ''} ${className}`} {...rest}>
+      {icon}
+      <span>{label}</span>
+    </button>
+  )
+}
+
 /** An icon-only button. `label` is its tooltip and accessible name (written Mac-style; shown in this platform's keys). */
 export function IconButton({
   label,

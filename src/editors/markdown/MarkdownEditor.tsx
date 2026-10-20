@@ -9,7 +9,7 @@ import { tags } from '@lezer/highlight'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorProps } from '../../App'
 import { FindBar, InspectorHeader, Workbench } from '../../components/Workbench'
-import { Section } from '../../components/ui'
+import { Button, Section } from '../../components/ui'
 import type { ViewMode } from '../../components/ViewSwitch'
 import { initialView, nextView, ViewSwitch } from '../../components/ViewSwitch'
 import { focusReplace } from '../../lib/codemirror'
@@ -278,12 +278,12 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
     <>
       <InspectorHeader kind="md">Markdown</InspectorHeader>
       <Section title="Export">
-        <button type="button" className="btn block" onClick={() => void useWorkspace.getState().save(tab.id, { saveAs: true })}>
+        <Button block onClick={() => void useWorkspace.getState().save(tab.id, { saveAs: true })}>
           Save a copy…
-        </button>
-        <button type="button" className="btn block" onClick={() => void runPrint(tab.id)}>
+        </Button>
+        <Button block onClick={() => void runPrint(tab.id)}>
           Print or save as PDF…
-        </button>
+        </Button>
       </Section>
     </>
   )

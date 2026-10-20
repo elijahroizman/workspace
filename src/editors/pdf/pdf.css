@@ -329,6 +329,10 @@ textarea.form-field {
   border: 1px solid var(--line);
 }
 
+.password-box .field {
+  width: 260px;
+}
+
 /* Form › Show fields tints every field so the empty ones are easy to find. */
 .pdf-stage.show-fields .form-field {
   background: rgba(79, 140, 255, 0.12);

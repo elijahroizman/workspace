@@ -1,7 +1,7 @@
 import { Calendar, Check, Image as ImageIcon, PenLine, Plus, Type, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { create } from 'zustand'
-import { Segmented } from '../../components/ui'
+import { Button, Modal, Segmented } from '../../components/ui'
 import * as platform from '../../lib/platform'
 
 /**
@@ -236,7 +236,7 @@ export function SignaturePad({ kind, onClose }: { kind: SavedSignature['kind']; 
 
   const what = kind === 'initials' ? 'initials' : 'signature'
   return (
-    <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose(null)}>
+    <Modal onClose={() => onClose(null)} placement="top" dim="light" layer="dialog">
       <div className="dialog signature-dialog" role="dialog" aria-modal="true" aria-label={`New ${what}`}>
         <div className="signature-head">
           <h2>New {what}</h2>
@@ -288,9 +288,9 @@ export function SignaturePad({ kind, onClose }: { kind: SavedSignature['kind']; 
           />
           {mode === 'draw' && !drawn && <span className="signature-placeholder">Sign here with the trackpad or mouse</span>}
           {mode === 'image' && !image && (
-            <button type="button" className="btn signature-placeholder-btn" onClick={() => void pickImage()}>
+            <Button className="signature-placeholder-btn" onClick={() => void pickImage()}>
               <ImageIcon size={14} /> Choose a picture of your {what}…
-            </button>
+            </Button>
           )}
           <span className="signature-line" />
         </div>
@@ -321,9 +321,7 @@ export function SignaturePad({ kind, onClose }: { kind: SavedSignature['kind']; 
               </div>
             )}
             {mode === 'draw' && drawn && (
-              <button
-                type="button"
-                className="btn"
+              <Button
                 onClick={() => {
                   strokes.current = []
                   setDrawn(false)
@@ -331,26 +329,20 @@ export function SignaturePad({ kind, onClose }: { kind: SavedSignature['kind']; 
                 }}
               >
                 Clear
-              </button>
+              </Button>
             )}
-            {mode === 'image' && image && (
-              <button type="button" className="btn" onClick={() => void pickImage()}>
-                Another picture…
-              </button>
-            )}
+            {mode === 'image' && image && <Button onClick={() => void pickImage()}>Another picture…</Button>}
           </div>
         </div>
         <p className="signature-note faint">Kept on this computer only, for signing PDFs in Workspace.</p>
         <div className="dialog-actions">
-          <button type="button" className="btn" onClick={() => onClose(null)}>
-            Cancel
-          </button>
-          <button type="button" className="btn primary" disabled={!ready} onClick={save}>
+          <Button onClick={() => onClose(null)}>Cancel</Button>
+          <Button variant="primary" disabled={!ready} onClick={save}>
             Save {what}
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -420,15 +412,15 @@ export function SignPanel({ onNew }: { onNew(kind: SavedSignature['kind']): void
       <div className="sign-group">
         <div className="sign-group-title faint">Marks</div>
         <div className="sign-marks">
-          <button type="button" className={`btn ${isOn({ type: 'date' }) ? 'on' : ''}`} onClick={() => choose({ type: 'date' })}>
+          <Button className={isOn({ type: 'date' }) ? 'on' : ''} onClick={() => choose({ type: 'date' })}>
             <Calendar size={14} /> Date
-          </button>
-          <button type="button" className={`btn ${isOn({ type: 'check' }) ? 'on' : ''}`} title="A check mark" onClick={() => choose({ type: 'check' })}>
+          </Button>
+          <Button className={isOn({ type: 'check' }) ? 'on' : ''} title="A check mark" onClick={() => choose({ type: 'check' })}>
             <Check size={14} /> Check
-          </button>
-          <button type="button" className={`btn ${isOn({ type: 'cross' }) ? 'on' : ''}`} title="A cross" onClick={() => choose({ type: 'cross' })}>
+          </Button>
+          <Button className={isOn({ type: 'cross' }) ? 'on' : ''} title="A cross" onClick={() => choose({ type: 'cross' })}>
             <X size={14} /> Cross
-          </button>
+          </Button>
         </div>
       </div>
     </>

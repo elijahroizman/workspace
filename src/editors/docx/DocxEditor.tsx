@@ -60,7 +60,7 @@ import type { EditorProps } from '../../App'
 import type { Rect } from '../../components/CropOverlay'
 import { CropOverlay, rectOf } from '../../components/CropOverlay'
 import { FindBar, InspectorHeader, Workbench, formatZoom } from '../../components/Workbench'
-import { ColorField, IconButton, NumberField, Section, Segmented, SelectField, TableSizePicker } from '../../components/ui'
+import { Button, ColorField, IconButton, NumberField, Section, Segmented, SelectField, TableSizePicker, ToolButton } from '../../components/ui'
 import { usePinchZoom } from '../../lib/pinch'
 import { isMac, openExternal, shortcut } from '../../lib/platform'
 import { withKeys } from '../../state/shortcuts'
@@ -343,9 +343,9 @@ function DocxWorkbench({
         <IconButton label="Zoom out (⌘−)" size="sm" onClick={zoom.zoomOut} disabled={!zoom.canZoomOut}>
           <Minus size={14} />
         </IconButton>
-        <button type="button" className="icon-btn sm readout" title={shortcut('Fit to window (⌘0)')} onClick={zoom.auto}>
+        <IconButton label="Fit to window (⌘0)" size="sm" className="readout" aria-label={formatZoom(zoom.zoom)} onClick={zoom.auto}>
           {formatZoom(zoom.zoom)}
-        </button>
+        </IconButton>
         <IconButton label="Zoom in (⌘+)" size="sm" onClick={zoom.zoomIn} disabled={!zoom.canZoomIn}>
           <Plus size={14} />
         </IconButton>
@@ -644,41 +644,29 @@ function Inspector({
 
       <Section title="Insert">
         <div className="insert-grid">
-          <button type="button" className="tool-btn" onClick={() => setTableOpen(!tableOpen)} aria-expanded={tableOpen}>
-            <Table size={15} />
-            <span>Table</span>
-          </button>
+          <ToolButton icon={<Table size={15} />} label="Table" onClick={() => setTableOpen(!tableOpen)} aria-expanded={tableOpen} />
           <ImageInsertTrigger className="tool-btn">
             <ImageIcon size={15} />
             <span>Image</span>
           </ImageInsertTrigger>
           <LinkButton />
-          <button type="button" className="tool-btn" disabled={!pageBreak.isEnabled} onMouseDown={(e) => e.preventDefault()} onClick={() => pageBreak.execute()}>
-            <FileStack size={15} />
-            <span>Break</span>
-          </button>
-          <button
-            type="button"
-            className="tool-btn"
+          <ToolButton icon={<FileStack size={15} />} label="Break" disabled={!pageBreak.isEnabled} onMouseDown={(e) => e.preventDefault()} onClick={() => pageBreak.execute()} />
+          <ToolButton
+            icon={<PanelTop size={15} />}
+            label="Header"
             title={shortcut(withKeys('Header on this page', 'docx.header'))}
             disabled={!editor}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => onHeaderFooter('header')}
-          >
-            <PanelTop size={15} />
-            <span>Header</span>
-          </button>
-          <button
-            type="button"
-            className="tool-btn"
+          />
+          <ToolButton
+            icon={<PanelBottom size={15} />}
+            label="Footer"
             title={shortcut(withKeys('Footer on this page', 'docx.footer'))}
             disabled={!editor}
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => onHeaderFooter('footer')}
-          >
-            <PanelBottom size={15} />
-            <span>Footer</span>
-          </button>
+          />
         </div>
         {tableOpen && (
           <TableSizePicker
@@ -718,17 +706,14 @@ function LinkButton() {
   const probe = chromeProbeForSlot('text.link')
   const enabled = hasSelection && !!editor && !!probe && editor.can(probe).ok
   return (
-    <button
-      type="button"
-      className="tool-btn"
+    <ToolButton
+      icon={<Link size={15} />}
+      label="Link"
       disabled={!enabled}
       title={enabled ? shortcut(withKeys('Link', 'docx.link')) : 'Select some text to link'}
       onMouseDown={(e) => e.preventDefault()}
       onClick={openAtCaret}
-    >
-      <Link size={15} />
-      <span>Link</span>
-    </button>
+    />
   )
 }
 
@@ -864,10 +849,10 @@ function HeaderFooterSection({ position }: { position: 'header' | 'footer' }) {
     editor?.exec(command)
     editor?.focus()
   }
-  const button = (label: ReactNode, command: EditorCommand, className = 'btn') => (
-    <button type="button" className={className} disabled={!editor?.can(command).ok} onMouseDown={(e) => e.preventDefault()} onClick={() => run(command)}>
+  const button = (label: ReactNode, command: EditorCommand, variant?: 'primary' | 'danger') => (
+    <Button variant={variant} disabled={!editor?.can(command).ok} onMouseDown={(e) => e.preventDefault()} onClick={() => run(command)}>
       {label}
-    </button>
+    </Button>
   )
   return (
     <Section title={position === 'header' ? 'Header' : 'Footer'}>
@@ -884,9 +869,9 @@ function HeaderFooterSection({ position }: { position: 'header' | 'footer' }) {
             <Trash2 size={14} /> Remove
           </>,
           { type: 'removeHeaderFooter' },
-          'btn danger',
+          'danger',
         )}
-        {button('Done', { type: 'exitHeaderFooter' }, 'btn primary')}
+        {button('Done', { type: 'exitHeaderFooter' }, 'primary')}
       </div>
       <p className="faint hint">It repeats on every page. Press Escape to go back to the text.</p>
     </Section>
@@ -932,23 +917,21 @@ function ImageSection({ onCrop }: { onCrop: () => void }) {
           disabled={!image.canResize}
           onCommit={(h) => resize(h * EMU_PER_INCH / ratio, h * EMU_PER_INCH)}
         />
-        <button
-          type="button"
-          className="btn"
+        <Button
           disabled={!image.canCrop || !!image.rotationDegrees}
           title={image.rotationDegrees ? 'A rotated picture can’t be cropped here' : 'Crop'}
           onMouseDown={(e) => e.preventDefault()}
           onClick={onCrop}
         >
           <Crop size={14} /> Crop
-        </button>
-        <button type="button" className="btn" disabled={!image.canResize} onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'setImageProperties', resetToNaturalSize: true })}>
+        </Button>
+        <Button disabled={!image.canResize} onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'setImageProperties', resetToNaturalSize: true })}>
           Original size
-        </button>
+        </Button>
       </div>
-      <button type="button" className="btn danger block" onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'deleteImage' })}>
+      <Button variant="danger" block onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'deleteImage' })}>
         <Trash2 size={14} /> Delete
-      </button>
+      </Button>
       <p className="faint hint">Drag a corner of the image to resize it.</p>
     </Section>
   )
@@ -1002,19 +985,19 @@ function TableSection() {
         ))}
       </div>
       <div className="grid-3">
-        <button type="button" className="btn" onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'setTableBorders', scope: 'all', spec: BLACK_BORDER })}>
+        <Button onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'setTableBorders', scope: 'all', spec: BLACK_BORDER })}>
           All
-        </button>
-        <button type="button" className="btn" onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'setTableBorders', scope: 'outside', spec: BLACK_BORDER })}>
+        </Button>
+        <Button onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'setTableBorders', scope: 'outside', spec: BLACK_BORDER })}>
           Outside
-        </button>
-        <button type="button" className="btn" onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'setTableBorders', scope: 'none', target: 'all' })}>
+        </Button>
+        <Button onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'setTableBorders', scope: 'none', target: 'all' })}>
           None
-        </button>
+        </Button>
       </div>
-      <button type="button" className="btn danger block" disabled={!can({ type: 'deleteTable' })} onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'deleteTable' })}>
+      <Button variant="danger" block disabled={!can({ type: 'deleteTable' })} onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'deleteTable' })}>
         <Trash2 size={14} /> Delete table
-      </button>
+      </Button>
       <p className="faint hint">Drag a column edge in the table to resize it.</p>
     </Section>
   )

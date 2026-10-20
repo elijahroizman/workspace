@@ -29,7 +29,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { EditorProps } from '../../App'
 import { FindBar, InspectorHeader, Workbench, formatZoom } from '../../components/Workbench'
 import type { MenuEntry } from '../../components/ui'
-import { CenterState, IconButton, PopoverMenu, Section, Segmented } from '../../components/ui'
+import { Button, CenterState, IconButton, PopoverMenu, Section, Segmented, TextField, ToolButton } from '../../components/ui'
 import * as platform from '../../lib/platform'
 import { registerEditor, useWorkspace } from '../../state/workspace'
 import { isCancelled, PdfEngine, Priority } from './engine/client'
@@ -978,10 +978,7 @@ export default function PdfEditor({ tab, active, visible = false }: EditorProps)
       <Section title="Annotate">
         <div className="tool-grid">
           {TOOLS.map((t) => (
-            <button key={t.id} type="button" className={`tool-btn ${tool === t.id ? 'on' : ''}`} title={t.hint} onClick={() => selectTool(t.id)} disabled={!store}>
-              {t.icon}
-              <span>{t.label}</span>
-            </button>
+            <ToolButton key={t.id} icon={t.icon} label={t.label} active={tool === t.id} title={t.hint} onClick={() => selectTool(t.id)} disabled={!store} />
           ))}
         </div>
         <p className="tool-hint faint">{currentTool.hint}.</p>
@@ -1029,49 +1026,49 @@ export default function PdfEditor({ tab, active, visible = false }: EditorProps)
             </p>
           )}
           <div className="grid-2">
-            <button type="button" className="btn" disabled={!store} onClick={() => void nextEmptyField()}>
+            <Button disabled={!store} onClick={() => void nextEmptyField()}>
               <StepForward size={14} /> Next empty
-            </button>
-            <button type="button" className="btn pdf-inspector-toggle" aria-pressed={showFields} onClick={() => setShowFields(!showFields)}>
+            </Button>
+            <Button className="pdf-inspector-toggle" aria-pressed={showFields} onClick={() => setShowFields(!showFields)}>
               <SquareDashed size={14} /> Show fields
-            </button>
+            </Button>
           </div>
-          <button type="button" className="btn block" disabled={!store} onClick={() => void saveFlattened()} title="A copy whose fields, signatures and marks are part of the page, so they can’t be changed">
+          <Button block disabled={!store} onClick={() => void saveFlattened()} title="A copy whose fields, signatures and marks are part of the page, so they can’t be changed">
             <Stamp size={14} /> Save flattened copy…
-          </button>
+          </Button>
         </Section>
       )}
       <Section title={numPages ? `Page ${page + 1} of ${numPages}` : 'Page'}>
         <div className="grid-2">
-          <button type="button" className="btn" disabled={!store} title="Turn the page a quarter turn counterclockwise" onClick={() => rotatePage(page, -1)}>
+          <Button disabled={!store} title="Turn the page a quarter turn counterclockwise" onClick={() => rotatePage(page, -1)}>
             <RotateCcw size={14} /> Rotate left
-          </button>
-          <button type="button" className="btn" disabled={!store} title="Turn the page a quarter turn clockwise" onClick={() => rotatePage(page, 1)}>
+          </Button>
+          <Button disabled={!store} title="Turn the page a quarter turn clockwise" onClick={() => rotatePage(page, 1)}>
             <RotateCw size={14} /> Rotate right
-          </button>
-          <button type="button" className="btn" disabled={!store || page <= 0} onClick={() => movePage(page, page - 1)}>
+          </Button>
+          <Button disabled={!store || page <= 0} onClick={() => movePage(page, page - 1)}>
             <ArrowUpToLine size={14} /> Move up
-          </button>
-          <button type="button" className="btn" disabled={!store || page >= numPages - 1} onClick={() => movePage(page, page + 1)}>
+          </Button>
+          <Button disabled={!store || page >= numPages - 1} onClick={() => movePage(page, page + 1)}>
             <ArrowDownToLine size={14} /> Move down
-          </button>
-          <button type="button" className="btn" disabled={!store} onClick={() => duplicatePage(page)}>
+          </Button>
+          <Button disabled={!store} onClick={() => duplicatePage(page)}>
             <Copy size={14} /> Duplicate
-          </button>
-          <button type="button" className="btn danger" disabled={!store || numPages <= 1} onClick={() => deletePage(page)}>
+          </Button>
+          <Button variant="danger" disabled={!store || numPages <= 1} onClick={() => deletePage(page)}>
             <Trash2 size={14} /> Delete
-          </button>
+          </Button>
         </div>
-        <button type="button" className="btn block" disabled={!store} onClick={() => void insertFromFile(page)}>
+        <Button block disabled={!store} onClick={() => void insertFromFile(page)}>
           <FilePlus2 size={14} /> Insert pages from file…
-        </button>
-        <button type="button" className="btn block" disabled={!store} onClick={() => void extract([page])}>
+        </Button>
+        <Button block disabled={!store} onClick={() => void extract([page])}>
           <FileOutput size={14} /> Extract page as PDF…
-        </button>
+        </Button>
         {!hasForm && (
-          <button type="button" className="btn block" disabled={!store} onClick={() => void saveFlattened()} title="A copy whose annotations, signatures and marks are part of the page, so they can’t be changed">
+          <Button block disabled={!store} onClick={() => void saveFlattened()} title="A copy whose annotations, signatures and marks are part of the page, so they can’t be changed">
             <Stamp size={14} /> Save flattened copy…
-          </button>
+          </Button>
         )}
       </Section>
       <Section title="Document" collapsible>
@@ -1174,9 +1171,9 @@ export default function PdfEditor({ tab, active, visible = false }: EditorProps)
           <IconButton label="Zoom out (⌘−)" size="sm" onClick={() => viewer.current?.step(-1)}>
             <Minus size={14} />
           </IconButton>
-          <button type="button" className="icon-btn sm readout" title={platform.shortcut('Actual size (⌘0)')} onClick={() => viewer.current?.setZoom(1)}>
+          <IconButton label="Actual size (⌘0)" size="sm" className="readout" aria-label={formatZoom(zoom)} onClick={() => viewer.current?.setZoom(1)}>
             {formatZoom(zoom)}
-          </button>
+          </IconButton>
           <IconButton label="Zoom in (⌘+)" size="sm" onClick={() => viewer.current?.step(1)}>
             <Plus size={14} />
           </IconButton>
@@ -1208,12 +1205,10 @@ function PasswordPrompt({ retry, onSubmit }: { retry: boolean; onSubmit: (pw: st
       >
         <h3>This PDF is password protected</h3>
         {retry && <p style={{ color: 'var(--danger)', margin: 0 }}>That password didn’t work. Try again.</p>}
-        <label className="field" style={{ width: 260 }}>
-          <input type="password" autoFocus placeholder="Password" value={value} onChange={(e) => setValue(e.currentTarget.value)} />
-        </label>
-        <button type="submit" className="btn primary">
+        <TextField type="password" autoFocus placeholder="Password" value={value} onChange={(e) => setValue(e.currentTarget.value)} />
+        <Button variant="primary" type="submit">
           Unlock
-        </button>
+        </Button>
       </form>
     </div>
   )
