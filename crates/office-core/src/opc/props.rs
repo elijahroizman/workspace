@@ -15,20 +15,32 @@ use crate::Result;
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Properties {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subject: Option<String>,
     /// The author.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub creator: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub keywords: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_modified_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revision: Option<String>,
     /// W3C date-times, as written: `2026-10-20T09:30:00Z`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub modified: Option<String>,
     /// From app.xml.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub application: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub company: Option<String>,
 }
 

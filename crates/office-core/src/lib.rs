@@ -13,6 +13,7 @@
 //!
 //! See `docs/internals/office-compiler.md` for the design.
 
+pub mod convert;
 pub mod drawing;
 mod error;
 pub mod formats;
@@ -56,10 +57,15 @@ impl Compiler {
         Ok(doc)
     }
 
-    /// Writes a document as `kind`: its own kind to save it, another to convert it.
+    /// Writes a document as `kind`: its own kind to save it, another to convert it (see
+    /// [`convert::to_kind`]).
     pub fn write(&self, doc: &Document, kind: Kind) -> Result<Vec<u8>> {
         let mut prepared;
         let mut doc = doc;
+        if !convert::fits(doc, kind) || (doc.kind != kind && doc.package.is_some()) {
+            prepared = convert::to_kind(doc, kind)?;
+            doc = &prepared;
+        }
         if self.layers_for(kind).next().is_some() {
             prepared = doc.clone();
             for layer in self.layers_for(kind) {

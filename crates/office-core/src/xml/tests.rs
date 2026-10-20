@@ -172,3 +172,11 @@ fn same_content_ignores_layout() {
     assert!(a.same_content(&b));
     assert!(!b.same_content(&c), "a space in text is text");
 }
+
+#[test]
+fn characters_xml_cant_hold_are_left_out() {
+    let el = Element::new("", "a").with_attr("", "v", "x\u{1}y").with_text("form\u{c}feed\u{b}");
+    let back = parse_element(&el.to_xml_string()).unwrap();
+    assert_eq!(back.attr("v"), Some("xy"));
+    assert_eq!(back.text(), "formfeed");
+}

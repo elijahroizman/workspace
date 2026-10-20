@@ -190,8 +190,15 @@ fn join(prefix: &str, local: &str) -> String {
     }
 }
 
+/// Characters XML 1.0 can't hold at all, not even escaped: control characters other than tab
+/// and line breaks, and U+FFFE and U+FFFF. Writing one would make the part unreadable, so
+/// they're left out. (Excel has its own escape for them; see `formats::xlsx::escape`.)
+fn allowed(c: char) -> bool {
+    !matches!(c, '\u{0}'..='\u{8}' | '\u{b}' | '\u{c}' | '\u{e}'..='\u{1f}' | '\u{fffe}' | '\u{ffff}')
+}
+
 fn escape_text(t: &str, out: &mut String) {
-    for c in t.chars() {
+    for c in t.chars().filter(|&c| allowed(c)) {
         match c {
             '&' => out.push_str("&amp;"),
             '<' => out.push_str("&lt;"),
@@ -203,7 +210,7 @@ fn escape_text(t: &str, out: &mut String) {
 }
 
 fn escape_attr(t: &str, out: &mut String) {
-    for c in t.chars() {
+    for c in t.chars().filter(|&c| allowed(c)) {
         match c {
             '&' => out.push_str("&amp;"),
             '<' => out.push_str("&lt;"),

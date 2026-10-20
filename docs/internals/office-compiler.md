@@ -1,6 +1,6 @@
 # The office compiler
 
-Status: work in progress. Only the shared core exists so far; the Word, PowerPoint and Excel layers are planned but not started.
+Status: work in progress. The shared core (`crates/office-core`) reads and writes all four formats. The Word, PowerPoint and Excel layers are planned but not started, and nothing in the app uses the compiler yet.
 
 Today each Office format has its own JavaScript engine: docx-editor for Word, pptx-react-viewer and ooxml-ui for PowerPoint, and nothing for Excel. Each one parses the file its own way, keeps its own model of text and colors, and saves by patching the original zip. The office compiler replaces the parsing and saving under all of them with one Rust library that reads and writes Word (.docx), PowerPoint (.pptx), Excel (.xlsx) and CSV.
 
@@ -59,7 +59,8 @@ crates/
 | `model` | The shared model: `Document`, rich text (`Paragraph`, `Run`, `RunProps`, `ParaProps`), `Table`, `Sheet` and `Cell`, `Frame` for positioned objects, `Slide`, media and hyperlinks. Every container has a `Raw` variant holding XML it doesn't model. |
 | `formats` | A front end and back end per format: `docx`, `pptx`, `xlsx`, `csv`. Each reads what the shared model covers and keeps the rest raw. |
 | `layer` | The contract layers implement: hooks that run after reading and before writing, and a typed slot on `Document` for a layer's own data. |
-| `convert` | Shared passes between model shapes: table ↔ sheet, any document to plain text, and changing a document's kind. |
+| `convert` | Shared passes between model shapes: table ↔ sheet (spans ↔ merged ranges), a document's body into another kind's (pages to slides, slides to pages, tables to sheets, sheets to tables), and any document to plain text. `Compiler::write` runs it when asked for a kind the body isn't. |
+| `officec` | A command line (`--features cli`): `inspect` prints the model as JSON, `text` the text, `convert` writes another kind, `save` reads and writes a file back and says which parts changed, `diff` says where two packages differ. |
 
 ### The model
 
@@ -68,47 +69,52 @@ pub struct Document {
     pub kind: Kind,                 // Word, Slides, Sheets or Csv
     pub properties: Properties,     // title, author, created, modified…
     pub theme: Option<Theme>,
-    pub media: Media,               // pictures and other binary parts, by id
+    pub media: Vec<Media>,          // pictures and other binary parts, by id
     pub body: Body,
     pub package: Option<Package>,   // the source package, for lossless writes
-    pub layers: LayerData,          // each layer's own typed data
+    pub extensions: Extensions,     // each format's and layer's own typed data
+    pub origin: Origin,             // the main part's markup around the body
 }
 
 pub enum Body {
-    Flow(Vec<Block>),               // Word: paragraphs and tables, top to bottom
-    Slides { size: Size, slides: Vec<Slide> },
-    Workbook(Vec<Sheet>),           // Excel, and CSV as a one-sheet workbook
+    Flow { blocks: Vec<Block> },    // Word: paragraphs and tables, top to bottom
+    Slides { size: SlideSize, slides: Vec<Slide> },
+    Workbook { sheets: Vec<Sheet> },// Excel, and CSV as a one-sheet workbook
 }
 ```
 
-Text is the same everywhere: a `Block` is a `Paragraph`, a `Table` or `Raw`; a paragraph holds `Inline`s (runs of text, tabs, breaks, pictures, hyperlinks, or `Raw`). Run formatting covers what all three formats can say directly: font, size, bold, italic, underline, strike, color, highlight, superscript and subscript, caps. A slide is a list of `Frame`s. A frame is a shape with an optional text body, a picture, a table, a group of frames, or `Raw`. A sheet is sparse: cells keyed by row and column, each with a value (number, text, rich text, boolean, error) and, kept as-is for the Excel layer, its formula and style index.
+Text is the same everywhere: a `Block` is a `Paragraph`, a `Table` or `Raw`; a paragraph holds `Inline`s (runs of text, page and column breaks, pictures, or `Raw`). A run's text writes tabs, line breaks and special hyphens as characters, whichever markup the format uses for them, and a hyperlink is a property of the runs it covers (Word wraps runs in `w:hyperlink`, PowerPoint puts `a:hlinkClick` in each run). Run formatting covers what all three formats can say directly: font, size, bold, italic, underline, strike, color, highlight, superscript and subscript, caps. A table has a cell for every grid slot, covered ones included, so spans mean the same whichever format a table came from. A slide is a list of `Frame`s. A frame is a shape with an optional text body, a picture, a table, a group of frames, or `Raw`. A sheet is sparse: cells keyed by row and column, each with a value (number, text, rich text, boolean, error) and, kept as-is for the Excel layer, its formula and style index.
 
-What the model doesn't cover stays raw rather than being dropped: a paragraph's unknown properties, an unknown run child, a slide object it can't read. Property containers (`w:rPr`, `a:rPr`, `w:pPr`…) keep unknown children too, and the writer puts them back in schema order.
+What the model doesn't cover stays rather than being dropped. Whole objects it can't read (a field, a chart, a content control) are `Raw` nodes. Every node also has an `Origin`: the element it was read from, minus the parts the model reads. A paragraph's origin keeps its unknown properties, a shape's keeps its effects and style. Origins never take part in equality or JSON.
 
 ### Lossless writing
 
 A document opened from a file keeps its `Package`. Saving it in the same format:
 
-1. Copies every part the compiler didn't read, and every part it read but the model didn't change, byte for byte.
-2. Regenerates only the parts whose model changed, putting raw XML back where it came from.
-3. Keeps content types and relationships in step with added and removed parts (a new picture gets a media part, a content type and a relationship).
+1. Copies every part the compiler didn't read, still compressed.
+2. Rebuilds each part it did read from the model and the nodes' origins, then compares the result with the part as it is (ignoring layout whitespace, namespace prefixes and attribute order). A part that says the same thing keeps its original bytes, so saving an unchanged file changes nothing.
+3. Inside a rebuilt part, a run nobody touched is put back exactly as it was read, and properties are patched one field at a time in schema order, so formatting the model doesn't read stays where it was.
+4. Keeps content types and relationships in step with added and removed parts: a new picture gets a media part, a content type and a relationship; a removed slide takes its notes with it; Excel's calculation chain is dropped when cells change, and Excel rebuilds it.
 
-Saving a document that was made from scratch, or converted from another format, writes a fresh minimal package that Office, LibreOffice and the current editors open.
+Saving a document that was made from scratch, or converted from another format, writes a fresh package with what each application insists on: for Word an A4 page, a theme and default styles (Calibri 11, 8 pt after paragraphs); for PowerPoint a master with a blank layout, a theme and the presentation's property parts; for Excel the minimal style sheet. Origins from another format are ignored, and raw markup from another format is left out.
+
+Every model node is reachable as JSON (serde), with raw XML as its source text, which is what a WebAssembly or IPC binding will hand the editors.
 
 ### Layers
 
 A layer is a crate that implements `office_core::Layer`:
 
 ```rust
-pub trait Layer {
+pub trait Layer: Send + Sync {
     fn name(&self) -> &'static str;
-    fn kinds(&self) -> &[Kind];                                   // which documents it applies to
-    fn after_read(&self, doc: &mut Document) -> Result<()>;       // parse its parts, resolve inheritance
-    fn before_write(&self, doc: &mut Document) -> Result<()>;     // write its data back into parts/raw XML
+    fn kinds(&self) -> &[Kind];                                                  // which documents it applies to
+    fn after_read(&self, doc: &mut Document) -> Result<()>;                      // parse its parts, resolve inheritance
+    fn before_write(&self, doc: &mut Document, to: Kind) -> Result<()>;          // fold its data back into the model
+    fn write_parts(&self, doc: &Document, pkg: &mut Package, to: Kind) -> Result<()>; // add or update its own parts
 }
 ```
 
-A layer reads the parts it owns from `doc.package` and keeps its typed data in `doc.layers`. It can also turn the core's `Raw` nodes into its own typed data and back again. Planned layers:
+`Compiler::new().with_layer(…)` runs a layer's hooks for the kinds it names. `before_write` works on a copy, so writing never changes the document. A layer reads the parts it owns from `doc.package` and keeps its typed data in `doc.extensions`. It can also turn the core's `Raw` nodes into its own typed data and back again. Planned layers:
 
 - **Word** (`office-word`): styles and their inheritance (resolving `pStyle`/`rStyle` into effective formatting), numbering and lists, sections and page setup, headers and footers, footnotes, comments, tracked changes, fields, bookmarks, floating-drawing anchors.
 - **PowerPoint** (`office-slides`): slide masters and layouts, placeholder inheritance, speaker notes, transitions, animations, hidden slides, comments.
@@ -116,17 +122,38 @@ A layer reads the parts it owns from `doc.package` and keeps its typed data in `
 
 ## Milestones
 
+All done for the shared core:
+
 1. **Plan and crate skeleton.** This document, `crates/` workspace, `office-core` with its module layout.
 2. **XML.** Lossless tree, parser, writer, namespace helpers.
 3. **Packages.** OPC read and write, content types, relationships, document properties.
-4. **Units and DrawingML.** Unit conversions, themes, colors and transforms.
+4. **Units and DrawingML.** Unit conversions, themes, colors and transforms, shape properties.
 5. **The shared model, and CSV.** Model types, the layer contract, CSV in and out (delimiter and encoding detection).
 6. **Word, PowerPoint and Excel front ends.** Reading each format's shared subset into the model.
 7. **Back ends.** Writing each format, lossless for untouched content, and fresh packages for new or converted documents.
-8. **Conversion and a command line.** Shared passes (table ↔ sheet, plain text) and `officec`, a small tool to inspect a file's model as JSON and convert between formats.
+8. **Conversion and a command line.** Passes between kinds and `officec`.
 
-After this PR: the three layers, then WebAssembly bindings and moving the editors onto the compiler one at a time, Excel first since it has no engine today.
+After this PR: the three layers, then WebAssembly bindings (the core already builds for `wasm32-unknown-unknown`) and moving the editors onto the compiler one at a time, Excel first since it has no engine today.
+
+## Known gaps in the core
+
+These are the core's own, not the layers':
+
+- **Big workbooks** are parsed as whole XML trees. A sheet with millions of cells will want a streaming reader and writer.
+- **Excel's phonetic guides** (`rPh`, for Japanese) survive on strings that don't change; a string whose text changes is written without them.
+- **Word runs split by a page break** are written back as separate runs, and a changed hyperlink is written with `w:history`. Both mean the same to Word.
+- **Characters XML can't hold** (control characters other than tab and line breaks) are dropped from Word and PowerPoint text. Excel keeps them with its `_xHHHH_` escape.
+- **Converting between kinds** lays slides out simply: a text box for each page's paragraphs, then each table and picture below. Numbers in converted sheets show without their number format until the Excel layer applies it.
 
 ## Testing
 
-`cd crates && cargo test`. Tests build their sample files in code or with the round trip itself, so nothing binary is checked in. Round-trip tests check that reading and writing an unchanged document gives back identical parts, and that edited documents still open: when `soffice` (LibreOffice) is on the PATH, the ignored tests convert the compiler's output to PDF to prove it opens (`cargo test -- --ignored`).
+```sh
+cd crates
+cargo test                                   # unit tests, and documents built in code (tests/write.rs)
+python3 samples.py /tmp/office-samples       # sample files from python-docx, python-pptx, openpyxl and LibreOffice
+OFFICE_SAMPLES=/tmp/office-samples cargo test                                   # also round-trips the samples
+OFFICE_SAMPLES=/tmp/office-samples cargo test --test other_apps -- --ignored    # new, edited and converted files open in LibreOffice and the Python libraries
+cargo run --features cli --bin officec -- save some.pptx /tmp/out.pptx          # which parts a save rewrites
+```
+
+Nothing binary is checked in: tests build their documents in code, and `samples.py` makes the rest. The sample tests check that each file's parts round-trip, that the front ends read what the file holds, and that saving an unchanged file leaves every part byte-identical. `other_apps` needs `soffice` on the PATH; it uses the Python libraries if they're installed.

@@ -21,6 +21,9 @@ fn scratch() -> PathBuf {
 
 /// LibreOffice converts the file to PDF without complaint.
 fn libreoffice_opens(path: &Path) {
+    // One LibreOffice at a time: copies running at once fight over its profile.
+    static ONE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _one = ONE.lock().unwrap_or_else(|e| e.into_inner());
     let out = path.parent().unwrap().join("pdf");
     let status = Command::new("soffice")
         .args(["--headless", "--convert-to", "pdf", "--outdir"])
@@ -138,6 +141,19 @@ fn edited_samples_open() {
                 let mut as_book = Document::new(Kind::Sheets);
                 as_book.body = back.body;
                 check(&as_book, Kind::Sheets, &format!("{parent}-{name}-via-csv"), &dir);
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore]
+fn conversions_open() {
+    let dir = scratch();
+    for (name, doc) in [("word", common::word()), ("slides", common::slides()), ("sheets", common::sheets())] {
+        for kind in [Kind::Word, Kind::Slides, Kind::Sheets] {
+            if kind != doc.kind {
+                check(&doc, kind, &format!("{name}-as-{}", kind.extension()), &dir);
             }
         }
     }
