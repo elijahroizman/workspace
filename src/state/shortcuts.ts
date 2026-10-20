@@ -32,7 +32,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'new-tab', label: 'New tab', group: 'Files and tabs', scope: 'app', keys: '⌘T' },
   { id: 'new', label: 'New file…', group: 'Files and tabs', scope: 'app', keys: '⌘N' },
   // ⌘O's dialog opens a folder too.
-  { id: 'open', label: 'Open file or folder…', group: 'Files and tabs', scope: 'app', keys: '⌘O' },
+  { id: 'open', label: 'Open…', group: 'Files and tabs', scope: 'app', keys: '⌘O' },
   { id: 'open-folder', label: 'Open folder…', group: 'Files and tabs', scope: 'app', keys: '' },
   { id: 'close-folder', label: 'Close folder', group: 'Files and tabs', scope: 'app', keys: '' },
   { id: 'save', label: 'Save', group: 'Files and tabs', scope: 'app', keys: '⌘S' },
@@ -64,12 +64,12 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'focus-mode', label: 'Focus mode', group: 'View', scope: 'app', keys: '⌥⌘F' },
   { id: 'typewriter', label: 'Typewriter scrolling', group: 'View', scope: 'app', keys: '⌥⌘T' },
   { id: 'focus-dim', label: 'Dim other paragraphs in focus mode', group: 'View', scope: 'app', keys: '' },
-  { id: 'toggle-theme', label: 'Light or dark', group: 'View', scope: 'app', keys: '⇧⌘L' },
+  { id: 'toggle-theme', label: 'Switch between light and dark', group: 'View', scope: 'app', keys: '⇧⌘L' },
   { id: 'toggle-fullscreen', label: 'Full screen', group: 'View', scope: 'app', keys: 'F11', platform: 'windows' },
   { id: 'fullscreen-mac', label: 'Full screen', group: 'View', scope: 'app', keys: '⌃⌘F', fixed: true, platform: 'mac' },
-  { id: 'view-read', label: 'Preview only', group: 'View', scope: 'app', keys: '⌥⌘1' },
-  { id: 'view-split', label: 'Source and preview', group: 'View', scope: 'app', keys: '⌥⌘2' },
-  { id: 'view-write', label: 'Source only', group: 'View', scope: 'app', keys: '⌥⌘3' },
+  { id: 'view-read', label: 'Read', group: 'View', scope: 'app', keys: '⌥⌘1' },
+  { id: 'view-split', label: 'Edit with preview', group: 'View', scope: 'app', keys: '⌥⌘2' },
+  { id: 'view-write', label: 'Edit source', group: 'View', scope: 'app', keys: '⌥⌘3' },
   { id: 'view-cycle', label: 'Next view', group: 'View', scope: 'app', keys: '⌘E' },
 
   // ── Editing (everywhere)

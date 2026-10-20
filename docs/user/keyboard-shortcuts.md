@@ -20,9 +20,9 @@ On Windows and Linux, use Ctrl for ⌘, Alt for ⌥ and Shift for ⇧. Ctrl+Tab 
 | Zoom in / out / reset | ⌘+ / ⌘− / ⌘0 |
 | Print (and Save as PDF from the print panel) | ⌘P |
 | Duplicate tab | ⇧⌘D |
-| Markdown, Mermaid, LaTeX: next view / preview only / source and preview / source only | ⌘E / ⌥⌘1 / ⌥⌘2 / ⌥⌘3 |
+| Markdown, Mermaid, LaTeX: next view / read / edit with preview / edit source | ⌘E / ⌥⌘1 / ⌥⌘2 / ⌥⌘3 |
 | Zoom (Word, PowerPoint, PDF) | Pinch on the trackpad, or ⌘ + scroll |
-| Focus mode / typewriter scrolling | ⌥⌘F / ⌥⌘T |
+| Focus mode (Esc also leaves it) / typewriter scrolling | ⌥⌘F / ⌥⌘T |
 | Light / dark appearance | ⇧⌘L |
 | Word: add a link to the selected text | ⇧⌘K (⌘K opens the command palette) |
 | Word: add comment | ⌥⌘A (Ctrl+Alt+M on Windows) |

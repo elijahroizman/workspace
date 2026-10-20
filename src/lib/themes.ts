@@ -91,7 +91,7 @@ export function themeVars(theme: ThemeDef, mode: Appearance): Record<string, str
       '--tab-active': at(14),
       '--fg': at(93, -0.6),
       '--fg-muted': at(66, -0.3),
-      '--fg-faint': at(44),
+      '--fg-faint': at(50),
     }
   }
   const tint = Math.min(1, s) * 0.4
@@ -109,7 +109,7 @@ export function themeVars(theme: ThemeDef, mode: Appearance): Record<string, str
     '--tab-active': at(100),
     '--fg': at(12, -0.5),
     '--fg-muted': at(43, -0.3),
-    '--fg-faint': at(66),
+    '--fg-faint': at(57),
   }
 }
 

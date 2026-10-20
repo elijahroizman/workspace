@@ -457,8 +457,14 @@ textarea.form-field {
 }
 
 .sign-marks {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
+}
+
+.sign-marks .btn {
+  min-width: 0;
+  padding: 0 6px;
 }
 
 .sign-marks .btn.on,

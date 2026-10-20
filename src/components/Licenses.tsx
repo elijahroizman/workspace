@@ -24,6 +24,8 @@ export default function LicensesPage() {
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState<string | null>(null)
+  // Hundreds of packages: each group starts folded, and a search opens them all.
+  const [unfolded, setUnfolded] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     fetch(`${import.meta.env.BASE_URL}licenses.json`)
@@ -57,47 +59,59 @@ export default function LicensesPage() {
         <Search size={13} className="faint" />
         <input value={query} placeholder="Search packages or licenses" spellCheck={false} onChange={(e) => setQuery(e.currentTarget.value)} />
       </label>
-      {groups.map(({ group, packages }) => (
-        <section key={group} className="shortcut-group">
-          <h4>
-            {group} · {packages.length}
-          </h4>
-          {packages.map((p) => {
-            const id = `${p.group}/${p.name}@${p.version}`
-            const expanded = open === id
-            return (
-              <div key={id} className="license-row">
-                <button type="button" className="license-head" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : id)}>
-                  <ChevronRight size={13} className={`license-chevron ${expanded ? 'open' : ''}`} />
-                  <span className="license-name">
-                    {p.name} <span className="faint">{p.version}</span>
-                  </span>
-                  <span className="faint license-spdx">{p.license}</span>
-                </button>
-                {expanded && (
-                  <div className="license-body">
-                    {p.homepage && (
-                      <button type="button" className="link-btn" onClick={() => void openExternal(p.homepage!.replace(/^git:\/\//, 'https://'))}>
-                        {p.homepage.replace(/^(git|https?):\/\//, '')}
-                      </button>
-                    )}
-                    {p.files.length ? (
-                      p.files.map((f) => (
-                        <div key={f.file}>
-                          <div className="settings-hint">{f.file}</div>
-                          <pre className="license-text">{data.texts[f.text]}</pre>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="settings-hint">This package ships no license file. It is licensed under {p.license}; see its homepage.</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </section>
-      ))}
+      {groups.map(({ group, packages }) => {
+        const folded = !query.trim() && !unfolded.has(group)
+        const toggle = () =>
+          setUnfolded((prev) => {
+            const next = new Set(prev)
+            if (!next.delete(group)) next.add(group)
+            return next
+          })
+        return (
+          <section key={group} className="shortcut-group">
+            <h4>
+              <button type="button" className="license-group" aria-expanded={!folded} onClick={toggle}>
+                <ChevronRight size={13} className={`license-chevron ${folded ? '' : 'open'}`} />
+                {group} · {packages.length}
+              </button>
+            </h4>
+            {!folded && packages.map((p) => {
+              const id = `${p.group}/${p.name}@${p.version}`
+              const expanded = open === id
+              return (
+                <div key={id} className="license-row">
+                  <button type="button" className="license-head" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : id)}>
+                    <ChevronRight size={13} className={`license-chevron ${expanded ? 'open' : ''}`} />
+                    <span className="license-name">
+                      {p.name} <span className="faint">{p.version}</span>
+                    </span>
+                    <span className="faint license-spdx">{p.license}</span>
+                  </button>
+                  {expanded && (
+                    <div className="license-body">
+                      {p.homepage && (
+                        <button type="button" className="link-btn" onClick={() => void openExternal(p.homepage!.replace(/^git:\/\//, 'https://'))}>
+                          {p.homepage.replace(/^(git|https?):\/\//, '')}
+                        </button>
+                      )}
+                      {p.files.length ? (
+                        p.files.map((f) => (
+                          <div key={f.file}>
+                            <div className="settings-hint">{f.file}</div>
+                            <pre className="license-text">{data.texts[f.text]}</pre>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="settings-hint">This package ships no license file. It is licensed under {p.license}; see its homepage.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </section>
+        )
+      })}
     </>
   )
 }

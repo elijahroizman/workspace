@@ -1,10 +1,10 @@
-import { Folder, FolderOpen, FolderTree, MoreHorizontal, Moon, Settings, Sun } from 'lucide-react'
+import { Folder, FolderOpen, MoreHorizontal, Moon, Settings, Sun } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { DocKind } from '../lib/kinds'
 import { KINDS } from '../lib/kinds'
 import { basename, dirname, revealInFinder, revealLabel, isTauri, shortcut, tildify } from '../lib/platform'
-import { chooseFolder, folderName, useFolder } from '../state/folder'
-import { keysFor } from '../state/shortcuts'
+import { folderName, useFolder } from '../state/folder'
+import { keysFor, withKeys } from '../state/shortcuts'
 import { enabledKinds, usePlugins } from '../state/plugins'
 import { useSettings } from '../state/settings'
 import type { RecentFile } from '../state/workspace'
@@ -41,16 +41,16 @@ export function Home() {
             <h1>Workspace</h1>
           </div>
           <div className="home-header-actions">
-            <IconButton label={shortcut(theme === 'dark' ? 'Light appearance (⇧⌘L)' : 'Dark appearance (⇧⌘L)')} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+            <IconButton label={shortcut(withKeys(theme === 'dark' ? 'Switch to light' : 'Switch to dark', 'toggle-theme'))} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </IconButton>
-            <IconButton label={shortcut('Settings (⌘,)')} onClick={() => useSettings.getState().setOpen(true)}>
+            <IconButton label={shortcut(withKeys('Settings', 'settings'))} onClick={() => useSettings.getState().setOpen(true)}>
               <Settings size={16} />
             </IconButton>
           </div>
         </header>
 
-        <div className="home-actions">
+        <div className="home-actions" style={{ '--cards': 1 + kinds.filter((k) => k.create).length } as React.CSSProperties}>
           <button type="button" className="home-card open" onClick={() => void openDialog()}>
             <span className="home-card-icon">
               <FolderOpen size={20} strokeWidth={1.75} />
@@ -59,21 +59,7 @@ export function Home() {
               <strong>Open…</strong>
               <span className="muted">Files or a folder, or drop them here</span>
             </span>
-            <span className="kbd">{shortcut('⌘O')}</span>
-          </button>
-          <button
-            type="button"
-            className="home-card open"
-            onClick={() => void chooseFolder()}
-          >
-            <span className="home-card-icon">
-              <FolderTree size={20} strokeWidth={1.75} />
-            </span>
-            <span className="home-card-text">
-              <strong>Open folder…</strong>
-              <span className="muted">Its files in a sidebar</span>
-            </span>
-            {keysFor('open-folder') && <span className="kbd">{shortcut(keysFor('open-folder'))}</span>}
+            {keysFor('open') && <span className="kbd">{shortcut(keysFor('open'))}</span>}
           </button>
           {kinds
             .filter((k) => k.create)
@@ -113,6 +99,7 @@ export function Home() {
                   <button
                     type="button"
                     className="recent-row"
+                    title={r.path}
                     onClick={() => open(r)}
                     onContextMenu={(e) => {
                       e.preventDefault()
@@ -158,7 +145,7 @@ export function Home() {
             { label: 'Open', onSelect: () => open(menu.file) },
             ...(isTauri ? [{ label: revealLabel, onSelect: () => void revealInFinder(menu.file.path) }] : []),
             {
-              label: 'Remove from Recents',
+              label: 'Remove from Recent',
               separatorBefore: true,
               onSelect: () => (menu.file.kind === 'folder' ? useFolder.getState().forgetRecent(menu.file.path) : removeRecent(menu.file.path)),
             },

@@ -51,7 +51,7 @@ export function Explorer() {
   const rev = useFolder((s) => s.rev)
   const [filter, setFilter] = useState('')
   const [menu, setMenu] = useState<Menu | null>(null)
-  const [more, setMore] = useState<{ x: number; y: number } | null>(null)
+  const [more, setMore] = useState<{ x: number; y: number; align: 'end' } | null>(null)
   const { toggleVisible, collapseAll, refresh, close, setShowAll } = useFolder.getState()
 
   // Files change behind our back (Finder, sync apps): look again when the window comes back.
@@ -65,7 +65,7 @@ export function Explorer() {
   const menuItems = (entry: DirEntry): MenuEntry[] => [
     ...(!entry.isDir && kindFromPath(entry.name) ? [{ label: 'Open', onSelect: () => void useWorkspace.getState().openPaths([entry.path]) }] : []),
     ...(isTauri ? [{ label: revealLabel, icon: <FolderOpen size={14} />, onSelect: () => void revealInFinder(entry.path) }] : []),
-    { label: 'Copy Path', icon: <Copy size={14} />, onSelect: () => void navigator.clipboard?.writeText(entry.path) },
+    { label: 'Copy path', icon: <Copy size={14} />, onSelect: () => void navigator.clipboard?.writeText(entry.path) },
   ]
 
   return (
@@ -81,7 +81,7 @@ export function Explorer() {
           label="Folder options"
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect()
-            setMore({ x: r.left, y: r.bottom + 4 })
+            setMore({ x: r.right, y: r.bottom + 4, align: 'end' })
           }}
         >
           <MoreHorizontal size={16} />
@@ -117,11 +117,11 @@ export function Explorer() {
           onClose={() => setMore(null)}
           items={[
             { label: 'Refresh', icon: <RotateCw size={14} />, onSelect: refresh },
-            { label: 'Collapse All Folders', icon: <ChevronsDownUp size={14} />, onSelect: collapseAll },
-            { label: showAll ? 'Show Only Documents' : 'Show All Files', separatorBefore: true, onSelect: () => setShowAll(!showAll) },
+            { label: 'Collapse all folders', icon: <ChevronsDownUp size={14} />, onSelect: collapseAll },
+            { label: showAll ? 'Show only documents' : 'Show all files', separatorBefore: true, onSelect: () => setShowAll(!showAll) },
             ...(isTauri ? [{ label: revealLabel, icon: <FolderOpen size={14} />, onSelect: () => void revealInFinder(root) }] : []),
-            { label: 'Hide Folder Sidebar', shortcut: keysFor('toggle-explorer'), separatorBefore: true, onSelect: toggleVisible },
-            { label: 'Close Folder', onSelect: close },
+            { label: 'Hide folder sidebar', shortcut: keysFor('toggle-explorer'), separatorBefore: true, onSelect: toggleVisible },
+            { label: 'Close folder', onSelect: close },
           ]}
         />
       )}

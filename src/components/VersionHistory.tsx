@@ -305,7 +305,7 @@ export function VersionHistory() {
             ) : (
               <h3>{tab.title}</h3>
             )}
-            <IconButton label="Close (esc)" onClick={close}>
+            <IconButton label="Close (Esc)" onClick={close}>
               <X size={16} />
             </IconButton>
           </header>

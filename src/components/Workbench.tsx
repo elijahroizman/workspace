@@ -247,7 +247,7 @@ export function FindBar({
         <IconButton label="Next (↩)" size="sm" onClick={onNext} disabled={!count}>
           <ChevronDown size={14} />
         </IconButton>
-        <IconButton label="Close (esc)" size="sm" onClick={onClose}>
+        <IconButton label="Close (Esc)" size="sm" onClick={onClose}>
           <X size={14} />
         </IconButton>
       </div>

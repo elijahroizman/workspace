@@ -152,7 +152,7 @@ export function PresentMode({
         </div>
       )}
       <div className="present-hud">
-        {pos + 1} / {order.length} · esc to exit
+        {pos + 1} / {order.length} · Esc to exit
       </div>
     </div>
   )

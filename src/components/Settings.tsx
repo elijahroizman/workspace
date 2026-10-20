@@ -1,4 +1,4 @@
-import { ArrowLeft, Blocks, Copy, Keyboard, Monitor, Moon, Palette, Pencil, Plus, RotateCcw, Save, Search, Settings2, Sun, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Blocks, Keyboard, Monitor, Moon, Palette, Pencil, Plus, RotateCcw, Save, Search, Settings2, Sun, Trash2, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { canSetDefaults, defaultStatus, makeDefault } from '../lib/defaults'
@@ -8,7 +8,8 @@ import type { ExtraFont } from '../state/fonts'
 import { EXTRA_FONTS, useExtraFonts } from '../state/fonts'
 import type { Appearance, ThemeDef } from '../lib/themes'
 import { isHex, orbBackground } from '../lib/themes'
-import { openUpdatePanel } from '../lib/updater'
+import type { LinuxPackage } from '../lib/updater'
+import { linuxPackage, openUpdatePanel, packageManager, updatesInstallable } from '../lib/updater'
 import { PLUGINS, isBuiltIn } from '../plugins/catalog'
 import { allThemes, useAppearance } from '../state/appearance'
 import { enabledKinds, formatSize, usePlugins } from '../state/plugins'
@@ -91,7 +92,7 @@ export default function SettingsPanel() {
             ) : (
               <h3>{PAGES.find((p) => p.id === page)!.label}</h3>
             )}
-            <IconButton label="Close (esc)" onClick={() => setOpen(false)}>
+            <IconButton label="Close (Esc)" onClick={() => setOpen(false)}>
               <X size={16} />
             </IconButton>
           </header>
@@ -113,15 +114,24 @@ export default function SettingsPanel() {
   )
 }
 
+/** How new versions arrive: by themselves, through the system's package manager, or by hand. */
+function updateHint(linux: LinuxPackage | null): string {
+  if (!isLinux) return updatesInstallable ? 'Updates download by themselves and install when you quit.' : 'Check for updates shows the latest release.'
+  if (linux?.format && linux.repo) return `New versions come through ${packageManager(linux.format)} with your system’s other updates.`
+  return 'Check for updates tells you when a new version is out.'
+}
+
 function GeneralPage() {
   const setOpen = useSettings((s) => s.setOpen)
   const setPage = useSettings((s) => s.setPage)
+  const [linux, setLinux] = useState<LinuxPackage | null>(null)
+  useEffect(() => void linuxPackage().then(setLinux), [])
   return (
     <>
       <div className="settings-row">
         <div className="settings-row-text">
           <span className="settings-label">Workspace {__APP_VERSION__}</span>
-          <span className="settings-hint">{isLinux ? 'New versions come through apt or dnf, with your system’s other updates, or from Check for updates.' : 'Updates download by themselves and install when you quit.'}</span>
+          <span className="settings-hint">{updateHint(linux)}</span>
         </div>
         <div className="settings-row-control">
           <button type="button" className="btn" onClick={() => (setOpen(false), openUpdatePanel())}>
@@ -139,7 +149,7 @@ function GeneralPage() {
       <div className="settings-row">
         <div className="settings-row-text">
           <span className="settings-label">Setup</span>
-          <span className="settings-hint">Go through the first-launch screen again: plugins and default apps.</span>
+          <span className="settings-hint">{canSetDefaults ? 'Go through the first-launch screen again: plugins and default apps.' : 'Go through the first-launch screen again to choose plugins.'}</span>
         </div>
         <div className="settings-row-control">
           <button type="button" className="btn" onClick={() => (setOpen(false), useSetup.getState().show())}>
@@ -151,7 +161,7 @@ function GeneralPage() {
       <div className="settings-row">
         <div className="settings-row-text">
           <span className="settings-label">Open-source licenses</span>
-          <span className="settings-hint">Workspace is built on open-source engines, including Excalidraw, PDFium and docx-editor.</span>
+          <span className="settings-hint">Workspace is built on open-source engines, including PDFium, docx-editor and CodeMirror.</span>
         </div>
         <div className="settings-row-control">
           <button type="button" className="btn" onClick={() => setPage('licenses')}>
@@ -317,7 +327,7 @@ function PluginsPage() {
   const fonts = useExtraFonts((s) => s.installed)
   const { enable, disable } = usePlugins.getState()
   const optional = PLUGINS.filter((p) => !isBuiltIn(p))
-  const count = (on: number, all: number) => <span className="plugin-count">{on ? `${on} of ${all} on` : 'All off'}</span>
+  const count = (on: number, all: number) => <span className="plugin-count">{`${on} of ${all} on`}</span>
   return (
     <>
       <p className="settings-intro">Turn on only what you need. Word, PowerPoint, PDF, Markdown and text files always open.</p>
@@ -341,8 +351,8 @@ function PluginsPage() {
               )
             }
           >
-            <button type="button" className="link-btn" onClick={() => void openExternal(p.homepage)}>
-              {p.homepage.replace(/^https:\/\//, '')}
+            <button type="button" className="link-btn" title={p.homepage} onClick={() => void openExternal(p.homepage)}>
+              {linkText(p.homepage)}
             </button>
             {p.services?.includes('tex') && enabled[p.id] && <TexSettings />}
           </PluginRow>
@@ -445,6 +455,12 @@ function TexSettings() {
   )
 }
 
+/** A plugin's homepage as a short link: its site's name, or “Source on GitHub”. */
+function linkText(url: string) {
+  const host = new URL(url).hostname.replace(/^www\./, '')
+  return host === 'github.com' ? 'Source on GitHub' : host
+}
+
 /** Tabs of a plugin's files have to close first. */
 async function disablePlugin(id: string, disable: (id: string) => Promise<void>) {
   const plugin = PLUGINS.find((p) => p.id === id)!
@@ -477,7 +493,7 @@ function AutosavePage() {
 
       <div className="settings-row">
         <div className="settings-row-text">
-          <span className="settings-label">Autosave</span>
+          <span className="settings-label">Save automatically</span>
           <span className="settings-hint">Turn this off and every file waits for {shortcut('Save')}.</span>
         </div>
         <div className="settings-row-control">
@@ -509,7 +525,7 @@ function AutosavePage() {
                   checked={autosave.kinds[k.id] !== false}
                   onChange={(e) => setAutosave({ kinds: { ...autosave.kinds, [k.id]: e.currentTarget.checked } })}
                 />
-                {k.label}
+                {k.short}
               </label>
             ))}
           </div>
@@ -547,7 +563,7 @@ function HistoryRows() {
         <div className="settings-row-text">
           <span className="settings-label">Version history</span>
           <span className="settings-hint">
-            Keep a copy each time a file is saved, so you can compare with or go back to an earlier version (File › Version History). Every save from the last hour is kept, then fewer as they get older. Copies stay on this computer.
+            Keep a copy each time a file is saved, so you can compare with or go back to an earlier version (right-click a tab, then Version history). Every save from the last hour is kept, then fewer as they get older. Copies stay on this computer.
           </span>
         </div>
         <div className="settings-row-control">
@@ -571,19 +587,22 @@ function HistoryRows() {
 
 function AppearancePage() {
   const mode = useWorkspace((s) => s.themeMode)
+  const appearance = useWorkspace((s) => s.theme)
   const setThemeMode = useWorkspace((s) => s.setThemeMode)
   const light = useAppearance((s) => s.light)
   const dark = useAppearance((s) => s.dark)
   const custom = useAppearance((s) => s.custom)
   const { use, remove } = useAppearance.getState()
   const [editing, setEditing] = useState<ThemeDef | null>(null)
+  const themes = allThemes(custom)
+  const current = themes.find((t) => t.id === (appearance === 'dark' ? dark : light)) ?? themes[0]
 
   return (
     <>
       <div className="settings-row">
         <div className="settings-row-text">
-          <span className="settings-label">Appearance</span>
-          <span className="settings-hint">{shortcut('System follows your computer. Switch between light and dark any time with ⇧⌘L.')}</span>
+          <span className="settings-label">Light and dark</span>
+          <span className="settings-hint">{shortcut(keysFor('toggle-theme') ? `System follows your computer. Switch between light and dark any time with ${keysFor('toggle-theme')}.` : 'System follows your computer.')}</span>
         </div>
         <div className="settings-row-control">
           <Segmented
@@ -602,7 +621,7 @@ function AppearancePage() {
         <div className="theme-section-header">
           <h4>Themes</h4>
           {!editing && (
-            <button type="button" className="btn" onClick={() => setEditing(blankTheme())}>
+            <button type="button" className="btn" title="Starts as a copy of the theme you’re using" onClick={() => setEditing(copyOf(current))}>
               <Plus size={14} /> Create theme
             </button>
           )}
@@ -621,7 +640,7 @@ function AppearancePage() {
           />
         )}
         <div className="theme-grid">
-          {allThemes(custom).map((t) => (
+          {themes.map((t) => (
             <div key={t.id} className="theme-card">
               <div className="theme-orbs">
                 <Orb theme={t} mode="light" selected={light === t.id} onSelect={() => use(t.id, 'light')} />
@@ -647,9 +666,6 @@ function AppearancePage() {
                     </IconButton>
                   </>
                 )}
-                <IconButton label="Make a copy to change" size="sm" onClick={() => setEditing({ ...t, id: newThemeId(), name: `${t.name} copy`, custom: true })}>
-                  <Copy size={13} />
-                </IconButton>
               </div>
             </div>
           ))}
@@ -660,7 +676,7 @@ function AppearancePage() {
 }
 
 const newThemeId = () => `custom-${Math.random().toString(36).slice(2, 8)}`
-const blankTheme = (): ThemeDef => ({ id: newThemeId(), name: 'My theme', accent: '#e0527a', light: '#f0d8e2', dark: '#2a1822', custom: true })
+const copyOf = (theme: ThemeDef): ThemeDef => ({ ...theme, id: newThemeId(), name: `${theme.name} copy`, custom: true })
 
 /** Two orbs per theme: how it looks in light and in dark. Click one to use the theme for just that appearance. */
 function Orb({ theme, mode, selected, onSelect }: { theme: ThemeDef; mode: Appearance; selected: boolean; onSelect: () => void }) {
@@ -730,7 +746,7 @@ function ShortcutsPage() {
 
   return (
     <>
-      <p className="settings-intro">Click a shortcut and press the keys you want instead. Press {shortcut('⌫')} to remove one, or esc to leave it as it was.</p>
+      <p className="settings-intro">Click a shortcut and press the keys you want instead. Press {isMac ? '⌫' : 'Backspace'} to remove one, or Esc to leave it as it was.</p>
       <div className="shortcut-tools">
         <label className="field shortcut-search">
           <Search size={13} className="faint" />

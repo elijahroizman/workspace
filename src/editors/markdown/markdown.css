@@ -1,11 +1,11 @@
 :root[data-theme='dark'] {
-  --md-code: #e6a26a;
+  --md-code: #e4e4e4;
   --md-code-bg: #1f1f1f;
   --md-paper: #141414;
 }
 
 :root[data-theme='light'] {
-  --md-code: #b34d1d;
+  --md-code: #24292f;
   --md-code-bg: #f1f1f1;
   --md-paper: #ffffff;
 }
@@ -419,7 +419,7 @@
     --fg: #111;
     --fg-muted: #555;
     --line: #ddd;
-    --md-code: #b34d1d;
+    --md-code: #24292f;
     --md-code-bg: #f4f4f4;
     --accent: #1f5fd6;
     max-width: none;

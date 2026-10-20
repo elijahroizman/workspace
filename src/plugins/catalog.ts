@@ -129,7 +129,7 @@ export const PLUGINS: PluginInfo[] = [
         color: 'var(--kind-md)',
         icon: FileCode2,
         untitled: 'Untitled Note',
-        create: { title: 'New note', hint: 'Markdown (.md)' },
+        create: { title: 'New Markdown', hint: 'Notes (.md)' },
         // Markdown is mostly for reading, so its inspector starts hidden.
         panels: { left: true, right: false },
       },
