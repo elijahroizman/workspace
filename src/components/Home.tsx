@@ -1,6 +1,5 @@
 import { Folder, FolderOpen, MoreHorizontal, Moon, Settings, Sun } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import type { DocKind } from '../lib/kinds'
 import { KINDS } from '../lib/kinds'
 import { basename, dirname, revealInFinder, revealLabel, isTauri, shortcut, tildify } from '../lib/platform'
 import { folderName, useFolder } from '../state/folder'
@@ -9,37 +8,48 @@ import { enabledKinds, usePlugins } from '../state/plugins'
 import { useSettings } from '../state/settings'
 import type { RecentFile } from '../state/workspace'
 import { useWorkspace } from '../state/workspace'
-import { DocBadge, KindIcon } from './ui'
-import { IconButton, PopoverMenu } from './ui'
+import { ActionCard, DocBadge, EmptyState, IconButton, KindIcon, PillTabs, PopoverMenu, Wordmark } from './ui'
+
+/** Recent's filters: file types grouped the way people think of them. */
+const RECENT_GROUPS = [
+  { id: 'office', label: 'Office', none: 'Office files', kinds: ['docx', 'pptx'], color: 'var(--kind-docx)' },
+  { id: 'notes', label: 'Notes', none: 'notes', kinds: ['md', 'txt'], color: 'var(--kind-md)' },
+  { id: 'pdf', label: 'PDF', none: 'PDFs', kinds: ['pdf'], color: 'var(--kind-pdf)' },
+  { id: 'image', label: 'Images', none: 'images', kinds: ['image'], color: 'var(--kind-image)' },
+  { id: 'latex', label: 'LaTeX', none: 'LaTeX files', kinds: ['latex'], color: 'var(--kind-latex)' },
+] as const
+
+type RecentGroup = (typeof RECENT_GROUPS)[number]['id']
 
 export function Home() {
   const recents = useWorkspace((s) => s.recents)
   const theme = useWorkspace((s) => s.theme)
   const { newDocument, openDialog, openPaths, removeRecent, setTheme } = useWorkspace.getState()
-  const [filter, setFilter] = useState<DocKind | 'all' | 'folder'>('all')
+  const [filter, setFilter] = useState<RecentGroup | 'all'>('all')
   const [menu, setMenu] = useState<{ x: number; y: number; file: Recent } | null>(null)
   const plugins = usePlugins((s) => s.enabled)
   const kinds = enabledKinds(plugins)
-  const recentTabs = useSettings((s) => s.recentTabs)
   const folders = useFolder((s) => s.recent)
-  // Settings › General picks which file types get a tab. All always lists everything; Folders shows once a folder has been opened.
-  const filters: (DocKind | 'folder')[] = [...(folders.length ? ['folder' as const] : []), ...kinds.filter((k) => recentTabs[k.id] !== false).map((k) => k.id)]
-  const shownFilter = filter === 'all' || filters.includes(filter) ? filter : 'all'
+  // A group shows while one of its file types opens (LaTeX only once it's turned on).
+  const groups = RECENT_GROUPS.filter((g) => kinds.some((k) => (g.kinds as readonly string[]).includes(k.id)))
+  const group = groups.find((g) => g.id === filter)
+  const shownFilter = group ? filter : 'all'
 
-  // Files and folders together, newest first.
+  // Files and folders together, newest first. Folders only show under All.
   const shown = useMemo(() => {
     const all: Recent[] = [...recents, ...folders.map((f) => ({ ...f, kind: 'folder' as const }))]
-    return all.filter((r) => shownFilter === 'all' || r.kind === shownFilter).sort((a, b) => b.openedAt - a.openedAt)
-  }, [recents, folders, shownFilter])
+    return all.filter((r) => !group || (group.kinds as readonly string[]).includes(r.kind)).sort((a, b) => b.openedAt - a.openedAt)
+  }, [recents, folders, group])
   const open = (r: Recent) => (r.kind === 'folder' ? useFolder.getState().open(r.path) : void openPaths([r.path]))
 
   return (
     <div className="home">
+      <div className="home-dots" aria-hidden />
       <div className="home-inner">
         <header className="home-header">
-          <div>
-            <h1>Workspace</h1>
-          </div>
+          <h1>
+            <Wordmark size={30} />
+          </h1>
           <div className="home-header-actions">
             <IconButton label={shortcut(withKeys(theme === 'dark' ? 'Switch to light' : 'Switch to dark', 'toggle-theme'))} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
@@ -51,47 +61,39 @@ export function Home() {
         </header>
 
         <div className="home-actions" style={{ '--cards': 1 + kinds.filter((k) => k.create).length } as React.CSSProperties}>
-          <button type="button" className="home-card open" onClick={() => void openDialog()}>
-            <span className="home-card-icon">
-              <FolderOpen size={20} strokeWidth={1.75} />
-            </span>
-            <span className="home-card-text">
-              <strong>Open…</strong>
-              <span className="muted">Files or a folder, or drop them here</span>
-            </span>
-            {keysFor('open') && <span className="kbd">{shortcut(keysFor('open'))}</span>}
-          </button>
+          <ActionCard
+            icon={
+              <span className="action-card-icon">
+                <FolderOpen size={20} strokeWidth={1.75} />
+              </span>
+            }
+            title="Open…"
+            hint="Files or a folder, or drop them here"
+            keys={keysFor('open')}
+            onClick={() => void openDialog()}
+          />
           {kinds
             .filter((k) => k.create)
             .map((k) => (
-              <button key={k.id} type="button" className="home-card" onClick={() => newDocument(k.id)}>
-                <DocBadge kind={k.id} size={36} />
-                <span className="home-card-text">
-                  <strong>{k.create!.title}</strong>
-                  <span className="muted">{k.create!.hint}</span>
-                </span>
-              </button>
+              <ActionCard key={k.id} icon={<DocBadge kind={k.id} size={36} />} title={k.create!.title} hint={k.create!.hint} onClick={() => newDocument(k.id)} />
             ))}
         </div>
 
         <section className="home-recents">
           <div className="home-recents-header">
             <h2>Recent</h2>
-            <div className="home-filter" role="tablist">
-              {(['all', ...filters] as const).map((k) => (
-                <button key={k} type="button" role="tab" aria-selected={shownFilter === k} className={shownFilter === k ? 'on' : ''} onClick={() => setFilter(k)}>
-                  {k === 'all' ? 'All' : k === 'folder' ? 'Folders' : KINDS[k].short}
-                </button>
-              ))}
-            </div>
+            <PillTabs
+              label="Show"
+              value={shownFilter}
+              onChange={setFilter}
+              options={[{ value: 'all' as const, label: 'All' }, ...groups.map((g) => ({ value: g.id, label: g.label, color: g.color }))]}
+            />
           </div>
 
           {shown.length === 0 ? (
-            <div className="home-empty">
-              {recents.length + folders.length === 0
-                ? 'Files and folders you open will show up here.'
-                : `No recent ${shownFilter === 'all' ? '' : KINDS[shownFilter as DocKind].short.toLowerCase() + ' '}files.`}
-            </div>
+            <EmptyState>
+              {recents.length + folders.length === 0 ? 'Files and folders you open will show up here.' : `No recent ${group?.none ?? 'files'}.`}
+            </EmptyState>
           ) : (
             <ul className="recent-list">
               {shown.map((r) => (
@@ -116,7 +118,9 @@ export function Home() {
                       </span>
                     )}
                     <span className="recent-name">{r.kind === 'folder' ? folderName(r.path) : basename(r.path)}</span>
-                    <span className="recent-path">{prettyDir(r.path)}</span>
+                    <span className="recent-path">
+                      <bdi>{prettyDir(r.path)}</bdi>
+                    </span>
                     <span className="recent-time">{relativeTime(r.openedAt)}</span>
                     <span
                       className="recent-more"
