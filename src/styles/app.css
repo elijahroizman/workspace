@@ -42,7 +42,7 @@
   --tab-active: #242424;
   --fg: #ededed;
   --fg-muted: #a3a3a3;
-  --fg-faint: #6a6a6a;
+  --fg-faint: #7c7c7c;
   --accent-soft: rgba(79, 140, 255, 0.18);
   --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.07);
   --page-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 8px 28px rgba(0, 0, 0, 0.35);
@@ -64,7 +64,7 @@
   --tab-active: #ffffff;
   --fg: #1d1d1f;
   --fg-muted: #6b6b70;
-  --fg-faint: #a3a3a8;
+  --fg-faint: #8b8b90;
   --accent-soft: rgba(79, 140, 255, 0.14);
   --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.08);
   --page-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), 0 6px 22px rgba(0, 0, 0, 0.1);
@@ -667,6 +667,11 @@ select optgroup {
   gap: 8px;
 }
 
+.grid-1 {
+  display: grid;
+  gap: 8px;
+}
+
 .grid-3 {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
@@ -830,6 +835,11 @@ select optgroup {
   overflow: auto;
 }
 
+/* Room under the inspector's last field, so it never sits on the window's edge. */
+.pane.right .sidebar-scroll {
+  padding-bottom: 24px;
+}
+
 .sidebar-footer {
   flex: none;
   padding: 10px 16px;
@@ -916,6 +926,11 @@ select optgroup {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* Long values like a producer with its URL: wrap rather than cut off. */
+.stats dd.wrap {
+  overflow-wrap: anywhere;
 }
 
 .canvas {
@@ -1408,6 +1423,12 @@ select optgroup {
   gap: 2px;
 }
 
+.home-header-actions .icon-btn {
+  min-width: 32px;
+  height: 32px;
+  color: var(--fg);
+}
+
 .home-header h1 {
   margin: 0;
   font-size: 26px;
@@ -1422,7 +1443,8 @@ select optgroup {
 
 .home-actions {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  /* One row when every card gets 112px or more; past that, as many as fit. */
+  grid-template-columns: repeat(auto-fit, minmax(max(112px, calc((100% - (var(--cards, 5) - 1) * 12px) / var(--cards, 5))), 1fr));
   gap: 12px;
   margin-bottom: 40px;
 }
@@ -1522,7 +1544,7 @@ select optgroup {
 }
 
 .home-filter button.on {
-  background: var(--field);
+  background: color-mix(in srgb, var(--fg) 12%, transparent);
   color: var(--fg);
 }
 
@@ -1572,7 +1594,7 @@ select optgroup {
 }
 
 .recent-path {
-  color: var(--fg-faint);
+  color: var(--fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1581,7 +1603,7 @@ select optgroup {
 }
 
 .recent-time {
-  color: var(--fg-faint);
+  color: var(--fg-muted);
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -1593,11 +1615,11 @@ select optgroup {
   height: 26px;
   border-radius: 6px;
   color: var(--fg-faint);
-  visibility: hidden;
 }
 
-.recent-row:hover .recent-more {
-  visibility: visible;
+.recent-row:hover .recent-more,
+.recent-row:focus-visible .recent-more {
+  color: var(--fg-muted);
 }
 
 .recent-more:hover {
@@ -1667,6 +1689,11 @@ select optgroup {
   place-items: center;
   padding: 24px;
   background: rgba(0, 0, 0, 0.35);
+}
+
+/* Black barely darkens the dark title bar; dim it more so the tabs read as out of reach. */
+:root[data-theme='dark'] .settings-backdrop {
+  background: rgba(0, 0, 0, 0.6);
 }
 
 .settings {
@@ -1818,9 +1845,9 @@ select optgroup {
 }
 
 .kind-checks {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  column-gap: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 20px;
 }
 
 .kind-checks .check {
@@ -2419,6 +2446,23 @@ select optgroup {
   border-top: 1px solid var(--line-soft);
 }
 
+.license-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.license-group:hover {
+  color: var(--fg);
+}
+
 .license-head {
   display: flex;
   align-items: center;
@@ -2545,6 +2589,18 @@ select optgroup {
 
 .new-file-text .muted {
   font-size: 12px;
+}
+
+/* The number that picks it, as a key. */
+.new-file-item .kbd {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--fg-muted);
+  letter-spacing: 0;
 }
 
 /* First-launch setup */
@@ -2926,6 +2982,18 @@ select optgroup {
   background: var(--accent-soft);
 }
 
+.palette-item.disabled {
+  color: var(--fg-muted);
+}
+
+.palette-item.disabled.on {
+  background: var(--hover);
+}
+
+.palette-item.disabled .palette-label b {
+  color: inherit;
+}
+
 .palette-icon {
   display: grid;
   flex: none;
@@ -2978,14 +3046,20 @@ select optgroup {
   text-align: center;
 }
 
-/* Focus mode (⌥⌘F): the document and nothing else. Typewriter scrolling (⌥⌘T). */
+/* Focus mode (⌥⌘F): the document and nothing else. Typewriter scrolling (⌥⌘T).
+   The tab bar floats over the top of the document, hidden until the pointer goes there. */
 .app[data-focus] .titlebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
   opacity: 0;
   transition: opacity 0.25s;
 }
 
 .app[data-focus] .titlebar:hover,
-.app[data-focus] .titlebar:focus-within {
+.app[data-focus] .titlebar:has(:focus-visible) {
   opacity: 1;
 }
 

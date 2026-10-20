@@ -494,12 +494,12 @@ function CommandButton({ slot, label, children }: { slot: Parameters<typeof useE
   )
 }
 
-const HIGHLIGHTS: { value: string; color: string }[] = [
-  { value: 'yellow', color: '#ffff00' },
-  { value: 'green', color: '#00ff00' },
-  { value: 'cyan', color: '#00ffff' },
-  { value: 'magenta', color: '#ff00ff' },
-  { value: 'red', color: '#ff4d4d' },
+const HIGHLIGHTS: { value: string; name: string; color: string }[] = [
+  { value: 'yellow', name: 'Yellow', color: '#ffff00' },
+  { value: 'green', name: 'Green', color: '#00ff00' },
+  { value: 'cyan', name: 'Turquoise', color: '#00ffff' },
+  { value: 'magenta', name: 'Pink', color: '#ff00ff' },
+  { value: 'red', name: 'Red', color: '#ff4d4d' },
 ]
 
 function Inspector({
@@ -587,12 +587,14 @@ function Inspector({
         </div>
         <div className="docx-color-row">
           <ColorField value={color.value} onChange={(hex) => color.execute(hex)} disabled={!color.isEnabled} label="Color" />
-          <div className="swatches highlight-swatches" title="Highlight">
+          <div className="swatches highlight-swatches" role="group" aria-label="Highlight">
             {HIGHLIGHTS.map((h) => (
               <button
                 key={h.value}
                 type="button"
-                aria-label={`Highlight ${h.value}`}
+                aria-label={`${h.name} highlight`}
+                aria-pressed={highlight.value === h.value}
+                title={highlight.value === h.value ? `${h.name} highlight (click to remove)` : `${h.name} highlight`}
                 className={`swatch ${highlight.value === h.value ? 'on' : ''}`}
                 style={{ background: h.color }}
                 disabled={!highlight.isEnabled}
@@ -635,6 +637,8 @@ function Inspector({
           options={(spacing.options.length ? spacing.options : [1, 1.15, 1.5, 2]).map((v) => ({ value: String(v), label: String(v) }))}
           onChange={(v) => spacing.execute(Number(v))}
           disabled={!spacing.isEnabled}
+          // Nothing set on the paragraph itself: it spaces lines as its style says.
+          placeholder="From style"
         />
       </Section>
 
@@ -1034,7 +1038,7 @@ function PageSection() {
 
   return (
     <Section title="Page" collapsible>
-      <div className="grid-2">
+      <div className="grid-1">
         <SelectField
           value={paper}
           placeholder="Custom"
@@ -1056,8 +1060,8 @@ function PageSection() {
           disabled={!isEnabled}
           onChange={(o) => apply({ orientation: o, pageWidthTwips: pageSetup.pageHeightTwips, pageHeightTwips: pageSetup.pageWidthTwips, scope: 'document' })}
           options={[
-            { value: 'portrait', label: 'Tall', title: 'Portrait' },
-            { value: 'landscape', label: 'Wide', title: 'Landscape' },
+            { value: 'portrait', label: 'Portrait' },
+            { value: 'landscape', label: 'Landscape' },
           ]}
         />
       </div>

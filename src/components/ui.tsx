@@ -233,8 +233,10 @@ export function ColorField({
   disabled?: boolean
 }) {
   const hex = normalizeHex(value)
-  const [text, setText] = useState(hex ?? '')
-  useEffect(() => setText(hex ?? ''), [hex])
+  // Shown with its #, as hex colors are written everywhere else.
+  const shown = hex ? `#${hex}` : ''
+  const [text, setText] = useState(shown)
+  useEffect(() => setText(shown), [shown])
   return (
     <label className="field">
       <span className="color-input" style={{ background: hex ? `#${hex}` : 'transparent' }}>
@@ -254,7 +256,7 @@ export function ColorField({
         onBlur={(e) => {
           const next = normalizeHex(e.currentTarget.value)
           if (next && next !== hex) onChange(next)
-          else setText(hex ?? '')
+          else setText(shown)
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') e.currentTarget.blur()
@@ -281,13 +283,13 @@ export interface MenuEntry {
   disabled?: boolean
 }
 
-/** A small popover menu anchored to a point or element. */
+/** A small popover menu anchored to a point or element. With `align: 'end'` its right edge sits at `x`. */
 export function PopoverMenu({
   anchor,
   items,
   onClose,
 }: {
-  anchor: { x: number; y: number }
+  anchor: { x: number; y: number; align?: 'start' | 'end' }
   items: MenuEntry[]
   onClose: () => void
 }) {
@@ -300,7 +302,7 @@ export function PopoverMenu({
     const { innerWidth, innerHeight } = window
     const rect = el.getBoundingClientRect()
     setPos({
-      x: Math.min(anchor.x, innerWidth - rect.width - 8),
+      x: Math.max(8, Math.min(anchor.align === 'end' ? anchor.x - rect.width : anchor.x, innerWidth - rect.width - 8)),
       y: anchor.y + rect.height > innerHeight - 8 ? Math.max(8, anchor.y - rect.height) : anchor.y,
     })
   }, [anchor])

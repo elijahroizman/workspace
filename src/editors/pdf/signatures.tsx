@@ -407,7 +407,7 @@ export function SignPanel({ onNew }: { onNew(kind: SavedSignature['kind']): void
           ))}
         <button type="button" className="sign-item sign-new" onClick={() => onNew(kind)}>
           <Plus size={14} />
-          <span>{kind === 'initials' ? 'Initials' : 'Signature'}</span>
+          <span>{kind === 'initials' ? 'Add initials' : 'Add signature'}</span>
         </button>
       </div>
     </div>
@@ -423,11 +423,11 @@ export function SignPanel({ onNew }: { onNew(kind: SavedSignature['kind']): void
           <button type="button" className={`btn ${isOn({ type: 'date' }) ? 'on' : ''}`} onClick={() => choose({ type: 'date' })}>
             <Calendar size={14} /> Date
           </button>
-          <button type="button" className={`btn ${isOn({ type: 'check' }) ? 'on' : ''}`} aria-label="Check mark" onClick={() => choose({ type: 'check' })}>
-            <Check size={14} />
+          <button type="button" className={`btn ${isOn({ type: 'check' }) ? 'on' : ''}`} title="A check mark" onClick={() => choose({ type: 'check' })}>
+            <Check size={14} /> Check
           </button>
-          <button type="button" className={`btn ${isOn({ type: 'cross' }) ? 'on' : ''}`} aria-label="Cross" onClick={() => choose({ type: 'cross' })}>
-            <X size={14} />
+          <button type="button" className={`btn ${isOn({ type: 'cross' }) ? 'on' : ''}`} title="A cross" onClick={() => choose({ type: 'cross' })}>
+            <X size={14} /> Cross
           </button>
         </div>
       </div>

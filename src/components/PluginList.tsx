@@ -3,11 +3,17 @@ import type { PluginInfo } from '../plugins/catalog'
 import { formatSize, usePlugins } from '../state/plugins'
 import { DocBadge } from './Workbench'
 
+/** SPDX ids as words: “MIT, (MPL-2.0 OR Apache-2.0)” reads “Licenses: MIT and MPL-2.0 or Apache-2.0”. */
+function licenseText(spdx: string) {
+  const parts = spdx.split(/,\s*/).map((p) => p.replace(/[()]/g, '').replace(/ OR /g, ' or ').replace(/ AND /g, ' and '))
+  return `${parts.length > 1 ? 'Licenses' : 'License'}: ${parts.join(' and ')}`
+}
+
 /** One plugin: its file types, what it does, and a control (a switch, a checkbox, “Built in”). */
 export function PluginRow({ plugin, control, children }: { plugin: PluginInfo; control: ReactNode; children?: ReactNode }) {
   const progress = usePlugins((s) => s.progress[plugin.id])
   const error = usePlugins((s) => s.errors[plugin.id])
-  const meta = [plugin.kinds.map((k) => k.extensions.map((e) => `.${e}`).join(' ')).join(' '), plugin.license]
+  const meta = [plugin.kinds.map((k) => k.extensions.map((e) => `.${e}`).join(' ')).join(' '), licenseText(plugin.license)]
   if (plugin.source.type === 'download') meta.push(`${formatSize(plugin.source.size)} download`)
   return (
     <div className="plugin-row">

@@ -183,8 +183,11 @@
   position: absolute;
   right: 20px;
   bottom: 16px;
-  color: rgba(255, 255, 255, 0.45);
-  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
   opacity: 0;
   transition: opacity 0.2s;
 }
@@ -323,7 +326,7 @@
 }
 
 .notes-pane textarea::placeholder {
-  color: var(--fg-faint);
+  color: var(--fg-muted);
 }
 
 /* Nine colours across the inspector on one line: they share the width rather than wrap. */

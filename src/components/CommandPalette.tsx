@@ -107,8 +107,10 @@ export interface PaletteItem {
   path?: string
   icon?: ReactNode
   keys?: string
-  /** More words that should find it (“dark” finds Light or dark). */
+  /** More words that should find it (“dark” finds Switch between light and dark). */
   keywords?: string
+  /** Shown but can't be picked: a command that needs an open document, found from Home. */
+  disabled?: boolean
   run(): void | Promise<void>
 }
 
@@ -176,8 +178,26 @@ const commandIcon = (id: string) => {
 
 const THEME_ICONS = { light: <Sun size={14} />, dark: <Moon size={14} />, system: <Monitor size={14} /> }
 
-/** Commands that make no sense in a list you pick from (they're keys, or they're this). */
-const HIDDEN = new Set(['command-palette', 'tab-number', 'fullscreen-mac'])
+/** Commands that make no sense in a list you pick from (they're keys, or they're this, or Open… does it too). */
+const HIDDEN = new Set(['command-palette', 'tab-number', 'fullscreen-mac', 'open-folder'])
+
+/** Other words people search for a command by. */
+const COMMAND_KEYWORDS: Record<string, string> = {
+  open: 'file folder',
+  'zoom-reset': 'zoom actual size',
+  'toggle-theme': 'dark light theme appearance',
+  find: 'search',
+  replace: 'search',
+  'split-view': 'side by side',
+  'version-history': 'versions restore',
+  'focus-mode': 'distraction free',
+  'view-read': 'preview',
+  'view-split': 'preview source',
+  'view-write': 'source',
+}
+
+/** Commands that only work on a document. From Home they show greyed out, so searching for one explains itself. */
+const NEEDS_DOCUMENT = new Set(['save', 'save-as', 'print', 'close-tab', 'duplicate-tab', 'version-history', 'find', 'replace', 'split-view', 'toggle-left', 'toggle-right', 'zoom-in', 'zoom-out', 'zoom-reset', 'focus-mode', 'typewriter', 'focus-dim'])
 
 const SETTINGS_PAGES: { page: SettingsPage; label: string }[] = [
   { page: 'general', label: 'General' },
@@ -199,23 +219,28 @@ function commandItems(): PaletteItem[] {
   for (const def of SHORTCUTS) {
     if (def.fixed || HIDDEN.has(def.id)) continue
     const keys = keysFor(def.id)
+    const keywords = COMMAND_KEYWORDS[def.id]
     if (def.scope === 'app') {
-      if (!commandAvailable(def.id)) continue
-      items.push({ id: `cmd:${def.id}`, label: sentence(def.label), group: 'Commands', icon: commandIcon(def.id), keys, keywords: def.group, run: () => runCommand(def.id) })
+      if (commandAvailable(def.id)) {
+        items.push({ id: `cmd:${def.id}`, label: sentence(def.label), group: 'Commands', icon: commandIcon(def.id), keys, keywords, run: () => runCommand(def.id) })
+      } else if (!tab && NEEDS_DOCUMENT.has(def.id)) {
+        items.push({ id: `cmd:${def.id}`, label: sentence(def.label), detail: 'Open a document first', group: 'Commands', icon: commandIcon(def.id), keys, keywords, disabled: true, run: () => {} })
+      }
       continue
     }
     // Editor commands, for the kind of document in front of you.
     const fits = def.scope === 'text' ? scope !== null : def.scope === scope
     const action = editor?.actions?.[def.id]
     if (!fits || !action) continue
-    items.push({ id: `cmd:${def.id}`, label: sentence(def.label), group: 'Commands', icon: commandIcon(def.id), keys, keywords: def.group, run: () => void action() })
+    items.push({ id: `cmd:${def.id}`, label: sentence(def.label), group: 'Commands', icon: commandIcon(def.id), keys, keywords, run: () => void action() })
   }
 
   for (const kind of enabledKinds(usePlugins.getState().enabled)) {
     if (!kind.create) continue
     items.push({
       id: `new:${kind.id}`,
-      label: `${sentence(kind.create.title)} (${kind.create.hint})`,
+      label: sentence(kind.create.title),
+      detail: kind.create.hint,
       group: 'Commands',
       icon: <KindIcon kind={kind.id} />,
       keywords: `new create ${kind.label}`,
@@ -226,7 +251,7 @@ function commandItems(): PaletteItem[] {
   for (const mode of ['light', 'dark', 'system'] as const) {
     items.push({
       id: `theme:${mode}`,
-      label: `Appearance: ${mode === 'system' ? 'match the system' : sentence(mode)}`,
+      label: `Appearance: ${mode === 'system' ? 'Match the system' : sentence(mode)}`,
       group: 'Commands',
       icon: THEME_ICONS[mode],
       keywords: 'theme color mode',
@@ -284,9 +309,13 @@ export function addPaletteSource(source: () => PaletteItem[]) {
   }
 }
 
+const BOUNDARY = /[\s\-_./:(]/
+
 /**
  * How well `query` matches `text`: its letters in order, scoring runs, word starts and an early
  * start. Null when they aren't all there. `at` lists the matched positions, for bold.
+ * Scattered letters must start at a word and only jump to the start of another word, so
+ * “open” finds Open… but not the o, p, e, n spread through “New presentation (PowerPoint)”.
  */
 export function fuzzy(query: string, text: string): { score: number; at: number[] } | null {
   const q = query.toLowerCase()
@@ -295,23 +324,35 @@ export function fuzzy(query: string, text: string): { score: number; at: number[
   // A plain substring beats any scattered match.
   const sub = t.indexOf(q)
   if (sub !== -1) {
-    const wordStart = sub === 0 || /[\s\-_./:(]/.test(t[sub - 1])
+    const wordStart = sub === 0 || BOUNDARY.test(t[sub - 1])
     return { score: 1000 - sub + (wordStart ? 200 : 0) - t.length * 0.1, at: Array.from({ length: q.length }, (_, i) => sub + i) }
   }
-  const at: number[] = []
-  let score = 0
-  let ti = 0
-  for (const ch of q) {
-    if (ch === ' ') continue
-    const found = t.indexOf(ch, ti)
-    if (found === -1) return null
-    const prev = at[at.length - 1]
-    if (prev !== undefined && found === prev + 1) score += 15
-    if (found === 0 || /[\s\-_./:(]/.test(t[found - 1])) score += 10
-    score -= Math.min(found - ti, 10)
-    at.push(found)
-    ti = found + 1
+  const chars = q.replace(/ /g, '')
+  const wordStart = (i: number) => i === 0 || BOUNDARY.test(t[i - 1])
+  const failed = new Set<number>()
+  // The earliest placement that follows the rules, backing up when a greedy pick leads nowhere.
+  const place = (qi: number, prev: number): number[] | null => {
+    if (qi === chars.length) return []
+    const key = qi * (t.length + 1) + prev + 1
+    if (failed.has(key)) return null
+    for (let i = t.indexOf(chars[qi], prev + 1); i !== -1; i = t.indexOf(chars[qi], i + 1)) {
+      const sameWord = prev !== -1 && !BOUNDARY.test(t.slice(prev + 1, i))
+      if (!wordStart(i) && !sameWord) continue
+      const rest = place(qi + 1, i)
+      if (rest) return [i, ...rest]
+    }
+    failed.add(key)
+    return null
   }
+  const at = place(0, -1)
+  if (!at) return null
+  let score = 0
+  at.forEach((found, i) => {
+    const prev = i ? at[i - 1] : -1
+    if (prev !== -1 && found === prev + 1) score += 15
+    if (wordStart(found)) score += 10
+    score -= Math.min(found - prev - 1, 10)
+  })
   return { score: score - t.length * 0.1, at }
 }
 
@@ -360,17 +401,21 @@ export function CommandPalette() {
       let recent = 0
       let folder = 0
       return pool
-        .filter((i) => (i.group === 'Folder' ? !!picker && folder++ < 8 : i.group !== 'Recent' || recent++ < 5))
+        .filter((i) => !i.disabled && (i.group === 'Folder' ? !!picker && folder++ < 8 : i.group !== 'Recent' || recent++ < 5))
         .map((item) => ({ item, at: [] as number[] }))
     }
     const scored: { item: PaletteItem; at: number[]; score: number }[] = []
     for (const item of pool) {
+      // A greyed-out command's detail only says why; it isn't something to search.
+      const detail = item.disabled ? '' : (item.detail ?? '')
+      // And it goes below everything that can run.
+      const penalty = item.disabled ? 400 : 0
       const m = fuzzy(q, item.label)
-      const extra = !m && item.keywords ? fuzzy(q, `${item.keywords} ${item.detail ?? ''}`) : null
-      if (m) scored.push({ item, at: m.at, score: m.score + (item.group === 'Tabs' ? 30 : 0) })
-      else if (extra) scored.push({ item, at: [], score: extra.score - 300 })
-      else if (item.detail) {
-        const d = fuzzy(q, item.detail)
+      const extra = !m && item.keywords ? fuzzy(q, `${item.keywords} ${detail}`) : null
+      if (m) scored.push({ item, at: m.at, score: m.score + (item.group === 'Tabs' ? 30 : 0) - penalty })
+      else if (extra) scored.push({ item, at: [], score: extra.score - 300 - penalty })
+      else if (detail) {
+        const d = fuzzy(q, detail)
         if (d && d.score > 0) scored.push({ item, at: [], score: d.score - 500 })
       }
     }
@@ -387,7 +432,7 @@ export function CommandPalette() {
   }, [index, shown])
 
   const pick = (item: PaletteItem | undefined) => {
-    if (!item) return
+    if (!item || item.disabled) return
     close()
     // After the palette is gone, so the command's own focus (a find box, a dialog) sticks.
     requestAnimationFrame(() => void item.run())
@@ -436,7 +481,8 @@ export function CommandPalette() {
                   type="button"
                   role="option"
                   aria-selected={i === index}
-                  className={`palette-item ${i === index ? 'on' : ''}`}
+                  aria-disabled={item.disabled || undefined}
+                  className={`palette-item ${i === index ? 'on' : ''} ${item.disabled ? 'disabled' : ''}`}
                   onMouseMove={() => i !== index && setIndex(i)}
                   onClick={() => pick(item)}
                 >

@@ -85,6 +85,18 @@ export function FocusMode() {
     if (!dim) dimAllBut(null)
   }, [dim])
 
+  // Esc leaves focus mode, unless something else used it first (a find box, a menu, a selection in the text).
+  useEffect(() => {
+    if (!on) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      if (document.querySelector('.menu, .find-bar, .palette-backdrop, .settings-backdrop, .new-file-backdrop, .dialog-backdrop, .present')) return
+      useFocus.getState().setOn(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [on])
+
   // The controls show while the pointer is near the top of the window.
   useEffect(() => {
     if (!on) return
@@ -117,7 +129,7 @@ export function FocusMode() {
         Dim
       </button>
       <span className="sep" />
-      <button type="button" className="focus-hud-btn" title={shortcut(withKeys('Leave focus mode', 'focus-mode'))} onClick={() => state.setOn(false)}>
+      <button type="button" className="focus-hud-btn" title={shortcut(`${withKeys('Leave focus mode', 'focus-mode')} or Esc`)} onClick={() => state.setOn(false)}>
         <Minimize2 size={14} />
         Exit
       </button>

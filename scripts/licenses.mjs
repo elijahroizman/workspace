@@ -115,7 +115,9 @@ function npmPackages(names, group) {
     for (const dep of Object.keys({ ...meta.dependencies, ...meta.optionalDependencies })) walk(dep, dir)
   }
   for (const name of names) walk(name, root)
-  return [...seen.values()]
+  // The same version can be installed in two places; list it once.
+  const unique = new Map([...seen.values()].map((p) => [`${p.name}@${p.version}`, p]))
+  return [...unique.values()]
 }
 
 function cratePackages() {

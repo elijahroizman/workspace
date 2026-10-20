@@ -6,8 +6,8 @@ Every file opens as a tab across the top. Each kind of document gets its own sid
 | --- | --- | --- |
 | Word | Heading outline, page and word count | Style, font, size, bold/italic/…, color, highlight, alignment, lists, line spacing; insert table, image, link or page break; header and footer with page numbers; comments with replies (rest the pointer on commented text to read one); ⌘-click a link to open it; image size and crop; table rows, columns, shading and borders; page size (A4 for new documents) and margins |
 | PowerPoint | Slide thumbnails (drag to reorder, shift- or ⌘-click to pick several, right-click for more); speaker notes under the slide | Insert text boxes, shapes, tables, images, video links and slides; text formatting for one object or several; table styles; fill and line; position, size, rotation, flip and layer order; crop; group and ungroup; links; align; slide layout; transitions; Present |
-| PDF | Page thumbnails (drag to reorder) or the PDF's outline | Highlight, add text, draw, place images; sign with saved signatures and initials, add the date or a check mark; fill forms (how many fields are filled, jump to the next empty one); save a flattened copy; rotate, move, duplicate, delete, insert and extract pages; document info |
-| Markdown | Heading outline | Hidden by default. Read / Split / Write switch at the bottom (⌘E). Front matter, such as an Agent Skill's name and description, shows as a table |
+| PDF | Page thumbnails (drag to reorder) or the PDF's outline | Highlight, add text, draw, place images; sign with saved signatures and initials, add the date, a check mark or a cross; fill forms (how many fields are filled, jump to the next empty one); save a flattened copy; rotate, move, duplicate, delete, insert and extract pages; document info |
+| Markdown | Heading outline | Hidden by default. Read / Edit with preview / Edit source switch at the bottom (⌘E). Front matter, such as an Agent Skill's name and description, shows as a table |
 | Text | None | None |
 
 ## Find and replace
@@ -34,23 +34,23 @@ The Home tab's **Recent** list has the files and folders you've opened. Each dro
 
 ## Command palette
 
-⌘K opens a search box for everything: commands (with their shortcuts), open tabs and recent files. Type a few letters of what you want (“dark”, “new note”, “rotate”) and press return. Start with `>` to search commands only. Commands for the document in front of you, such as Word's Add comment or PowerPoint's Play from start, are listed while that tab is active. It's also in the View menu.
+⌘K opens a search box for everything: commands (with their shortcuts), open tabs and recent files. Type a few letters of what you want (“dark”, “new markdown”, “zoom”) and press return. Commands that need a document, such as Find or Zoom in, are greyed out on Home. Start with `>` to search commands only. Commands for the document in front of you, such as Word's Add comment or PowerPoint's Play from start, are listed while that tab is active. It's also in the View menu.
 
 ## Focus mode and typewriter scrolling
 
-**View › Focus Mode** (⌥⌘F) hides the tabs, sidebars, inspector and the bar at the bottom, leaving only the document. Move the pointer to the top of the window to see the tabs and focus mode's controls; leave it with ⌥⌘F or **Exit**. In Word documents, Markdown and text files, every paragraph but the one you're writing fades (turn that off with **Dim**).
+**View › Focus Mode** (⌥⌘F) hides the tabs, sidebars, inspector and the bar at the bottom, leaving only the document. Move the pointer to the top of the window to see the tabs and focus mode's controls; leave it with ⌥⌘F, Esc or **Exit**. In Word documents, Markdown and text files, every paragraph but the one you're writing fades (turn that off with **Dim**).
 
 **Typewriter scrolling** (⌥⌘T) keeps the line you're typing at the same height on screen, a little above the middle, so your eyes stay put while the page moves. It works with or without focus mode, and Workspace remembers whether it's on.
 
 ## Folders
 
-**File › Open…** (⌘O) opens a folder as well as files: on a Mac, pick the folder in the panel; on Windows and Linux, go into it and click **Open Folder**. It opens in a sidebar to the left of everything, like a project in a code editor. It lists the folder's documents, with subfolders you can expand; click a file to open it in a tab. Files Workspace can't open are hidden unless you pick **Show All Files** from the sidebar's **⋯** menu. Hidden files and folders such as `.git` and `node_modules` are always left out.
+**File › Open…** (⌘O) opens a folder as well as files: on a Mac, pick the folder in the panel; on Windows and Linux, go into it and click **Open Folder**. It opens in a sidebar to the left of everything, like a project in a code editor. It lists the folder's documents, with subfolders you can expand; click a file to open it in a tab. Files Workspace can't open are hidden unless you pick **Show all files** from the sidebar's **⋯** menu. Hidden files and folders such as `.git` and `node_modules` are always left out.
 
-Type in **Find a file** to search every document under the folder by name. ⇧⌘E hides and shows the sidebar. The folder (and which subfolders were expanded) comes back the next time you open Workspace, and Home's Recent list has the folders you've opened, under All and Folders. Dropping a folder on the window opens it too. The list refreshes when you come back to Workspace from another app; the **⋯** menu also has **Refresh**, **Collapse All Folders** and **Close Folder**. Drag the sidebar's edge to make it wider.
+Type in **Find a file** to search every document under the folder by name. ⇧⌘E hides and shows the sidebar. The folder (and which subfolders were expanded) comes back the next time you open Workspace, and Home's Recent list has the folders you've opened, under All and Folders. Dropping a folder on the window opens it too. The list refreshes when you come back to Workspace from another app; the **⋯** menu also has **Refresh**, **Collapse all folders** and **Close folder**. Drag the sidebar's edge to make it wider.
 
 ## Split view
 
-**View › Split View** (⇧⌘\) shows two Word documents or PDFs side by side. It asks what goes beside the one in front: another open tab, a recent file, a file from the open folder, **Choose a file…**, or a second copy of the same document, so you can keep a textbook's questions on one side and its answers on the other. Right-click a tab and pick **Open to the Side…** to put it beside the document you were looking at. Markdown, Mermaid and LaTeX have their own source-and-preview split instead (⌥⌘2), which ⇧⌘\ switches to.
+**View › Split View** (⇧⌘\) shows two Word documents or PDFs side by side. It asks what goes beside the one in front: another open tab, a recent file, a file from the open folder, **Choose a file…**, or a second copy of the same document, so you can keep a textbook's questions on one side and its answers on the other. Right-click a tab and pick **Open to the side…** to put it beside the document you were looking at. Markdown, Mermaid and LaTeX have their own source-and-preview split instead (⌥⌘2), which ⇧⌘\ switches to.
 
 Click in a pane to work in it: a blue line along its top shows which one, and Save, Find, Zoom and the other commands go to it. Clicking another Word or PDF tab in the tab bar puts it in that pane; any other tab goes back to one pane. Drag the line between the panes to resize them (double-click it for half and half). Each pane starts without its sidebar and inspector, to leave room for both documents; the buttons at its top corners show them in that pane. ⇧⌘\ again, or closing either tab, goes back to one pane, with the sidebars as they were.
 
@@ -66,7 +66,7 @@ In **Settings › Autosave** you can turn it off, change the delay, or leave som
 
 ## Version history
 
-Each time a file is saved, by you or by autosave, Workspace keeps a copy of that version. **File › Version History…** (or right-click a tab) lists them by day. Pick one to see what's different: **Compare with now** shows what going back would undo, and **What changed in this save** shows that save's own changes. Text, Markdown, LaTeX and Mermaid files compare line by line; Word documents and PowerPoint presentations compare their text paragraph by paragraph. PDFs and pictures can be opened or restored but not compared.
+Each time a file is saved, by you or by autosave, Workspace keeps a copy of that version. **File › Version History…** (or right-click a tab and pick **Version history…**) lists them by day. Pick one to see what's different: **Compare with now** shows what going back would undo, and **What changed in this save** shows that save's own changes. Text, Markdown, LaTeX and Mermaid files compare line by line; Word documents and PowerPoint presentations compare their text paragraph by paragraph. PDFs and pictures can be opened or restored but not compared.
 
 - **Save version** saves now, with a description if you type one, like a commit message.
 - **Restore** puts that version back. What the document was before is kept in the history too, so restoring can be undone.

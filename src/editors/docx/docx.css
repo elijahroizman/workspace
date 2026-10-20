@@ -13,6 +13,16 @@
   background: var(--canvas);
 }
 
+/* The last page can scroll clear of the zoom bar floating at the bottom. */
+.docx-stage .docx-viewport {
+  padding-bottom: 64px;
+}
+
+/* Find's matches: the engine's pale yellow is hard to see on white. */
+.docx-text-highlight-set[data-highlight-set='search'] .docx-text-highlight {
+  background: #ffd23f;
+}
+
 .highlight-swatches {
   align-items: center;
   justify-content: space-between;

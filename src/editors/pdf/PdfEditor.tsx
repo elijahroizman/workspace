@@ -309,13 +309,13 @@ export default function PdfEditor({ tab, active, visible = false }: EditorProps)
   }
 
   const pageMenu = (index: number): MenuEntry[] => [
-    { label: 'Rotate Right', icon: <RotateCw size={14} />, onSelect: () => rotatePage(index, 1) },
-    { label: 'Rotate Left', icon: <RotateCcw size={14} />, onSelect: () => rotatePage(index, -1) },
+    { label: 'Rotate right', icon: <RotateCw size={14} />, onSelect: () => rotatePage(index, 1) },
+    { label: 'Rotate left', icon: <RotateCcw size={14} />, onSelect: () => rotatePage(index, -1) },
     { label: 'Duplicate', icon: <Copy size={14} />, onSelect: () => duplicatePage(index), separatorBefore: true },
-    { label: 'Insert Blank Page After', icon: <FilePlus2 size={14} />, onSelect: () => insertBlank(index) },
-    { label: 'Insert Pages from File…', icon: <ArrowDownToLine size={14} />, onSelect: () => void insertFromFile(index) },
+    { label: 'Insert blank page after', icon: <FilePlus2 size={14} />, onSelect: () => insertBlank(index) },
+    { label: 'Insert pages from file…', icon: <ArrowDownToLine size={14} />, onSelect: () => void insertFromFile(index) },
     { label: 'Extract as PDF…', icon: <FileOutput size={14} />, onSelect: () => void extract([index]), separatorBefore: true },
-    ...(pages.length > 1 ? [{ label: 'Delete Page', icon: <Trash2 size={14} />, danger: true, onSelect: () => deletePage(index), separatorBefore: true }] : []),
+    ...(pages.length > 1 ? [{ label: 'Delete page', icon: <Trash2 size={14} />, danger: true, onSelect: () => deletePage(index), separatorBefore: true }] : []),
   ]
 
   // ── Annotations
@@ -1043,11 +1043,11 @@ export default function PdfEditor({ tab, active, visible = false }: EditorProps)
       )}
       <Section title={numPages ? `Page ${page + 1} of ${numPages}` : 'Page'}>
         <div className="grid-2">
-          <button type="button" className="btn" disabled={!store} onClick={() => rotatePage(page, -1)}>
-            <RotateCcw size={14} /> Rotate
+          <button type="button" className="btn" disabled={!store} title="Turn the page a quarter turn counterclockwise" onClick={() => rotatePage(page, -1)}>
+            <RotateCcw size={14} /> Rotate left
           </button>
-          <button type="button" className="btn" disabled={!store} onClick={() => rotatePage(page, 1)}>
-            <RotateCw size={14} /> Rotate
+          <button type="button" className="btn" disabled={!store} title="Turn the page a quarter turn clockwise" onClick={() => rotatePage(page, 1)}>
+            <RotateCw size={14} /> Rotate right
           </button>
           <button type="button" className="btn" disabled={!store || page <= 0} onClick={() => movePage(page, page - 1)}>
             <ArrowUpToLine size={14} /> Move up
@@ -1109,9 +1109,7 @@ export default function PdfEditor({ tab, active, visible = false }: EditorProps)
           {meta.producer && (
             <>
               <dt>Created with</dt>
-              <dd className="ellipsis" title={meta.producer}>
-                {meta.producer}
-              </dd>
+              <dd className="wrap">{meta.producer}</dd>
             </>
           )}
         </dl>
@@ -1120,7 +1118,8 @@ export default function PdfEditor({ tab, active, visible = false }: EditorProps)
   )
 
   return (
-    <Workbench tab={tab} left={left} right={right} leftFooter={numPages ? <span>{numPages === 1 ? '1 page' : `${numPages} pages`}</span> : undefined}>
+    // A file that didn't open has no pages to show or tools to use.
+    <Workbench tab={tab} left={error ? undefined : left} right={error ? undefined : right} leftFooter={numPages ? <span>{numPages === 1 ? '1 page' : `${numPages} pages`}</span> : undefined}>
       <div ref={stageRef} className={`pdf-stage tool-${tool} ${hasForm && showFields ? 'show-fields' : ''}`}>
         {store && (
           <Viewer ref={viewer} store={store} pages={pages} awake={awake} onPageChange={onPageChange} onZoomChange={onZoomChange} renderPage={renderPage} positionKey={tab.id} />

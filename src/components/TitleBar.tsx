@@ -4,6 +4,7 @@ import { autosaveBlocker, useAutosaveStatus } from '../lib/autosave'
 import { isMac, isTauri, revealInFinder, revealLabel, shortcut, tildify } from '../lib/platform'
 import { enabledKinds, usePlugins } from '../state/plugins'
 import { useSettings } from '../state/settings'
+import { keysFor, withKeys } from '../state/shortcuts'
 import { HOME_TAB_ID, SPLIT_KINDS, useWorkspace } from '../state/workspace'
 import type { DocKind } from '../lib/kinds'
 import { pickSplit } from '../App'
@@ -123,7 +124,7 @@ export function TitleBar() {
                 type="button"
                 className="tab-close"
                 aria-label={tab.dirty ? `Close ${tab.title} (unsaved changes)` : `Close ${tab.title}`}
-                title={shortcut(tab.dirty ? 'Unsaved changes — close (⌘W)' : 'Close (⌘W)')}
+                title={shortcut(withKeys(tab.dirty ? 'Unsaved changes — close' : 'Close', 'close-tab'))}
                 onClick={(e) => {
                   e.stopPropagation()
                   void closeTab(tab.id)
@@ -156,20 +157,20 @@ export function TitleBar() {
           anchor={tabMenu}
           onClose={() => setTabMenu(null)}
           items={[
-            { label: 'Duplicate Tab', icon: <Copy size={14} />, shortcut: '⇧⌘D', onSelect: () => void duplicateTab(tabMenu.id) },
+            { label: 'Duplicate tab', icon: <Copy size={14} />, shortcut: keysFor('duplicate-tab'), onSelect: () => void duplicateTab(tabMenu.id) },
             ...(split?.includes(tabMenu.id)
-              ? [{ label: 'Close Split View', icon: <Columns2 size={14} />, onSelect: () => void splitWith(null) }]
+              ? [{ label: 'Close split view', icon: <Columns2 size={14} />, onSelect: () => void splitWith(null) }]
               : SPLIT_KINDS.has(tabs.find((t) => t.id === tabMenu.id)?.kind as DocKind)
-                ? [{ label: 'Open to the Side…', icon: <Columns2 size={14} />, onSelect: () => void openBeside(tabMenu.id) }]
+                ? [{ label: 'Open to the side…', icon: <Columns2 size={14} />, onSelect: () => void openBeside(tabMenu.id) }]
                 : []),
             ...(isTauri && tabs.find((t) => t.id === tabMenu.id)?.path
               ? [
                   { label: revealLabel, icon: <FolderOpen size={14} />, onSelect: () => void revealInFinder(tabs.find((t) => t.id === tabMenu.id)!.path!) },
-                  { label: 'Version History…', icon: <History size={14} />, onSelect: () => showVersionHistory(tabMenu.id) },
+                  { label: 'Version history…', icon: <History size={14} />, onSelect: () => showVersionHistory(tabMenu.id) },
                 ]
               : []),
-            { label: 'Close Tab', shortcut: '⌘W', separatorBefore: true, onSelect: () => void closeTab(tabMenu.id) },
-            { label: 'Close Other Tabs', onSelect: () => void closeOthers(tabMenu.id) },
+            { label: 'Close tab', shortcut: keysFor('close-tab'), separatorBefore: true, onSelect: () => void closeTab(tabMenu.id) },
+            { label: 'Close other tabs', onSelect: () => void closeOthers(tabMenu.id) },
           ]}
         />
       )}
@@ -180,8 +181,8 @@ export function TitleBar() {
           items={[
             ...enabledKinds(plugins)
               .filter((k) => k.create)
-              .map((k) => ({ label: k.create!.title.replace(/\b\w/g, (c) => c.toUpperCase()), icon: <KindIcon kind={k.id} />, onSelect: () => newDocument(k.id) })),
-            { label: 'Open…', icon: <FolderOpen size={14} />, shortcut: '⌘O', onSelect: () => void openDialog(), separatorBefore: true },
+              .map((k) => ({ label: k.create!.title, icon: <KindIcon kind={k.id} />, onSelect: () => newDocument(k.id) })),
+            { label: 'Open…', icon: <FolderOpen size={14} />, shortcut: keysFor('open'), onSelect: () => void openDialog(), separatorBefore: true },
           ]}
         />
       )}
