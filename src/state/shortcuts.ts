@@ -31,8 +31,9 @@ export const SHORTCUTS: ShortcutDef[] = [
   // ── Files and tabs (the menu bar's items)
   { id: 'new-tab', label: 'New tab', group: 'Files and tabs', scope: 'app', keys: '⌘T' },
   { id: 'new', label: 'New file…', group: 'Files and tabs', scope: 'app', keys: '⌘N' },
-  { id: 'open', label: 'Open…', group: 'Files and tabs', scope: 'app', keys: '⌘O' },
-  { id: 'open-folder', label: 'Open folder…', group: 'Files and tabs', scope: 'app', keys: '⇧⌘O' },
+  // ⌘O's dialog opens a folder too.
+  { id: 'open', label: 'Open file or folder…', group: 'Files and tabs', scope: 'app', keys: '⌘O' },
+  { id: 'open-folder', label: 'Open folder…', group: 'Files and tabs', scope: 'app', keys: '' },
   { id: 'close-folder', label: 'Close folder', group: 'Files and tabs', scope: 'app', keys: '' },
   { id: 'save', label: 'Save', group: 'Files and tabs', scope: 'app', keys: '⌘S' },
   { id: 'save-as', label: 'Save as…', group: 'Files and tabs', scope: 'app', keys: '⇧⌘S' },
@@ -51,6 +52,8 @@ export const SHORTCUTS: ShortcutDef[] = [
   // ── View
   { id: 'command-palette', label: 'Command palette', group: 'View', scope: 'app', keys: '⌘K' },
   { id: 'find', label: 'Find', group: 'View', scope: 'app', keys: '⌘F' },
+  // Word's keys; ⌘H on a Mac hides the app.
+  { id: 'replace', label: 'Find and replace', group: 'View', scope: 'app', keys: isMac ? '⌃H' : '⌘H' },
   { id: 'toggle-explorer', label: 'Show or hide the folder', group: 'View', scope: 'app', keys: '⇧⌘E' },
   { id: 'split-view', label: 'Split view', group: 'View', scope: 'app', keys: '⇧⌘\\' },
   { id: 'toggle-left', label: 'Show or hide sidebar', group: 'View', scope: 'app', keys: '⌘\\' },

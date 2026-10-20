@@ -265,6 +265,9 @@ export async function runCommand(id: string) {
     case 'find':
       editor?.find?.()
       break
+    case 'replace':
+      editor?.replace?.()
+      break
     case 'split-view':
       await toggleSplit()
       break
@@ -409,6 +412,7 @@ export function editorHandles(command: string) {
   if (command.startsWith('zoom-')) return !!editor?.zoom
   // A plugin without its own find or print keeps the keys for itself (Excalidraw searches the canvas).
   if (command === 'find') return !!editor?.find
+  if (command === 'replace') return !!editor?.replace
   if (command === 'print') return !!editor?.print
   return true
 }
@@ -520,7 +524,9 @@ export default function App() {
       }
       if (def?.scope === 'app') {
         // The Mac menu runs it. If an engine has its own use for these keys (⌘K, a link in Word), keep them from it.
-        if (menuOwnsShortcuts) {
+        // A key with ⌃ but no ⌘ (Find and replace's ⌃H) that got this far went to the page, not the
+        // menu, and would delete a character: run it here.
+        if (menuOwnsShortcuts && !(keys.includes('⌃') && !keys.includes('⌘'))) {
           if (movedBuiltIn(keys, scope)) e.stopPropagation()
           return
         }

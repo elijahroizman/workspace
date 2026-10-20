@@ -2,6 +2,24 @@
 
 Every release's notes. The release workflow copies a version's section into its GitHub release, and the app's update panel shows it.
 
+## 0.9.2 — 2026-10-20
+
+### Find and replace
+- **⌃H** (Ctrl+H on Windows and Linux) opens find with a **Replace with** field, in Word documents, presentations, Markdown and text files. **Replace** changes the highlighted match and moves on; **All** changes every one. The arrow at the left of the find box shows and hides the field.
+
+### Lists as you type
+- In Word documents, typing `- `, `* ` or `1. ` at the start of a paragraph starts a bulleted or numbered list.
+
+### One Open command
+- **⌘O** opens files or a folder. On a Mac, pick a folder in the panel; on Windows and Linux, the dialog has an **Open Folder** button. Open Folder no longer has its own shortcut.
+
+### Fixes
+- Picking a spelling correction from the right-click menu in a Word document replaces the misspelled word. It used to do nothing, or type the correction at the cursor.
+- Printing a Word document in dark mode gave grey text. Pages print black on white.
+- On Windows, the title bar and menu bar take the app's colors, so the top of the window is one band instead of three shades.
+- On Windows, the options in dropdowns such as the font list were light grey on white. They now use the app's colors.
+- Commands in the command palette have their own icons (a sun and moon for appearance, a printer for Print…) instead of the Mac ⌘ symbol on every row.
+
 ## 0.9.1 — 2026-10-19
 
 ### Fedora

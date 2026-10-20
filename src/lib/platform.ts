@@ -277,6 +277,12 @@ export async function pickFiles(): Promise<OpenedFile[]> {
   return Promise.all(paths.map(async (path) => ({ path, name: basename(path), bytes: await readFile(path) })))
 }
 
+/** ⌘O: documents or a folder, from one dialog (see open_dialog.rs). Empty when cancelled. */
+export async function pickPaths(): Promise<string[]> {
+  const { invoke } = await core()
+  return invoke<string[]>('pick_paths', { extensions: ALL_EXTENSIONS })
+}
+
 function pickFilesInBrowser(): Promise<OpenedFile[]> {
   return new Promise((resolve) => {
     const input = document.createElement('input')

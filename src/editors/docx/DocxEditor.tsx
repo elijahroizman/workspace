@@ -1,7 +1,7 @@
 import { blankDocumentBytes, chromeProbeForSlot, commandForSlot, commandForSlotValue } from '@docx-editor.dev/core/editor'
 import '@docx-editor.dev/core/styles/editor.css'
 import { packagedFonts } from '@docx-editor.dev/fonts'
-import type { Editor } from '@docx-editor.dev/react'
+import type { Editor, TextMatch } from '@docx-editor.dev/react'
 import {
   DocxEditor,
   ImageInsertTrigger,
@@ -147,7 +147,7 @@ function DocxWorkbench({
   const page = useEditorState((s) => s.page)
   const zoom = useZoom()
   const search = useDocumentSearch()
-  const [findOpen, setFindOpen] = useState(false)
+  const [findOpen, setFindOpen] = useState<false | 'find' | 'replace'>(false)
   const editorRef = useRef<Editor | null>(null)
   editorRef.current = editor as Editor | null
   const zoomRef = useRef(zoom)
@@ -179,7 +179,8 @@ function DocxWorkbench({
           savedRevision.current = editorRef.current?.getDocumentHandle().revision ?? null
           commentsChanged.current = false
         },
-        find: () => setFindOpen(true),
+        find: () => setFindOpen('find'),
+        replace: () => setFindOpen('replace'),
         zoom: (dir) => {
           const z = zoomRef.current
           if (dir === 'in') z.zoomIn()
@@ -248,6 +249,7 @@ function DocxWorkbench({
   }, [editor])
 
   useLinks(stageRef, editorRef)
+  useTypingHelpers(stageRef, editorRef)
 
   // Cropping the selected picture, on the page.
   const [crop, setCrop] = useState<PictureCrop | null>(null)
@@ -312,7 +314,8 @@ function DocxWorkbench({
       {peek && <CommentPeek store={comments} id={peek.id} at={peek.at} />}
       {crop && <CropOverlay src={crop.src} frame={crop.frame} image={crop.image} onDone={endCrop} onCancel={() => endCrop()} />}
       <FindBar
-        open={findOpen}
+        open={!!findOpen}
+        replacing={findOpen === 'replace'}
         onClose={() => {
           setFindOpen(false)
           search.clear()
@@ -323,6 +326,8 @@ function DocxWorkbench({
         onPrev={() => search.previous()}
         count={search.query ? search.matches.length : null}
         current={search.activeIndex >= 0 ? search.activeIndex : 0}
+        onReplace={(text) => replaceCurrent(editorRef.current, stageRef.current, search, text)}
+        onReplaceAll={(text) => replaceAll(editorRef.current, stageRef.current, search, text)}
       />
       <div className="canvas-bar">
         <UndoRedo />
@@ -1116,6 +1121,98 @@ function applyCrop(editor: Editor, start: PictureCrop, frame: Rect, image: Rect)
 }
 
 /**
+ * What the engine leaves to the system and gets wrong, or doesn't do:
+ * - A spelling correction picked from the right-click menu replaces the word it's for. The
+ *   engine types it at the caret unless the caret sits right after the word.
+ * - "- ", "* " or "1. " typed at the start of a paragraph turns it into a list, as in Word.
+ */
+function useTypingHelpers(stageRef: React.RefObject<HTMLDivElement | null>, editorRef: React.RefObject<Editor | null>) {
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    let frame = 0
+    const onInput = (e: InputEvent) => {
+      const editor = editorRef.current
+      if (!editor) return
+      if (e.inputType === 'insertReplacementText' && correctSpelling(editor, stage, e)) {
+        e.preventDefault()
+        e.stopPropagation()
+      } else if (e.inputType === 'insertText' && e.data === ' ') {
+        // The engine queues typing and draws it a frame or two later; look once the space is on the page.
+        cancelAnimationFrame(frame)
+        frame = requestAnimationFrame(() => (frame = requestAnimationFrame(() => startList(editor, stage))))
+      }
+    }
+    stage.addEventListener('beforeinput', onInput, true)
+    return () => {
+      cancelAnimationFrame(frame)
+      stage.removeEventListener('beforeinput', onInput, true)
+    }
+  }, [stageRef, editorRef])
+}
+
+const elementOf = (node: Node) => (node instanceof Element ? node : node.parentElement)
+
+/** A point in the pages as the engine counts it: a paragraph, and an offset into its text. */
+function textPosition(stage: HTMLElement, node: Node, offset: number) {
+  const run = elementOf(node)?.closest<HTMLElement>('.layout-run[data-paragraph-id][data-start]')
+  if (!run || !stage.contains(run)) return null
+  const before = document.createRange()
+  before.setStart(run, 0)
+  before.setEnd(node, offset)
+  const inRun = before.toString()
+  return { paragraph: run.dataset.paragraphId!, offset: Number(run.dataset.start) + inRun.length, inRun }
+}
+
+/**
+ * Replace a found match. The engine's own replaceMatch isn't supported by its tree editor, so
+ * select the match and type over it; for nothing, delete it the way Backspace does.
+ */
+function replaceFound(editor: Editor, stage: HTMLElement | null, match: TextMatch, text: string) {
+  if (!editor.selectMatch(match).ok) return false
+  if (text) return editor.exec({ type: 'pasteWithoutFormatting', text }).ok
+  const pages = stage?.querySelector('.docx-pages[contenteditable]')
+  return !!pages && !pages.dispatchEvent(new InputEvent('beforeinput', { inputType: 'deleteContentBackward', bubbles: true, cancelable: true }))
+}
+
+function correctSpelling(editor: Editor, stage: HTMLElement, e: InputEvent) {
+  const text = e.data ?? e.dataTransfer?.getData('text/plain')
+  const target = e.getTargetRanges()[0]
+  const selection = window.getSelection()
+  const range = target ?? (selection?.rangeCount ? selection.getRangeAt(0) : null)
+  if (!text || !range || range.collapsed) return false
+  const word = document.createRange()
+  word.setStart(range.startContainer, range.startOffset)
+  word.setEnd(range.endContainer, range.endOffset)
+  const misspelled = word.toString()
+  const at = textPosition(stage, range.startContainer, range.startOffset)
+  if (!misspelled.trim() || !at) return false
+  const match = editor.findMatches(misspelled, { matchCase: true }).find((m) => m.blockId === at.paragraph && m.start === at.offset)
+  return !!match && replaceFound(editor, stage, match, text)
+}
+
+/** What turns a paragraph into a list when it starts it, as typed: "- ", "* ", "1. ", "1) ". */
+const LIST_MARKERS: { pattern: RegExp; kind: 'bullet' | 'ordered' }[] = [
+  { pattern: /^[-*•] $/, kind: 'bullet' },
+  { pattern: /^1[.)] $/, kind: 'ordered' },
+]
+
+function startList(editor: Editor, stage: HTMLElement) {
+  const selection = window.getSelection()
+  if (!selection?.isCollapsed || !selection.anchorNode) return
+  const at = textPosition(stage, selection.anchorNode, selection.anchorOffset)
+  // Only right after the marker, at the very start of the paragraph.
+  if (!at || at.offset !== at.inRun.length) return
+  const kind = LIST_MARKERS.find((m) => m.pattern.test(at.inRun))?.kind
+  if (!kind) return
+  const list = { type: 'toggleList', kind } as const
+  const marker = editor.findMatches(at.inRun, { matchCase: true }).find((m) => m.blockId === at.paragraph && m.start === 0)
+  if (!marker || !editor.can(list).ok) return
+  // Undo takes back the list, then the marker's removal, as separate steps (the engine can't group these).
+  if (replaceFound(editor, stage, marker, '')) editor.exec(list)
+}
+
+/**
  * Links in the document. ⌘-click (Ctrl-click on Windows) opens one in the browser, as in Word,
  * and the pointer turns into a hand while the key is down. Typing at the end of a link that ends
  * its paragraph would carry on in the link's color, underline and font without being part of it;
@@ -1203,6 +1300,28 @@ function leaveLinkStyle(editor: Editor, stage: HTMLElement) {
     const command = commandForSlot(slot)
     if (command && editor.isActive(command) !== on) editor.exec(command)
   }
+}
+
+/** Replace the match the find bar is on (the first, before any navigation) and go to the next one. */
+function replaceCurrent(ed: Editor | null, stage: HTMLElement | null, search: ReturnType<typeof useDocumentSearch>, text: string) {
+  const query = search.query
+  const index = Math.max(0, search.activeIndex)
+  const match = search.matches[index]
+  if (!ed || !query || !match || !replaceFound(ed, stage, match, text)) return
+  // Offsets after it moved, so search again. Skip matches inside the new text ("cat" → "cats").
+  const next = search.find(query, { matchCase: search.matchCase, wholeWord: search.wholeWord })
+  let i = index
+  while (i < next.length && next[i].blockId === match.blockId && next[i].start >= match.start && next[i].start < match.start + text.length) i++
+  if (next.length) search.goTo(i < next.length ? i : 0)
+}
+
+/** Replace every match, last first so the earlier ones keep their offsets. */
+function replaceAll(ed: Editor | null, stage: HTMLElement | null, search: ReturnType<typeof useDocumentSearch>, text: string) {
+  const query = search.query
+  if (!ed || !query) return
+  const matches = ed.findMatches(query, { matchCase: search.matchCase, wholeWord: search.wholeWord })
+  for (const match of [...matches].reverse()) replaceFound(ed, stage, match, text)
+  search.find(query, { matchCase: search.matchCase, wholeWord: search.wholeWord })
 }
 
 /** Clone the laid-out pages into the print root at their true size, then open the print panel. */

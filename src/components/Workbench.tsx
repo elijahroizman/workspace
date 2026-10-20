@@ -1,10 +1,12 @@
-import { FileText, PanelLeft, PanelRight, Search, X, ChevronUp, ChevronDown } from 'lucide-react'
+import { FileText, PanelLeft, PanelRight, Search, X, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type { DocKind } from '../lib/kinds'
 import { KINDS } from '../lib/kinds'
 import type { DocTab } from '../state/workspace'
 import { useWorkspace } from '../state/workspace'
+import { withKeys } from '../state/shortcuts'
+import { shortcut } from '../lib/platform'
 import { IconButton } from './ui'
 
 export function KindIcon({ kind, size = 14 }: { kind: DocKind; size?: number }) {
@@ -159,7 +161,7 @@ export function InspectorHeader({ kind, children }: { kind: DocKind; children?: 
   )
 }
 
-/** Floating find box used by every editor. */
+/** Floating find box used by every editor, with a replace row for editors that can replace. */
 export function FindBar({
   open,
   onClose,
@@ -169,6 +171,9 @@ export function FindBar({
   count,
   current,
   placeholder = 'Find in document',
+  replacing = false,
+  onReplace,
+  onReplaceAll,
 }: {
   open: boolean
   onClose: () => void
@@ -178,51 +183,100 @@ export function FindBar({
   count: number | null
   current: number | null
   placeholder?: string
+  /** Opened by Find and replace: show the replace row. */
+  replacing?: boolean
+  /** Replace the current match. */
+  onReplace?: (text: string) => void
+  /** Replace every match. */
+  onReplaceAll?: (text: string) => void
 }) {
   const input = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
+  const [replacement, setReplacement] = useState('')
+  const [showReplace, setShowReplace] = useState(false)
+  const canReplace = !!onReplace && !!onReplaceAll
 
   useEffect(() => {
-    if (open) {
-      input.current?.focus()
-      input.current?.select()
-    }
-  }, [open])
+    if (!open) return
+    if (replacing && canReplace) setShowReplace(true)
+    input.current?.focus()
+    input.current?.select()
+  }, [open, replacing, canReplace])
 
   if (!open) return null
+  const escape = (e: React.KeyboardEvent) => {
+    if (e.key !== 'Escape') return false
+    e.preventDefault()
+    onClose()
+    return true
+  }
   return (
     <div className="find-bar" role="search">
-      <Search size={14} className="faint" />
-      <input
-        ref={input}
-        value={query}
-        placeholder={placeholder}
-        spellCheck={false}
-        onChange={(e) => {
-          setQuery(e.currentTarget.value)
-          onQuery(e.currentTarget.value)
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            if (e.shiftKey) onPrev()
-            else onNext()
-          } else if (e.key === 'Escape') {
-            e.preventDefault()
-            onClose()
-          }
-        }}
-      />
-      <span className="count">{query && count != null ? (count === 0 ? 'No results' : `${(current ?? 0) + 1} of ${count}`) : ''}</span>
-      <IconButton label="Previous (⇧↩)" size="sm" onClick={onPrev} disabled={!count}>
-        <ChevronUp size={14} />
-      </IconButton>
-      <IconButton label="Next (↩)" size="sm" onClick={onNext} disabled={!count}>
-        <ChevronDown size={14} />
-      </IconButton>
-      <IconButton label="Close (esc)" size="sm" onClick={onClose}>
-        <X size={14} />
-      </IconButton>
+      <div className="find-row">
+        {canReplace ? (
+          <IconButton label={showReplace ? 'Hide replace' : withKeys('Replace', 'replace')} size="sm" onClick={() => setShowReplace((v) => !v)}>
+            {showReplace ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </IconButton>
+        ) : (
+          <Search size={14} className="faint" />
+        )}
+        <input
+          ref={input}
+          value={query}
+          placeholder={placeholder}
+          aria-label="Find"
+          spellCheck={false}
+          onChange={(e) => {
+            setQuery(e.currentTarget.value)
+            onQuery(e.currentTarget.value)
+          }}
+          onKeyDown={(e) => {
+            if (escape(e)) return
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              if (e.shiftKey) onPrev()
+              else onNext()
+            }
+          }}
+        />
+        <span className="count">{query && count != null ? (count === 0 ? 'No results' : `${(current ?? 0) + 1} of ${count}`) : ''}</span>
+        <IconButton label="Previous (⇧↩)" size="sm" onClick={onPrev} disabled={!count}>
+          <ChevronUp size={14} />
+        </IconButton>
+        <IconButton label="Next (↩)" size="sm" onClick={onNext} disabled={!count}>
+          <ChevronDown size={14} />
+        </IconButton>
+        <IconButton label="Close (esc)" size="sm" onClick={onClose}>
+          <X size={14} />
+        </IconButton>
+      </div>
+      {canReplace && showReplace && (
+        <div className="find-row">
+          <span className="find-gap" />
+          <input
+            value={replacement}
+            placeholder="Replace with"
+            aria-label="Replace with"
+            spellCheck={false}
+            onChange={(e) => setReplacement(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (escape(e)) return
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                if (!count) return
+                if (e.metaKey || e.ctrlKey) onReplaceAll(replacement)
+                else onReplace(replacement)
+              }
+            }}
+          />
+          <button type="button" className="btn find-btn" title="Replace (↩)" disabled={!count} onClick={() => onReplace(replacement)}>
+            Replace
+          </button>
+          <button type="button" className="btn find-btn" title={shortcut('Replace all (⌘↩)')} disabled={!count} onClick={() => onReplaceAll(replacement)}>
+            All
+          </button>
+        </div>
+      )}
     </div>
   )
 }

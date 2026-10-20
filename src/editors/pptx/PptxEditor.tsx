@@ -41,6 +41,7 @@ import { keysFor, withKeys } from '../../state/shortcuts'
 import { registerEditor, useWorkspace } from '../../state/workspace'
 import type { Restack } from './arrange'
 import { canRestack, mapPicked, pickedText, restack, styleText, withElements } from './arrange'
+import { replaceInElement } from './replace'
 import { blankPresentation } from './blank'
 import { Inspector, tableLooks } from './Inspector'
 import { NotesPane } from './Notes'
@@ -92,7 +93,7 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
   const markDirty = useWorkspace((s) => s.markDirty)
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null)
   const [presenting, setPresenting] = useState<number | null>(null)
-  const [findOpen, setFindOpen] = useState(false)
+  const [findOpen, setFindOpen] = useState<false | 'find' | 'replace'>(false)
   const [matches, setMatches] = useState<{ slide: number; id: string }[]>([])
   const [matchIndex, setMatchIndex] = useState(0)
   const stageRef = useRef<HTMLDivElement>(null)
@@ -496,8 +497,10 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
   const setNotes = (id: string, notes: string) => handle.current?.editSlides((all) => all.map((s) => (s.id === id ? { ...s, notes, notesSegments: undefined } : s)))
 
   // ── Find across every slide's text.
-  const runFind = (query: string) => {
+  const findQuery = useRef('')
+  const runFind = (query: string, from?: { index: number; skip: string }) => {
     const q = query.trim().toLowerCase()
+    findQuery.current = q
     const found: { slide: number; id: string }[] = []
     if (q) {
       slides.forEach((s, si) =>
@@ -507,9 +510,37 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
         }),
       )
     }
+    // After a replace, carry on from the same place, past the object just changed.
+    let index = 0
+    if (from) {
+      index = Math.min(from.index, found.length)
+      if (found[index]?.id === from.skip) index++
+      if (index >= found.length) index = 0
+    }
     setMatches(found)
-    setMatchIndex(0)
-    if (found[0]) goToMatch(found[0])
+    setMatchIndex(index)
+    if (found[index]) goToMatch(found[index])
+  }
+  // A replace changes the slides; search them again once they're back.
+  const refind = useRef<{ index: number; skip: string } | null>(null)
+  useEffect(() => {
+    if (!refind.current) return
+    const from = refind.current
+    refind.current = null
+    runFind(findQuery.current, from)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slides])
+  const matching = (e: Element) => elementText(e).toLowerCase().includes(findQuery.current)
+  const replaceCurrent = (by: string) => {
+    const m = matches[matchIndex]
+    if (!m || !findQuery.current) return
+    refind.current = { index: matchIndex, skip: m.id }
+    handle.current?.editSlides(withElements(m.slide, (els) => els.map((e) => (e.id === m.id ? replaceInElement(e, findQuery.current, by) : e))))
+  }
+  const replaceAll = (by: string) => {
+    if (!matches.length || !findQuery.current) return
+    refind.current = { index: 0, skip: '' }
+    handle.current?.editSlides((all) => all.map((s) => (s.elements.some(matching) ? { ...s, elements: s.elements.map((e) => (matching(e) ? replaceInElement(e, findQuery.current, by) : e)) } : s)))
   }
   const goToMatch = (m: { slide: number; id: string }) => {
     handle.current?.setActiveSlideIndex(m.slide)
@@ -539,7 +570,8 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
           savedSlides.current = slidesRef.current
           markDirty(tab.id, false)
         },
-        find: () => setFindOpen(true),
+        find: () => setFindOpen('find'),
+        replace: () => setFindOpen('replace'),
         zoom: (dir) => zoomStep(dir),
         actions: {
           'text.bold': () => toggleText('bold'),
@@ -612,9 +644,12 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
       </div>
       {!loading && notesOpen && slides[activeIndex] && <NotesPane key={slides[activeIndex].id} slide={slides[activeIndex]} onChange={(text) => setNotes(slides[activeIndex].id, text)} />}
       <FindBar
-        open={findOpen}
+        open={!!findOpen}
+        replacing={findOpen === 'replace'}
         onClose={() => setFindOpen(false)}
-        onQuery={runFind}
+        onQuery={(q) => runFind(q)}
+        onReplace={replaceCurrent}
+        onReplaceAll={replaceAll}
         onNext={() => stepFind(1)}
         onPrev={() => stepFind(-1)}
         count={matches.length}

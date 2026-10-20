@@ -57,7 +57,7 @@ export function Home() {
             </span>
             <span className="home-card-text">
               <strong>Open…</strong>
-              <span className="muted">Or drop files here</span>
+              <span className="muted">Files or a folder, or drop them here</span>
             </span>
             <span className="kbd">{shortcut('⌘O')}</span>
           </button>

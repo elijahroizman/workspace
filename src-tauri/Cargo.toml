@@ -1,6 +1,6 @@
 [package]
 name = "workspace"
-version = "0.9.1"
+version = "0.9.2"
 description = "A fast, tabbed editor for Word, PowerPoint, PDF and Markdown files"
 edition = "2021"
 
@@ -31,7 +31,10 @@ base64 = "0.22"
 sha2 = "0.10"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSUserDefaults", "NSString", "NSObject"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSUserDefaults", "NSString", "NSObject", "NSArray", "NSURL", "NSEnumerator"] }
+# ⌘O's panel, which picks files or a folder.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSOpenPanel", "NSSavePanel", "NSPanel", "NSWindow", "NSResponder", "NSApplication"] }
 
 # A second launch (`workspace notes.md`, a double-click) hands its files to the running copy.
 [target.'cfg(not(target_os = "macos"))'.dependencies]
@@ -43,6 +46,22 @@ webview2-com = "0.39"
 windows-core = "0.62"
 # Registers Workspace's file types with Windows' Default Apps settings.
 windows-registry = "0.6"
+# The open dialog's "Open folder" button, and title and menu bars in the app's colors.
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_SystemServices",
+    "Win32_UI_Controls",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+# ⌘O's dialog, with an Open Folder button.
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
 
 [profile.release]
 codegen-units = 1

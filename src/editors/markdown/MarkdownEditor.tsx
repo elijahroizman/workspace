@@ -12,6 +12,7 @@ import { FindBar, InspectorHeader, Workbench } from '../../components/Workbench'
 import { Section } from '../../components/ui'
 import type { ViewMode } from '../../components/ViewSwitch'
 import { initialView, nextView, ViewSwitch } from '../../components/ViewSwitch'
+import { focusReplace } from '../../lib/codemirror'
 import { kindFromPath } from '../../lib/kinds'
 import * as platform from '../../lib/platform'
 import { getEditor, registerEditor, useWorkspace } from '../../state/workspace'
@@ -229,6 +230,14 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
         find: () => {
           if (mode === 'write' && viewRef.current) openSearchPanel(viewRef.current)
           else setFindOpen(true)
+        },
+        // CodeMirror's search panel replaces; the preview can't, so show the source beside it.
+        replace: () => {
+          const view = viewRef.current
+          if (!view) return
+          if (mode === 'read') setMode('split')
+          setFindOpen(false)
+          requestAnimationFrame(() => focusReplace(view))
         },
         print: async () => {
           const root = document.getElementById('print-root')!

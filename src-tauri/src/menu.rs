@@ -54,6 +54,10 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 pub fn set_menu_shortcuts<R: Runtime>(app: AppHandle<R>, shortcuts: Shortcuts) -> Result<(), String> {
     let menu = build_with(&app, &shortcuts).map_err(|e| e.to_string())?;
     app.set_menu(menu).map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    if let Some(window) = tauri::Manager::get_webview_window(&app, "main") {
+        crate::window_chrome::menu_replaced(&window);
+    }
     Ok(())
 }
 
@@ -78,7 +82,8 @@ fn build_with<R: Runtime>(app: &AppHandle<R>, keys: &Shortcuts) -> tauri::Result
         // Asks which kind of file: one per plugin that's on.
         .item(&item(app, keys, "new", "New…", Some("CmdOrCtrl+N"))?)
         .item(&item(app, keys, "open", "Open…", Some("CmdOrCtrl+O"))?)
-        .item(&item(app, keys, "open-folder", "Open Folder…", Some("CmdOrCtrl+Shift+O"))?)
+        // ⌘O opens folders too; this stays for finding by name.
+        .item(&item(app, keys, "open-folder", "Open Folder…", None)?)
         .item(&item(app, keys, "close-folder", "Close Folder", None)?)
         .separator()
         .item(&item(app, keys, "save", "Save", Some("CmdOrCtrl+S"))?)
@@ -111,6 +116,8 @@ fn build_with<R: Runtime>(app: &AppHandle<R>, keys: &Shortcuts) -> tauri::Result
         .select_all()
         .separator()
         .item(&item(app, keys, "find", "Find…", Some("CmdOrCtrl+F"))?)
+        // Word's keys: Control-H on a Mac, where ⌘H hides the app.
+        .item(&item(app, keys, "replace", "Find and Replace…", Some(if cfg!(target_os = "macos") { "Ctrl+H" } else { "CmdOrCtrl+H" }))?)
         .build()?;
 
     let markdown_menu = SubmenuBuilder::new(app, "Source and Preview")
