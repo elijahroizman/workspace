@@ -63,7 +63,7 @@ function currentPath(tabId: string): string | null {
 
 const folderOf = (path: string) => path.slice(0, Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')))
 
-/** Hosts an optional plugin's editor: the plugin renders into a plain element and talks through plugins/api.ts. */
+/** Hosts a plugin bundle's editor (Images, and any optional plugin): it renders into a plain element and talks through plugins/api.ts. */
 export default function PluginEditor({ tab, active }: EditorProps) {
   const host = useRef<HTMLDivElement>(null)
   const instance = useRef<Instance | null>(null)

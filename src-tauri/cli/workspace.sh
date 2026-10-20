@@ -49,7 +49,7 @@ for arg do
   esac
   if [ ! -e "$arg" ]; then
     case "$arg" in
-      *.md | *.markdown | *.txt | *.tex | *.mmd | *.mermaid)
+      *.md | *.markdown | *.txt | *.tex)
         if ! : > "$arg"; then
           status=1
           continue

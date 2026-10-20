@@ -2,7 +2,7 @@
 
 # Workspace
 
-A small, fast app for the documents most people actually open: **Word, PowerPoint, PDF, Markdown and plain text**, each in a tab of one window. Optional plugins add **Excalidraw** drawings, **EPUB** books, an **image** viewer, **Mermaid** diagrams, **LaTeX** and extra fonts.
+A small, fast app for the documents most people actually open: **Word, PowerPoint, PDF, Markdown, plain text and images**, each in a tab of one window. Optional plugins add **LaTeX** and extra fonts.
 
 Runs on macOS (Apple silicon), Windows (x64) and Debian/Ubuntu (x64). Everything runs locally: no accounts, nothing uploaded, works offline.
 
@@ -31,7 +31,7 @@ This is early software, mostly written by AI models, and it has bugs. LaTeX on W
 
 - [What each editor can do](docs/user/features.md)
 - [Keyboard shortcuts](docs/user/keyboard-shortcuts.md)
-- [Plugins: Excalidraw, EPUB, Images, Mermaid, LaTeX and fonts](docs/user/plugins.md)
+- [Plugins: images, LaTeX and fonts](docs/user/plugins.md)
 - [Updating, and the APT repository](docs/user/updating.md)
 - [What it doesn't do yet](docs/user/limitations.md)
 - [Changelog](CHANGELOG.md)
@@ -81,4 +81,4 @@ Release builds are signed in GitHub Actions. Nothing secret lives in the reposit
 
 ## Thanks
 
-Workspace is built on open-source engines: [docx-editor](https://github.com/eigenpal/docx-editor), [pptx-react-viewer](https://github.com/ChristopherVR/ooxml), [PDFium](https://pdfium.googlesource.com/pdfium/) through [EmbedPDF](https://github.com/embedpdf/embed-pdf-viewer), [CodeMirror](https://codemirror.net), [markdown-it](https://github.com/markdown-it/markdown-it), [Excalidraw](https://github.com/excalidraw/excalidraw), [Mermaid](https://github.com/mermaid-js/mermaid) and many more. **Settings › General › Open-source licenses** lists every one with its license. The theme picker is heavily inspired by [T3 Code](https://github.com/pingdotgg/t3code)'s.
+Workspace is built on open-source engines: [docx-editor](https://github.com/eigenpal/docx-editor), [pptx-react-viewer](https://github.com/ChristopherVR/ooxml), [PDFium](https://pdfium.googlesource.com/pdfium/) through [EmbedPDF](https://github.com/embedpdf/embed-pdf-viewer), [CodeMirror](https://codemirror.net), [markdown-it](https://github.com/markdown-it/markdown-it) and many more. **Settings › General › Open-source licenses** lists every one with its license. The theme picker is heavily inspired by [T3 Code](https://github.com/pingdotgg/t3code)'s.

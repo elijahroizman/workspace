@@ -109,46 +109,6 @@
       },
       {
         "ext": [
-          "excalidraw"
-        ],
-        "name": "Excalidraw Drawing",
-        "role": "Editor",
-        "rank": "Alternate",
-        "mimeType": "application/vnd.excalidraw+json",
-        "exportedType": {
-          "identifier": "com.eliroizman.workspace.excalidraw",
-          "conformsTo": [
-            "public.json"
-          ]
-        }
-      },
-      {
-        "ext": [
-          "epub"
-        ],
-        "name": "EPUB Book",
-        "role": "Viewer",
-        "rank": "Alternate",
-        "mimeType": "application/epub+zip"
-      },
-      {
-        "ext": [
-          "mmd",
-          "mermaid"
-        ],
-        "name": "Mermaid Diagram",
-        "role": "Editor",
-        "rank": "Alternate",
-        "mimeType": "text/vnd.mermaid",
-        "exportedType": {
-          "identifier": "com.eliroizman.workspace.mermaid",
-          "conformsTo": [
-            "public.plain-text"
-          ]
-        }
-      },
-      {
-        "ext": [
           "tex"
         ],
         "name": "LaTeX Document",

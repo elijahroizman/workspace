@@ -37,7 +37,7 @@ export function showVersionHistory(tabId = useWorkspace.getState().activeId) {
   useVersionHistory.getState().show(tabId)
 }
 
-const TEXT_KINDS = new Set(['md', 'txt', 'latex', 'mermaid'])
+const TEXT_KINDS = new Set(['md', 'txt', 'latex'])
 
 /** What a version says, as lines, for comparing. Null for files that aren't text (PDF, pictures). */
 async function readableText(kind: string, bytes: Uint8Array): Promise<string[] | null> {

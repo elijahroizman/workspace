@@ -1,6 +1,6 @@
 // The source-and-preview layout Markdown has, for plugins: CodeMirror on the left, a preview on
-// the right, and Workspace's view switch (⌘E) choosing one, the other or both. Mermaid and
-// LaTeX use it; so can any plugin whose files are text that renders into something.
+// the right, and Workspace's view switch (⌘E) choosing one, the other or both. LaTeX uses
+// it; so can any plugin whose files are text that renders into something.
 //
 // It doesn't know what the preview is. The plugin renders into `preview` and gets told, through
 // `onIdle`, when typing has paused long enough to render again.

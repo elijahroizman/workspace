@@ -1,5 +1,5 @@
-// The read / split / write switch that Markdown and the source-and-preview plugins (Mermaid,
-// LaTeX) share, with the view-* shortcuts (⌘E cycles).
+// The read / split / write switch that Markdown and the source-and-preview plugins (LaTeX)
+// share, with the view-* shortcuts (⌘E cycles).
 
 import { BookOpen, Columns2, SquarePen } from 'lucide-react'
 import type { ViewMode } from '../plugins/api'

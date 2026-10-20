@@ -87,7 +87,7 @@ export default function SetupScreen() {
           <>
             <header className="setup-header">
               <h1 id="setup-title">Welcome to Workspace</h1>
-              <p className="muted">Word, PowerPoint, PDF, Markdown and text are built in. Pick anything else you’d like to open.</p>
+              <p className="muted">Word, PowerPoint, PDF, Markdown, text and images are built in. Pick anything else you’d like to open.</p>
             </header>
             <div className="setup-body">
               {PLUGINS.filter((p) => !isBuiltIn(p)).map((p) => (
@@ -116,7 +116,7 @@ export default function SetupScreen() {
                   .map((k) => (
                     <span key={k.id} className="setup-builtin">
                       <DocBadge kind={k.id} size={18} />
-                      {k.prose === 'text' ? 'Text' : k.prose}
+                      {k.prose === 'text' ? 'Text' : k.prose === 'image' ? 'Image' : k.prose}
                     </span>
                   ))}
                 <span className="faint">Built in</span>

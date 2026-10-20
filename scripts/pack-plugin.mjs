@@ -1,6 +1,6 @@
 // Zips a built plugin (plugins/<id>/dist) as release/<id>-<version>.zip and signs it with the
 // updater key, which the app checks before installing (src-tauri/src/plugins.rs).
-// Usage: TAURI_SIGNING_PRIVATE_KEY=… TAURI_SIGNING_PRIVATE_KEY_PASSWORD=… node scripts/pack-plugin.mjs excalidraw
+// Usage: TAURI_SIGNING_PRIVATE_KEY=… TAURI_SIGNING_PRIVATE_KEY_PASSWORD=… node scripts/pack-plugin.mjs latex
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs'

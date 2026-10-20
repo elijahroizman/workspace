@@ -41,7 +41,7 @@
   flex: none;
   margin: auto;
   box-shadow: var(--page-shadow);
-  /* A checkerboard behind see-through pictures (a Mermaid export, say). */
+  /* A checkerboard behind see-through pictures. */
   background: repeating-conic-gradient(rgba(128, 128, 128, 0.18) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px;
 }
 

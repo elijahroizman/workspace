@@ -1,17 +1,15 @@
-// Every plugin Workspace knows about. Built-in plugins ship with the app and are always on.
-// Optional ones are off until turned on in Settings or the setup screen:
-//  - `bundled` plugins are small, so their files come with the app and turning one on is instant.
-//  - `download` plugins are too big to make everyone download (Excalidraw's fonts alone are 14 MB).
-//    Turning one on fetches a signed archive from the Workspace GitHub release (see
-//    src-tauri/src/plugins.rs and plugins/README.md).
-// A plugin bigger than about 1 MB should be a download.
+// Every plugin Workspace knows about.
+// Built-in plugins ship with the app and are always on. Word, PowerPoint, PDF, Markdown and text
+// have their editors in src/editors. Images is built in too, but its viewer is a plugin bundle
+// (`"bundled": true` in plugins/images/plugin.json): the app build copies it to /plugins/images/
+// and PluginEditor loads it from there.
+// Optional plugins are off until turned on in Settings or the setup screen. A `download` plugin
+// is fetched as a signed archive from the Workspace GitHub release (see src-tauri/src/plugins.rs
+// and plugins/README.md). LaTeX is the only one.
 
 import type { ComponentType } from 'react'
-import { BookOpen, FileCode2, FileText, FileType2, Image as ImageIcon, NotepadText, Presentation, Sigma, Workflow } from 'lucide-react'
-import excalidraw from '../../plugins/excalidraw/plugin.json'
+import { FileCode2, FileText, FileType2, Image as ImageIcon, NotepadText, Presentation, Sigma } from 'lucide-react'
 import latex from '../../plugins/latex/plugin.json'
-import mermaid from '../../plugins/mermaid/plugin.json'
-import { ExcalidrawIcon } from './icons'
 
 export interface KindInfo {
   id: string
@@ -46,7 +44,6 @@ export interface PluginInfo {
   /** Built in: always on. Otherwise how its files arrive. */
   source:
     | { type: 'builtin' }
-    | { type: 'bundled' }
     | {
         type: 'download'
         /** The plugin's own version; a new one is downloaded when this changes. */
@@ -158,55 +155,12 @@ export const PLUGINS: PluginInfo[] = [
     ],
   },
   {
-    id: 'excalidraw',
-    name: 'Excalidraw',
-    description: 'Hand-drawn style diagrams, sketches and whiteboards.',
-    homepage: 'https://excalidraw.com',
-    license: 'MIT',
-    source: { type: 'download', version: excalidraw.version, size: excalidraw.size },
-    kinds: [
-      {
-        id: 'excalidraw',
-        prose: 'Excalidraw',
-        label: 'Excalidraw Drawing',
-        short: 'Drawing',
-        extensions: ['excalidraw'],
-        color: 'var(--kind-excalidraw)',
-        icon: ExcalidrawIcon,
-        untitled: 'Untitled Drawing',
-        create: { title: 'New drawing', hint: 'Excalidraw (.excalidraw)' },
-        panels: { left: false, right: false },
-      },
-    ],
-  },
-  {
-    id: 'epub',
-    name: 'EPUB',
-    description: 'Read EPUB books, with their table of contents. Workspace remembers your place.',
-    homepage: 'https://github.com/elijahroizman/workspace/tree/main/plugins/epub',
-    license: 'MIT, (MPL-2.0 OR Apache-2.0)',
-    source: { type: 'bundled' },
-    kinds: [
-      {
-        id: 'epub',
-        prose: 'EPUB',
-        label: 'EPUB Book',
-        short: 'Book',
-        extensions: ['epub'],
-        color: 'var(--kind-epub)',
-        icon: BookOpen,
-        untitled: 'Untitled Book',
-        panels: { left: true, right: false },
-      },
-    ],
-  },
-  {
     id: 'images',
     name: 'Images',
     description: 'A simple viewer for PNG, JPEG and HEIC pictures, with highlighting, drawing, cropping and turning.',
     homepage: 'https://github.com/elijahroizman/workspace/tree/main/plugins/images',
     license: 'MIT, LGPL-3.0',
-    source: { type: 'bundled' },
+    source: { type: 'builtin' },
     kinds: [
       {
         id: 'image',
@@ -218,28 +172,6 @@ export const PLUGINS: PluginInfo[] = [
         icon: ImageIcon,
         untitled: 'Untitled Image',
         panels: { left: false, right: false },
-      },
-    ],
-  },
-  {
-    id: 'mermaid',
-    name: 'Mermaid',
-    description: 'Flowcharts, sequence diagrams, Gantt charts and more, written as text and drawn as you type.',
-    homepage: 'https://mermaid.js.org',
-    license: 'MIT',
-    source: { type: 'download', version: mermaid.version, size: mermaid.size },
-    kinds: [
-      {
-        id: 'mermaid',
-        prose: 'Mermaid',
-        label: 'Mermaid Diagram',
-        short: 'Diagram',
-        extensions: ['mmd', 'mermaid'],
-        color: 'var(--kind-mermaid)',
-        icon: Workflow,
-        untitled: 'Untitled Diagram',
-        create: { title: 'New diagram', hint: 'Mermaid (.mmd)' },
-        panels: { left: true, right: false },
       },
     ],
   },

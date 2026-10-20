@@ -69,9 +69,10 @@ function docxCropLocked(): Plugin {
 }
 
 /**
- * Optional plugins are built apart from the app (`npm run plugins`, into plugins/<id>/dist).
- * The app downloads the big ones and carries the bundled ones (see bundledPlugins). The dev
- * and preview servers serve them at /plugins/<id>/ instead.
+ * Plugins are built apart from the app (`npm run plugins`, into plugins/<id>/dist).
+ * Download plugins are fetched when turned on. Ones with `"bundled": true` (Images) are
+ * copied into the app (see bundledPlugins). The dev and preview servers serve both at
+ * /plugins/<id>/.
  */
 function servePlugins(): Plugin {
   const types: Record<string, string> = { '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png' }

@@ -1,5 +1,5 @@
-//! Plugins too big to ship inside the app (Excalidraw, with its fonts, is ~18 MB) are
-//! downloaded from the Workspace GitHub release when you turn them on. Each archive is
+//! Optional plugins that don't ship inside the app (LaTeX) are downloaded from the
+//! Workspace GitHub release when you turn them on. Each archive is
 //! signed with the same key as app updates; nothing is unpacked unless the signature checks
 //! out. Installed plugins live in `<app data>/plugins/<id>/` and the web view loads them
 //! through the `wsplugin:` scheme served here.
@@ -272,11 +272,11 @@ mod tests {
 
     #[test]
     fn serves_only_plain_paths_inside_a_plugin() {
-        assert_eq!(safe_relative("/excalidraw/index.js"), Some(PathBuf::from("excalidraw/index.js")));
-        assert_eq!(safe_relative("/excalidraw/fonts/A%20B.woff2"), Some(PathBuf::from("excalidraw/fonts/A B.woff2")));
-        assert_eq!(safe_relative("/excalidraw/../secret"), None);
+        assert_eq!(safe_relative("/latex/index.js"), Some(PathBuf::from("latex/index.js")));
+        assert_eq!(safe_relative("/latex/fonts/A%20B.woff2"), Some(PathBuf::from("latex/fonts/A B.woff2")));
+        assert_eq!(safe_relative("/latex/../secret"), None);
         assert_eq!(safe_relative("/%2E%2E/secret"), None);
-        assert_eq!(safe_relative("/.excalidraw-installing/index.js"), None);
+        assert_eq!(safe_relative("/.latex-installing/index.js"), None);
         assert_eq!(safe_relative("/"), None);
     }
 
@@ -294,9 +294,9 @@ mod tests {
 
     #[test]
     fn plugin_ids_are_folder_names() {
-        assert!(valid_id("excalidraw"));
+        assert!(valid_id("latex"));
         assert!(!valid_id("../x"));
-        assert!(!valid_id("Excalidraw"));
+        assert!(!valid_id("Latex"));
         assert!(!valid_id(""));
     }
 
