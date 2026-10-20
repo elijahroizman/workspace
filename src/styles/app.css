@@ -3891,105 +3891,64 @@ kbd.kbd {
   background: var(--line);
 }
 
-/* Version history: the Settings dialog's layout, versions in its sidebar. */
-.settings.history {
-  grid-template-columns: 248px 1fr;
-  width: min(1000px, 100%);
-  height: min(680px, 100%);
+/* Version history (components/VersionHistory.tsx): the document's changes as a page on the
+   left, the versions down the right. */
+.vh {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  width: min(1180px, 100%);
+  height: 100%;
+  max-height: 900px;
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
 }
 
-.history-nav {
-  min-height: 0;
-  padding-bottom: 0;
-}
-
-.history-list {
-  flex: 1;
-  min-height: 0;
-  margin: 0 -10px;
-  padding: 0 10px 8px;
-  overflow-y: auto;
-}
-
-.history-day {
-  padding: 10px 8px 4px;
-  color: var(--fg-faint);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.history-list > div:first-child .history-day {
-  padding-top: 0;
-}
-
-.settings-nav-item.history-row {
-  width: 100%;
-  height: auto;
-  gap: 10px;
-  padding: 6px 8px;
-}
-
-.history-dot {
-  flex: none;
-  width: 9px;
-  height: 9px;
-  border: 2px solid var(--fg-faint);
-  border-radius: 50%;
-}
-
-.history-dot[data-latest] {
-  border-color: var(--accent);
-  background: var(--accent);
-}
-
-.history-row-text {
-  flex: 1;
-  min-width: 0;
+.vh-main {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  min-width: 0;
+  min-height: 0;
 }
 
-.history-row-title {
+.vh-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 16px 12px 28px;
+}
+
+.vh-head-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.vh-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-muted);
+  font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.history-row-meta {
-  color: var(--fg-faint);
-  font-size: 12px;
-}
-
-.history-empty {
+.vh h2 {
   margin: 0;
-  padding: 4px 8px;
-  color: var(--fg-faint);
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.history-commit {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0 -10px;
-  padding: 12px 10px 14px;
-  border-top: 1px solid var(--line);
-}
-
-/* The nav is --chrome, the same grey as a field. */
-.history-commit .field {
-  background: var(--panel);
-  border-color: var(--line);
-}
-
-.history-commit .field:focus-within {
-  border-color: var(--accent);
-}
-
-.history-name {
+.vh-name {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -4001,135 +3960,418 @@ kbd.kbd {
   text-align: left;
 }
 
-.history-name h3 {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.history-name svg {
+.vh-name svg {
   flex: none;
   color: var(--fg-faint);
   opacity: 0;
 }
 
-.history-name:hover svg,
-.history-name:focus-visible svg {
+.vh-name:hover svg,
+.vh-name:focus-visible svg {
   opacity: 1;
 }
 
-.history-rename {
-  flex: 1;
-  max-width: 360px;
+.vh-rename {
+  width: min(360px, 100%);
   border-color: var(--accent);
 }
 
-.history-detail {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.history-detail-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 24px 12px;
-}
-
-.history-actions {
+.vh-actions {
   display: flex;
   flex: none;
   align-items: center;
   gap: 6px;
 }
 
-.history-compare {
+.vh-toolbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  padding: 0 24px 12px;
+  padding: 0 28px 12px;
+  border-bottom: 1px solid var(--line);
 }
 
-.history-stat {
+.vh-legend {
+  display: flex;
+  gap: 12px;
+  color: var(--fg-muted);
   font-size: 12px;
+  white-space: nowrap;
+}
+
+.vh-legend span::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--fg) 30%, transparent);
+}
+
+.vh-legend .vh-legend-add::before {
+  background: var(--success);
+}
+
+.vh-legend .vh-legend-del::before {
+  background: var(--danger);
+}
+
+.vh-canvas {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--canvas);
+}
+
+.vh-center {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 32px;
+  text-align: center;
+}
+
+.vh-center .empty-state {
+  max-width: 420px;
+}
+
+.vh-note {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 360px;
   color: var(--fg-muted);
 }
 
-.history-stat .add {
-  color: var(--success);
+.vh-note p {
+  margin: 0;
+  line-height: 1.5;
 }
 
-.history-stat .del {
-  color: var(--danger);
-}
-
-.history-diff {
-  flex: 1;
-  min-height: 0;
-  margin: 0 24px 24px;
-  overflow: auto;
+.vh-note-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--canvas);
+  color: var(--fg);
+}
+
+/* The changes, drawn as a page of the document. */
+.vh-page {
+  max-width: 760px;
+  margin: 28px auto 40px;
+  padding: 40px 56px;
+  background: var(--raised);
+  border-radius: 4px;
+  box-shadow: var(--page-shadow);
+  font-size: 14px;
+  line-height: 1.6;
+  user-select: text;
+}
+
+.vh-page.mono {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 12.5px;
   line-height: 1.55;
 }
 
-.history-diff.center {
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  font-family: var(--font-ui);
-  text-align: center;
+.vh-p {
+  position: relative;
+  margin: 0 0 0.6em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--fg-muted);
 }
 
-.diff-line {
-  display: flex;
-  min-width: max-content;
-  padding: 0 10px 0 0;
+/* Markdown, text and LaTeX compare line by line: blank lines are the paragraph breaks. */
+.vh-page.lines .vh-p {
+  margin: 0;
 }
 
-.diff-line.add {
-  background: color-mix(in srgb, var(--success) 16%, transparent);
+.vh-p::before {
+  content: '';
+  position: absolute;
+  left: -20px;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  border-radius: 2px;
 }
 
-.diff-line.del {
+.vh-p.add,
+.vh-p.del,
+.vh-p.change {
+  color: var(--fg);
+}
+
+.vh-p.add {
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+}
+
+.vh-p.add::before {
+  background: var(--success);
+}
+
+.vh-p.del {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--danger) 70%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.vh-p.del::before {
+  background: var(--danger);
+}
+
+.vh-p.change::before {
+  background: color-mix(in srgb, var(--fg) 30%, transparent);
+}
+
+.vh-p ins {
+  text-decoration: none;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--success) 26%, transparent);
+  box-shadow: 0 1.5px 0 var(--success);
+}
+
+.vh-p del {
+  border-radius: 3px;
+  color: color-mix(in srgb, var(--danger) 80%, var(--fg));
+  text-decoration-color: var(--danger);
   background: color-mix(in srgb, var(--danger) 14%, transparent);
 }
 
-.diff-sign {
-  flex: none;
-  width: 24px;
+.vh-slide {
+  margin: 1.4em 0 0.6em;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
   color: var(--fg-faint);
-  text-align: center;
-  user-select: none;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.diff-line.add .diff-sign {
-  color: var(--success);
+.vh-slide:first-child {
+  margin-top: 0;
 }
 
-.diff-line.del .diff-sign {
-  color: var(--danger);
-}
-
-.diff-text {
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-width: 100%;
-}
-
-.diff-skip {
-  padding: 2px 10px;
-  border-block: 1px solid var(--line-soft);
-  background: var(--panel);
+.vh-skip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: calc(100% + 40px);
+  height: 26px;
+  margin: 4px -20px 0.8em;
+  border: 0;
+  border-block: 1px dashed var(--line);
+  background: transparent;
   color: var(--fg-faint);
   font-family: var(--font-ui);
+  font-size: 11.5px;
+}
+
+.vh-skip:hover {
+  background: var(--hover);
+  color: var(--fg-muted);
+}
+
+/* The versions. */
+.vh-side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  background: var(--chrome);
+}
+
+.vh-save {
+  display: flex;
+  gap: 6px;
+  padding: 16px 14px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.vh-save .field {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel);
+  border-color: var(--line);
+}
+
+.vh-save .field:focus-within {
+  border-color: var(--accent);
+}
+
+.vh-list {
+  flex: 1;
+  min-height: 0;
+  padding: 4px 8px 12px;
+  overflow-y: auto;
+}
+
+.vh-day {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 12px 10px 6px;
+  background: var(--chrome);
+  color: var(--fg-muted);
   font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.vh-row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 8px 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+}
+
+/* The timeline: a line through the dots of one day. */
+.vh-row::before {
+  content: '';
+  position: absolute;
+  left: 16px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+}
+
+.vh-day + .vh-row::before {
+  top: 14px;
+}
+
+.vh-list > div:has(+ div > .vh-day) .vh-row::before,
+.vh-list > div:last-child .vh-row::before {
+  bottom: calc(100% - 14px);
+}
+
+.vh-row:hover {
+  background: var(--hover);
+}
+
+.vh-row.on {
+  background: var(--accent-soft);
+}
+
+.vh-dot {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border: 2px solid var(--fg-faint);
+  border-radius: 50%;
+  background: var(--chrome);
+}
+
+.vh-dot[data-named] {
+  border-color: var(--fg);
+}
+
+.vh-dot[data-latest] {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.vh-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.vh-row-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vh-row-top strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.vh-badge {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.vh-row-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vh-row-title.named {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.vh-row-title svg {
+  flex: none;
+}
+
+.vh-row-meta {
+  color: var(--fg-faint);
+  font-size: 11.5px;
+}
+
+.vh-row-more {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--fg-faint);
+  opacity: 0;
+}
+
+.vh-row:hover .vh-row-more,
+.vh-row.on .vh-row-more,
+.vh-row:focus-visible .vh-row-more {
+  opacity: 1;
+}
+
+.vh-row-more:hover {
+  background: var(--press);
+  color: var(--fg);
+}
+
+.vh-footnote {
+  margin: 0;
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--line);
+  color: var(--fg-faint);
+  font-size: 11.5px;
+  line-height: 1.45;
 }
 
 /* Open folder: a file tree beside the tabs (⇧⌘O, ⇧⌘E) */

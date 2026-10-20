@@ -1,14 +1,14 @@
-import { ArchiveRestore, Copy, Pencil, Save, Tag, Trash2, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArchiveRestore, ChevronsUpDown, Copy, History, MoreHorizontal, Pencil, Tag, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { create } from 'zustand'
 import type { DiffOp } from '../lib/diff'
-import { diffLines, hunks } from '../lib/diff'
+import { diffLines } from '../lib/diff'
 import { KINDS } from '../lib/kinds'
 import type { FileVersion } from '../lib/platform'
 import * as platform from '../lib/platform'
 import { useSettings } from '../state/settings'
 import { getEditor, useWorkspace } from '../state/workspace'
-import { IconButton, Segmented, Spinner } from './ui'
+import { Button, EmptyState, IconButton, KindIcon, Modal, PillTabs, PopoverMenu, Spinner, TextField } from './ui'
 
 /** Which tab's history is showing, if any. */
 export const useVersionHistory = create<{ tabId: string | null; show(tabId: string | null): void }>((set) => ({
@@ -37,7 +37,7 @@ export function showVersionHistory(tabId = useWorkspace.getState().activeId) {
   useVersionHistory.getState().show(tabId)
 }
 
-const TEXT_KINDS = new Set(['md', 'txt', 'latex', 'mermaid'])
+const TEXT_KINDS = new Set(['md', 'txt', 'latex'])
 
 /** What a version says, as lines, for comparing. Null for files that aren't text (PDF, pictures). */
 async function readableText(kind: string, bytes: Uint8Array): Promise<string[] | null> {
@@ -98,6 +98,79 @@ export function formatSize(n: number) {
 
 type Compare = 'current' | 'previous'
 
+/** One paragraph (or line) of the comparison. `change` is a paragraph edited in place, word by word. */
+type Row = { type: 'same' | 'add' | 'del'; text: string } | { type: 'change'; parts: DiffOp[] } | { type: 'skip'; rows: Row[] }
+
+const words = (s: string) => s.match(/\s+|[^\s]+/g) ?? []
+
+/** A removed paragraph and an added one that mostly share their words are one edited paragraph. */
+function edited(before: string, after: string): DiffOp[] | null {
+  const parts = diffLines(words(before), words(after), 800)
+  if (!parts) return null
+  const kept = parts.reduce((n, p) => n + (p.type === 'same' && p.text.trim() ? p.text.length : 0), 0)
+  return kept >= 0.4 * Math.max(before.length, after.length) ? parts : null
+}
+
+/** Paragraph diff → rows: edits paired up, long unchanged runs folded with `context` around changes. */
+function toRows(ops: DiffOp[], context = 2): Row[] {
+  const flat: Row[] = []
+  for (let i = 0; i < ops.length; ) {
+    if (ops[i].type === 'same') {
+      flat.push(ops[i++] as Row)
+      continue
+    }
+    const dels: string[] = []
+    const adds: string[] = []
+    while (i < ops.length && ops[i].type !== 'same') (ops[i].type === 'del' ? dels : adds).push(ops[i++].text)
+    const pairs = Math.min(dels.length, adds.length)
+    const rest: Row[] = []
+    for (let j = 0; j < pairs; j++) {
+      const parts = edited(dels[j], adds[j])
+      if (parts) flat.push({ type: 'change', parts })
+      else rest.push({ type: 'del', text: dels[j] }, { type: 'add', text: adds[j] })
+    }
+    flat.push(...rest, ...dels.slice(pairs).map((text) => ({ type: 'del' as const, text })), ...adds.slice(pairs).map((text) => ({ type: 'add' as const, text })))
+  }
+  const near = flat.map(() => false)
+  flat.forEach((r, i) => {
+    if (r.type === 'same') return
+    for (let j = Math.max(0, i - context); j <= Math.min(flat.length - 1, i + context); j++) near[j] = true
+  })
+  const out: Row[] = []
+  let run: Row[] = []
+  const flush = () => {
+    if (run.length > 1) out.push({ type: 'skip', rows: run })
+    else out.push(...run)
+    run = []
+  }
+  flat.forEach((r, i) => {
+    if (near[i]) {
+      flush()
+      out.push(r)
+    } else run.push(r)
+  })
+  flush()
+  return out
+}
+
+interface Comparison {
+  rows: Row[] | null
+  added: number
+  removed: number
+  changed: number
+}
+
+function compareTexts(before: string[], after: string[]): Comparison {
+  const ops = diffLines(before, after)
+  if (!ops) return { rows: null, added: 0, removed: 0, changed: 0 }
+  const rows = toRows(ops)
+  const all = rows.flatMap((r) => (r.type === 'skip' ? r.rows : [r]))
+  const count = (type: Row['type']) => all.filter((r) => r.type === type).length
+  return { rows, added: count('add'), removed: count('del'), changed: count('change') }
+}
+
+const versionTitle = (v: FileVersion) => v.label || (v.source === 'original' ? 'Before Workspace saved it' : 'Saved')
+
 export function VersionHistory() {
   const tabId = useVersionHistory((s) => s.tabId)
   const tab = useWorkspace((s) => s.tabs.find((t) => t.id === tabId))
@@ -105,9 +178,10 @@ export function VersionHistory() {
   const [versions, setVersions] = useState<FileVersion[] | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [compare, setCompare] = useState<Compare>('current')
-  const [diff, setDiff] = useState<{ ops: DiffOp[] | null; added: number; removed: number } | 'binary' | 'loading' | null>(null)
+  const [diff, setDiff] = useState<Comparison | 'binary' | 'first' | 'loading' | null>(null)
   const [message, setMessage] = useState('')
   const [renaming, setRenaming] = useState(false)
+  const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const path = tab?.path ?? null
 
@@ -141,23 +215,20 @@ export function VersionHistory() {
     void (async () => {
       try {
         const bytes = await platform.readVersion(path, version.id)
-        const before = await readableText(tab.kind, bytes)
-        if (!before) return live && setDiff('binary')
-        let after: string[] | null
+        const text = await readableText(tab.kind, bytes)
+        if (!text) return live && setDiff('binary')
         if (compare === 'previous') {
           const prev = versions[index + 1]
-          after = prev ? await readableText(tab.kind, await platform.readVersion(path, prev.id)) : []
+          if (!prev) return live && setDiff('first')
+          const before = await readableText(tab.kind, await platform.readVersion(path, prev.id))
           // Previous → this one: what this version changed.
-          const ops = diffLines(after ?? [], before)
-          if (live) setDiff({ ops, added: ops?.filter((o) => o.type === 'add').length ?? 0, removed: ops?.filter((o) => o.type === 'del').length ?? 0 })
+          if (live) setDiff(compareTexts(before ?? [], text))
           return
         }
         const editor = getEditor(tab.id)
-        const now = editor ? await editor.getBytes() : await platform.readFile(path)
-        after = await readableText(tab.kind, now)
+        const now = await readableText(tab.kind, editor ? await editor.getBytes() : await platform.readFile(path))
         // This version → now: what restoring it would undo.
-        const ops = diffLines(before, after ?? [])
-        if (live) setDiff({ ops, added: ops?.filter((o) => o.type === 'add').length ?? 0, removed: ops?.filter((o) => o.type === 'del').length ?? 0 })
+        if (live) setDiff(compareTexts(text, now ?? []))
       } catch (err) {
         console.warn('version diff', err)
         if (live) setDiff('binary')
@@ -174,6 +245,7 @@ export function VersionHistory() {
         if (e.key === 'Escape') (e.target as HTMLInputElement).blur()
         return
       }
+      if (document.querySelector('.menu')) return
       if (e.key === 'Escape') close()
       else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && versions?.length) {
         const i = Math.max(0, Math.min(versions.length - 1, index + (e.key === 'ArrowDown' ? 1 : -1)))
@@ -189,6 +261,7 @@ export function VersionHistory() {
 
   if (!tab || !path) return null
   const ext = KINDS[tab.kind]?.extensions[0] ?? ''
+  const unit = tab.kind === 'docx' || tab.kind === 'pptx' ? 'paragraph' : 'line'
 
   const saveVersion = async () => {
     const label = message.trim()
@@ -214,19 +287,19 @@ export function VersionHistory() {
     }
   }
 
-  const openCopy = async () => {
-    if (!version) return
-    const bytes = await platform.readVersion(path, version.id)
-    const stamp = new Date(version.time).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).replace(/[/:]/g, '.')
-    const id = useWorkspace.getState().openUnsaved(bytes, `${tab.title} (${version.label || stamp}).${ext}`)
+  const openCopy = async (v = version) => {
+    if (!v) return
+    const bytes = await platform.readVersion(path, v.id)
+    const stamp = new Date(v.time).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).replace(/[/:]/g, '.')
+    const id = useWorkspace.getState().openUnsaved(bytes, `${tab.title} (${v.label || stamp}).${ext}`)
     if (id) close()
   }
 
-  const remove = async () => {
-    if (!version) return
+  const remove = async (v = version) => {
+    if (!v) return
     const ok = await platform.confirmDialog('This copy is deleted for good.', { title: 'Delete this version?', okLabel: 'Delete', danger: true })
     if (!ok) return
-    await platform.deleteVersion(path, version.id)
+    await platform.deleteVersion(path, v.id)
     await refresh()
   }
 
@@ -237,56 +310,20 @@ export function VersionHistory() {
     await refresh()
   }
 
+  const menuVersion = menu && versions?.find((v) => v.id === menu.id)
   let lastDay = ''
   return (
-    <div className="settings-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="settings history" role="dialog" aria-modal="true" aria-label={`Version history of ${tab.title}`}>
-        <nav className="settings-nav history-nav" aria-label="Versions">
-          <h2>Version history</h2>
-          <div className="history-list" role="listbox" ref={listRef} aria-label="Versions">
-            {versions === null && <Spinner />}
-            {versions?.length === 0 && <p className="history-empty">No versions yet. Each time you save (or autosave), a copy is kept here.</p>}
-            {versions?.map((v, i) => {
-              const day = dayName(v.time)
-              const heading = day !== lastDay
-              lastDay = day
-              return (
-                <div key={v.id} role="presentation">
-                  {heading && <div className="history-day">{day}</div>}
-                  <button type="button" role="option" aria-selected={v.id === selected} className={`settings-nav-item history-row ${v.id === selected ? 'on' : ''}`} onClick={() => setSelected(v.id)}>
-                    <span className="history-dot" data-latest={i === 0 || undefined} />
-                    <span className="history-row-text">
-                      <span className="history-row-title">{v.label || (v.source === 'original' ? 'Before Workspace saved it' : i === 0 ? 'Latest save' : 'Saved')}</span>
-                      <span className="history-row-meta">
-                        {timeOf(v.time)} · {formatSize(v.size)}
-                      </span>
-                    </span>
-                    {v.label && <Tag size={12} className="faint" />}
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-          <form
-            className="history-commit"
-            onSubmit={(e) => {
-              e.preventDefault()
-              void saveVersion()
-            }}
-          >
-            <label className="field">
-              <input value={message} placeholder="Name this save (optional)" spellCheck={false} onChange={(e) => setMessage(e.currentTarget.value)} />
-            </label>
-            <button type="submit" className="btn">
-              <Save size={14} /> Save version
-            </button>
-          </form>
-        </nav>
-        <div className="settings-page">
-          <header className="settings-page-header">
-            {version && renaming ? (
-              <label className="field history-rename">
-                <input
+    <Modal onClose={close}>
+      <div className="vh" role="dialog" aria-modal="true" aria-label={`Version history of ${tab.title}`}>
+        <section className="vh-main">
+          <header className="vh-head">
+            <div className="vh-head-title">
+              <span className="vh-eyebrow">
+                <History size={12} /> Version history · {tab.title}
+              </span>
+              {version && renaming ? (
+                <TextField
+                  className="vh-rename"
                   autoFocus
                   defaultValue={version.label ?? ''}
                   placeholder="Name this version"
@@ -296,93 +333,215 @@ export function VersionHistory() {
                     if (e.key === 'Escape') setRenaming(false)
                   }}
                 />
-              </label>
-            ) : version ? (
-              <button type="button" className="history-name" title="Name this version (named versions are always kept)" onClick={() => setRenaming(true)}>
-                <h3>{version.label || 'Unnamed version'}</h3>
-                <Pencil size={12} />
-              </button>
-            ) : (
-              <h3>{tab.title}</h3>
-            )}
-            <IconButton label="Close (Esc)" onClick={close}>
-              <X size={16} />
-            </IconButton>
+              ) : version ? (
+                <button type="button" className="vh-name" title="Name this version (named versions are always kept)" onClick={() => setRenaming(true)}>
+                  <h2>{version.label || new Date(version.time).toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</h2>
+                  <Pencil size={13} />
+                </button>
+              ) : (
+                <h2>{tab.title}</h2>
+              )}
+            </div>
+            <div className="vh-actions">
+              {version && (
+                <>
+                  <Button onClick={() => void openCopy()} title="Open this version in a new tab, without changing the file">
+                    <Copy size={14} /> Open copy
+                  </Button>
+                  <Button variant="primary" disabled={index === 0 && !tab.dirty} onClick={() => void restore()}>
+                    <ArchiveRestore size={14} /> Restore
+                  </Button>
+                </>
+              )}
+              <IconButton label="Close (Esc)" onClick={close}>
+                <X size={16} />
+              </IconButton>
+            </div>
           </header>
-          <div className="history-detail">
-            {version ? (
-              <>
-                <div className="history-detail-head">
-                  <span className="settings-hint">
-                    {tab.title} · {new Date(version.time).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })} · {formatSize(version.size)}
-                  </span>
-                  <div className="history-actions">
-                    <IconButton label="Delete this version" onClick={() => void remove()}>
-                      <Trash2 size={15} />
-                    </IconButton>
-                    <button type="button" className="btn" onClick={() => void openCopy()} title="Open this version in a new tab, without changing the file">
-                      <Copy size={14} /> Open copy
-                    </button>
-                    <button type="button" className="btn primary" disabled={index === 0 && !tab.dirty} onClick={() => void restore()}>
-                      <ArchiveRestore size={14} /> Restore
-                    </button>
-                  </div>
-                </div>
-                <div className="history-compare">
-                  <Segmented
-                    value={compare}
-                    onChange={setCompare}
-                    options={[
-                      { value: 'current', label: 'Compare with now' },
-                      { value: 'previous', label: 'What changed in this save' },
-                    ]}
-                  />
-                  {diff && typeof diff === 'object' && diff.ops && (
-                    <span className="history-stat">
-                      <span className="add">+{diff.added}</span> <span className="del">−{diff.removed}</span> {tab.kind === 'docx' || tab.kind === 'pptx' ? 'paragraphs' : 'lines'}
-                    </span>
-                  )}
-                </div>
-                <DiffView diff={diff} compare={compare} kind={tab.kind} />
-              </>
+          {version && (
+            <div className="vh-toolbar">
+              <PillTabs
+                label="Compare"
+                value={compare}
+                onChange={setCompare}
+                options={[
+                  { value: 'current', label: 'Changes since this version' },
+                  { value: 'previous', label: 'Changes in this save' },
+                ]}
+              />
+              {diff && typeof diff === 'object' && diff.rows && (
+                <span className="vh-legend">
+                  {diff.changed > 0 && <span>{`${diff.changed} edited`}</span>}
+                  {diff.added > 0 && <span className="vh-legend-add">{`${diff.added} added`}</span>}
+                  {diff.removed > 0 && <span className="vh-legend-del">{`${diff.removed} removed`}</span>}
+                </span>
+              )}
+            </div>
+          )}
+          <div className="vh-canvas">
+            {versions?.length === 0 ? (
+              <div className="vh-center">
+                <EmptyState>No versions yet. Each time you save (or autosave), Workspace keeps a copy here.</EmptyState>
+              </div>
+            ) : version ? (
+              <DiffView diff={diff} compare={compare} kind={tab.kind} unit={unit} />
             ) : (
-              versions?.length !== 0 && <Spinner />
+              <div className="vh-center">
+                <Spinner />
+              </div>
             )}
           </div>
+        </section>
+
+        <aside className="vh-side" aria-label="Versions">
+          <form
+            className="vh-save"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void saveVersion()
+            }}
+          >
+            <TextField value={message} placeholder="Name this version (optional)" onChange={(e) => setMessage(e.currentTarget.value)} />
+            <Button type="submit" variant="primary">
+              Save
+            </Button>
+          </form>
+          <div className="vh-list" role="listbox" ref={listRef} aria-label="Versions">
+            {versions === null && <Spinner />}
+            {versions?.map((v, i) => {
+              const day = dayName(v.time)
+              const heading = day !== lastDay
+              lastDay = day
+              return (
+                <div key={v.id} role="presentation">
+                  {heading && <div className="vh-day">{day}</div>}
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={v.id === selected}
+                    className={`vh-row ${v.id === selected ? 'on' : ''}`}
+                    onClick={() => setSelected(v.id)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      setMenu({ x: e.clientX, y: e.clientY, id: v.id })
+                    }}
+                  >
+                    <span className="vh-dot" data-latest={i === 0 || undefined} data-named={!!v.label || undefined} />
+                    <span className="vh-row-text">
+                      <span className="vh-row-top">
+                        <strong>{timeOf(v.time)}</strong>
+                        {i === 0 && <span className="vh-badge">Latest</span>}
+                      </span>
+                      <span className={`vh-row-title ${v.label ? 'named' : ''}`}>
+                        {v.label && <Tag size={11} />}
+                        {versionTitle(v)}
+                      </span>
+                      <span className="vh-row-meta">{formatSize(v.size)}</span>
+                    </span>
+                    <span
+                      className="vh-row-more"
+                      role="button"
+                      aria-label="More"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                        setMenu({ x: rect.right, y: rect.bottom + 4, id: v.id })
+                      }}
+                    >
+                      <MoreHorizontal size={15} />
+                    </span>
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+          <p className="vh-footnote">Every save from the last hour is kept, then fewer as they get older. Named versions are always kept.</p>
+        </aside>
+      </div>
+      {menu && menuVersion && (
+        <PopoverMenu
+          anchor={{ x: menu.x, y: menu.y, align: 'end' }}
+          onClose={() => setMenu(null)}
+          items={[
+            {
+              label: menuVersion.label ? 'Rename…' : 'Name this version…',
+              onSelect: () => {
+                setSelected(menuVersion.id)
+                setRenaming(true)
+              },
+            },
+            { label: 'Open copy', onSelect: () => void openCopy(menuVersion) },
+            { label: 'Delete version', danger: true, separatorBefore: true, onSelect: () => void remove(menuVersion) },
+          ]}
+        />
+      )}
+    </Modal>
+  )
+}
+
+function DiffView({ diff, compare, kind, unit }: { diff: Comparison | 'binary' | 'first' | 'loading' | null; compare: Compare; kind: string; unit: string }) {
+  if (diff === 'loading' || diff === null) return <div className="vh-center">{diff && <Spinner />}</div>
+  if (diff === 'first') {
+    return (
+      <div className="vh-center">
+        <p className="muted">This is the oldest version kept, so there’s nothing earlier to compare it with.</p>
+      </div>
+    )
+  }
+  if (diff === 'binary') {
+    return (
+      <div className="vh-center">
+        <div className="vh-note">
+          <span className="vh-note-icon">
+            <KindIcon kind={kind} size={22} />
+          </span>
+          <p>{KINDS[kind]?.label ?? 'This file'} versions can’t be compared here. Open a copy to look at this one, or restore it.</p>
         </div>
       </div>
+    )
+  }
+  if (!diff.rows) {
+    return (
+      <div className="vh-center">
+        <p className="muted">These two are too different to compare {unit} by {unit}. Open a copy to look at this one.</p>
+      </div>
+    )
+  }
+  if (!diff.added && !diff.removed && !diff.changed) {
+    return (
+      <div className="vh-center">
+        <p className="muted">{compare === 'current' ? 'Nothing has changed since this version.' : 'No text changed in this save.'}</p>
+      </div>
+    )
+  }
+  return (
+    <div className={`vh-page ${unit === 'line' ? 'lines' : ''} ${kind === 'latex' ? 'mono' : ''}`} role="document" aria-label="Changes">
+      {diff.rows.map((r, i) => (
+        <DiffRow key={i} row={r} unit={unit} />
+      ))}
     </div>
   )
 }
 
-function DiffView({ diff, compare, kind }: { diff: { ops: DiffOp[] | null } | 'binary' | 'loading' | null; compare: Compare; kind: string }) {
-  const rows = useMemo(() => (diff && typeof diff === 'object' && diff.ops ? hunks(diff.ops) : null), [diff])
-  if (diff === 'loading' || diff === null) return <div className="history-diff center">{diff && <Spinner />}</div>
-  if (diff === 'binary') {
+function DiffRow({ row, unit }: { row: Row; unit: string }) {
+  const [open, setOpen] = useState(false)
+  if (row.type === 'skip') {
+    if (open) return row.rows.map((r, i) => <DiffRow key={i} row={r} unit={unit} />)
     return (
-      <div className="history-diff center muted">
-        {KINDS[kind]?.label ?? 'This file'} versions can’t be compared here. Open a copy to look at this one, or restore it.
-      </div>
+      <button type="button" className="vh-skip" onClick={() => setOpen(true)}>
+        <ChevronsUpDown size={12} />
+        {`${row.rows.length} unchanged ${unit}s`}
+      </button>
     )
   }
-  if (!rows) return <div className="history-diff center muted">These two are too different to compare line by line.</div>
-  if (!rows.some((r) => r.type === 'add' || r.type === 'del')) {
-    return <div className="history-diff center muted">{compare === 'current' ? 'No text changes since this version.' : 'No text changes in this save.'}</div>
+  if (row.type === 'change') {
+    return (
+      <p className="vh-p change">
+        {row.parts.map((p, i) => (p.type === 'same' ? p.text : p.type === 'add' ? <ins key={i}>{p.text}</ins> : <del key={i}>{p.text}</del>))}
+      </p>
+    )
   }
-  return (
-    <div className="history-diff" role="table" aria-label="Changes">
-      {rows.map((r, i) =>
-        r.type === 'skip' ? (
-          <div key={i} className="diff-skip">
-            ⋯ {r.count} unchanged {r.count === 1 ? 'line' : 'lines'}
-          </div>
-        ) : (
-          <div key={i} className={`diff-line ${r.type}`}>
-            <span className="diff-sign">{r.type === 'add' ? '+' : r.type === 'del' ? '−' : ' '}</span>
-            <span className="diff-text">{r.text || ' '}</span>
-          </div>
-        ),
-      )}
-    </div>
-  )
+  const slide = /^── Slide (\d+) ──$/.exec(row.text)
+  if (slide) return <h4 className={`vh-slide ${row.type}`}>Slide {slide[1]}</h4>
+  return <p className={`vh-p ${row.type}`}>{row.text || ' '}</p>
 }
