@@ -82,7 +82,7 @@ pub fn parse(bytes: &[u8]) -> Result<XmlDoc, String> {
     Ok(XmlDoc { declaration, before: top, root, after })
 }
 
-fn decode(bytes: &[u8]) -> Result<String, String> {
+pub(super) fn decode(bytes: &[u8]) -> Result<String, String> {
     let utf16 = |bytes: &[u8], from: fn([u8; 2]) -> u16| {
         let units: Vec<u16> = bytes.chunks_exact(2).map(|c| from([c[0], c[1]])).collect();
         String::from_utf16(&units).map_err(|e| e.to_string())

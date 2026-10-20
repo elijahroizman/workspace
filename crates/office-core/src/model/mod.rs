@@ -240,6 +240,26 @@ impl PartialEq for Origin {
     }
 }
 
+impl Origin {
+    /// Which origin this is: the same for clones of it, different for one made anew. A layer
+    /// that changes a node's origin replaces it, so a changed id means a changed origin.
+    pub fn id(&self) -> usize {
+        self.0.as_ref().map(|a| Arc::as_ptr(a) as *const () as usize).unwrap_or(0)
+    }
+}
+
+/// A hash of what a node said when it was read, so a back end can tell an untouched node
+/// without comparing it with the file: cheap where the file is huge. Like origins, it never
+/// makes two nodes unequal and isn't part of the JSON.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Fingerprint(pub Option<u64>);
+
+impl PartialEq for Fingerprint {
+    fn eq(&self, _: &Fingerprint) -> bool {
+        true
+    }
+}
+
 /// Data that belongs to one format or layer, by type: CSV's dialect, the Word layer's styles.
 /// The core never looks inside.
 #[derive(Clone, Debug, Default)]

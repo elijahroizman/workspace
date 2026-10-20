@@ -4,7 +4,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use super::{Origin, Run};
+use std::hash::{Hash, Hasher};
+
+use super::{Fingerprint, Origin, Run};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +24,10 @@ pub struct Sheet {
     pub part: Option<String>,
     #[serde(skip)]
     pub origin: Origin,
+    /// [`Sheet::fingerprint`] as read, so saving can leave an untouched sheet's part alone
+    /// without reading it again.
+    #[serde(skip)]
+    pub read_as: Fingerprint,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -107,15 +113,25 @@ impl CellRef {
 
     /// Reads `A1`, `$B$7`, `XFD1048576`.
     pub fn parse(s: &str) -> Option<CellRef> {
-        let s = s.trim().replace('$', "");
-        let split = s.find(|c: char| c.is_ascii_digit())?;
-        let (letters, digits) = s.split_at(split);
-        if letters.is_empty() || letters.len() > 3 || !letters.bytes().all(|b| b.is_ascii_alphabetic()) {
+        // Every cell of a big sheet comes through here, so no allocating.
+        let mut bytes = s.trim().bytes().filter(|&b| b != b'$').peekable();
+        let (mut col, mut letters) = (0u32, 0);
+        while let Some(b) = bytes.next_if(u8::is_ascii_alphabetic) {
+            col = col * 26 + (b.to_ascii_uppercase() - b'A' + 1) as u32;
+            letters += 1;
+        }
+        let (mut row, mut digits) = (0u32, 0);
+        for b in bytes {
+            if !b.is_ascii_digit() || digits >= 7 {
+                return None;
+            }
+            row = row * 10 + (b - b'0') as u32;
+            digits += 1;
+        }
+        if !(1..=3).contains(&letters) || digits == 0 || row == 0 {
             return None;
         }
-        let col = letters.bytes().fold(0u32, |n, b| n * 26 + (b.to_ascii_uppercase() - b'A' + 1) as u32) - 1;
-        let row: u32 = digits.parse().ok().filter(|r| *r >= 1)?;
-        Some(CellRef { row: row - 1, col })
+        Some(CellRef { row: row - 1, col: col - 1 })
     }
 
     /// `A`, `Z`, `AA`… for a column from 0.
@@ -205,6 +221,41 @@ impl<'de> Deserialize<'de> for Range {
 impl Sheet {
     pub fn new(name: impl Into<String>) -> Sheet {
         Sheet { name: name.into(), ..Default::default() }
+    }
+
+    /// A hash of everything the sheet's part holds: its cells, merges and the origins around
+    /// them (by identity). The name and visibility live in the workbook, so they're not in it.
+    pub fn fingerprint(&self) -> u64 {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.origin.id().hash(&mut h);
+        for m in &self.merges {
+            m.hash(&mut h);
+        }
+        for row in &self.rows {
+            (row.index, row.origin.id(), row.cells.len()).hash(&mut h);
+            for c in &row.cells {
+                (c.col, &c.formula, c.style, c.origin.id()).hash(&mut h);
+                match &c.value {
+                    Value::Empty => 0u8.hash(&mut h),
+                    Value::Number(n) => (1u8, n.to_bits()).hash(&mut h),
+                    Value::Text(t) => (2u8, t).hash(&mut h),
+                    Value::Rich(runs) => {
+                        3u8.hash(&mut h);
+                        for r in runs {
+                            (&r.text, format!("{:?}", r.props)).hash(&mut h);
+                        }
+                    }
+                    Value::Bool(b) => (4u8, b).hash(&mut h),
+                    Value::Error(e) => (5u8, e).hash(&mut h),
+                }
+            }
+        }
+        h.finish()
+    }
+
+    /// Whether the sheet is as it was read.
+    pub fn untouched(&self) -> bool {
+        self.read_as.0 == Some(self.fingerprint())
     }
 
     pub fn cell(&self, at: CellRef) -> Option<&SheetCell> {

@@ -58,6 +58,8 @@ struct Strings {
     items: Vec<Element>,
     index: HashMap<String, usize>,
     uses: usize,
+    /// How many strings the workbook's own table had.
+    original: usize,
 }
 
 /// What makes two strings the same string: their text and, for rich text, each run's formatting.
@@ -71,12 +73,13 @@ fn string_key(value: &Value) -> String {
 impl Strings {
     /// Starts from the table the workbook has, as it is, so strings keep their numbers and
     /// cells that didn't change don't either.
-    fn from_table(sst: &Element) -> Strings {
+    fn from_table(items: Vec<Element>) -> Strings {
         let mut s = Strings::default();
-        for si in sst.children_named(ns::X, "si") {
-            s.items.push(si.clone());
-            s.index.entry(string_key(&super::props::read_string(si))).or_insert(s.items.len() - 1);
+        for si in items {
+            s.index.entry(string_key(&super::props::read_string(&si))).or_insert(s.items.len());
+            s.items.push(si);
         }
+        s.original = s.items.len();
         s
     }
 
@@ -203,8 +206,12 @@ pub fn write(doc: &Document) -> Result<Package> {
     }
     let mut ctx = PartCtx::load(&out.pkg, &main)?;
     let sst_part = out.pkg.related(&main, kind::SHARED_STRINGS)?.into_iter().next().map(|(_, p)| p).filter(|p| out.pkg.has(p));
+    // Sheets nobody touched are left as they are, numbers into the string table and all, so
+    // the table is only needed if some sheet will be written.
+    let untouched: Vec<bool> = sheets.iter().map(|s| same && s.untouched() && s.part.as_deref().is_some_and(|p| out.pkg.has(p))).collect();
+    let any_written = untouched.contains(&false);
     let mut strings = match &sst_part {
-        Some(p) if same => Strings::from_table(&out.pkg.xml(p)?.root),
+        Some(p) if same && any_written => Strings::from_table(super::read::shared_strings(&out.pkg, p)?),
         _ => Strings::default(),
     };
 
@@ -227,12 +234,14 @@ pub fn write(doc: &Document) -> Result<Package> {
         |n| matches!(n, Node::Element(e) if rel_attr(e, "id").and_then(|id| ctx.rels.get(id)).is_some_and(|r| !r.is(kind::WORKSHEET))),
     );
     let mut entries = Vec::new();
-    for sheet in sheets {
+    for (sheet, untouched) in sheets.iter().zip(untouched) {
         let part = match sheet.part.as_deref().filter(|p| same && out.pkg.has(p)) {
             Some(p) => p.to_string(),
             None => out.pkg.unused_name("xl/worksheets/sheet{}.xml"),
         };
-        write_sheet(sheet, &part, &mut strings, same, &mut out)?;
+        if !untouched {
+            write_sheet(sheet, &part, &mut strings, same, &mut out)?;
+        }
         let rid = ctx.relate(kind::WORKSHEET, &part);
         let mut el = old_sheets.iter().find(|s| rel_attr(s, "id") == Some(rid.as_str())).map(|e| (*e).clone()).unwrap_or_else(|| {
             let id = next_id;
@@ -277,20 +286,39 @@ pub fn write(doc: &Document) -> Result<Package> {
     workbook.root.place(list, WORKBOOK);
 
     // The shared strings, if anything uses them or the workbook had a table.
+    // Strings are only ever added (the table keeps unused ones, as Excel's does), so a table
+    // with nothing new is left alone.
+    let had_table = sst_part.is_some();
     let sst_part = sst_part.or_else(|| (!strings.items.is_empty()).then(|| "xl/sharedStrings.xml".to_string()));
-    if let Some(part) = sst_part {
+    if let Some(part) = sst_part.filter(|_| !(had_table && strings.items.len() == strings.original) || !same) {
         let mut sst = Element::new(ns::X, "sst");
         sst.declare(None, ns::X);
-        sst.set_attr("", "count", strings.uses.to_string());
+        sst.set_attr("", "count", strings.uses.max(strings.items.len()).to_string());
         sst.set_attr("", "uniqueCount", strings.items.len().to_string());
-        sst.children = strings.items.into_iter().map(Node::Element).collect();
-        put_if_changed(&mut out.pkg, &part, XmlDoc::new(sst), types::XLSX_SHARED_STRINGS)?;
+        let scope = sst.attrs.clone();
+        let body: String = strings.items.iter().map(|si| si.to_xml_string_in(&scope)).collect();
+        out.pkg.put(&part, splice(sst, &body), types::XLSX_SHARED_STRINGS);
         ctx.relate(kind::SHARED_STRINGS, &part);
     }
     put_if_changed(&mut out.pkg, &main, workbook, types::XLSX_MAIN)?;
     ctx.finish(&mut out.pkg);
     doc.properties.write(&mut out.pkg)?;
     Ok(std::mem::take(&mut out.pkg))
+}
+
+/// Where the rows go in a sheet written as text; see [`splice`].
+const ROWS: &str = "office-core:rows";
+
+/// `root` as a part, with `content` (already XML) in place of the [`ROWS`] comment, or as the
+/// root's content if there's no such comment. Big sheets and string tables are written this
+/// way, a row or a string at a time, never as one tree.
+fn splice(mut root: Element, content: &str) -> Vec<u8> {
+    let has_marker = crate::xml::stream::contains_comment(&root, ROWS);
+    if !has_marker {
+        root.children = vec![Node::Comment(ROWS.into())];
+    }
+    let text = String::from_utf8(XmlDoc::new(root).to_bytes()).expect("the writer writes UTF-8");
+    text.replacen(&format!("<!--{ROWS}-->"), content, 1).into_bytes()
 }
 
 fn write_sheet(sheet: &Sheet, part: &str, strings: &mut Strings, same: bool, out: &mut Out) -> Result<()> {
@@ -300,10 +328,16 @@ fn write_sheet(sheet: &Sheet, part: &str, strings: &mut Strings, same: bool, out
         ws.declare(Some("r"), ns::R);
         ws
     });
-    let mut data = Element::new(ns::X, "sheetData");
+    let mut data = root.child(ns::X, "sheetData").cloned().unwrap_or_else(|| Element::new(ns::X, "sheetData"));
+    data.children = vec![Node::Comment(ROWS.into())];
+    let mut scope: Vec<_> = root.attrs.iter().filter(|a| a.is_ns_decl()).cloned().collect();
+    scope.extend(data.attrs.iter().filter(|a| a.is_ns_decl()).cloned());
+    root.place(data, WORKSHEET);
+
+    let mut rows = String::new();
     for row in &sheet.rows {
         let mut r = origin_as(&row.origin, ns::X, "row").filter(|_| same).unwrap_or_else(|| Element::new(ns::X, "row"));
-        r.children.clear();
+        r.children.retain(|n| !matches!(n, Node::Element(e) if e.is(ns::X, "c")));
         r.set_attr("", "r", (row.index + 1).to_string());
         // `spans` is an optional hint of the row's first and last columns; keep it right.
         if r.attr("spans").is_some() {
@@ -314,15 +348,14 @@ fn write_sheet(sheet: &Sheet, part: &str, strings: &mut Strings, same: bool, out
                 }
             }
         }
+        let others = std::mem::take(&mut r.children);
         for cell in &row.cells {
             r.push(write_cell(cell, CellRef::new(row.index, cell.col), strings, same));
         }
-        data.push(r);
+        // A row's extensions come after its cells.
+        r.children.extend(others);
+        rows.push_str(&r.to_xml_string_in(&scope));
     }
-    if let Some(existing) = root.child_mut(ns::X, "sheetData") {
-        data.attrs = existing.attrs.clone();
-    }
-    root.place(data, WORKSHEET);
 
     let dimension = sheet.used_range().unwrap_or(Range { start: CellRef::new(0, 0), end: CellRef::new(0, 0) });
     let dim = root.child(ns::X, "dimension").and_then(|d| d.attr("ref")).and_then(Range::parse);
@@ -342,25 +375,25 @@ fn write_sheet(sheet: &Sheet, part: &str, strings: &mut Strings, same: bool, out
         let margins = [("left", "0.7"), ("right", "0.7"), ("top", "0.75"), ("bottom", "0.75"), ("header", "0.3"), ("footer", "0.3")];
         root.place(margins.iter().fold(Element::new(ns::X, "pageMargins"), |el, (k, v)| el.with_attr("", k, *v)), WORKSHEET);
     }
-    let changed = !out.pkg.has(part) || !out.pkg.xml(part).map(|d| d.root.same_content(&root)).unwrap_or(false);
-    if changed {
-        // Excel's calculation chain lists formula cells; once cells change it may be wrong, and
-        // Excel rebuilds a missing one.
-        if let Some((_, chain)) = out.pkg.related(&out.pkg.main_part()?, "calcChain")?.into_iter().next() {
-            out.pkg.remove(&chain);
-            let main = out.pkg.main_part()?;
-            let mut rels = out.pkg.rels(&main)?;
-            rels.0.retain(|r| !r.is("calcChain"));
-            out.pkg.put_rels(&main, &rels);
-        }
+    // Excel's calculation chain lists formula cells; once cells change it may be wrong, and
+    // Excel rebuilds a missing one.
+    if let Some((_, chain)) = out.pkg.related(&out.pkg.main_part()?, "calcChain")?.into_iter().next() {
+        out.pkg.remove(&chain);
+        let main = out.pkg.main_part()?;
+        let mut rels = out.pkg.rels(&main)?;
+        rels.0.retain(|r| !r.is("calcChain"));
+        out.pkg.put_rels(&main, &rels);
     }
-    put_if_changed(&mut out.pkg, part, XmlDoc::new(root), types::XLSX_SHEET)
+    out.pkg.put(part, splice(root, &rows), types::XLSX_SHEET);
+    Ok(())
 }
 
 fn write_cell(cell: &SheetCell, at: CellRef, strings: &mut Strings, same: bool) -> Element {
     let origin = origin_as(&cell.origin, ns::X, "c").filter(|_| same);
     let old_formula = origin.as_ref().and_then(|o| o.child(ns::X, "f").cloned());
     let inline = origin.as_ref().and_then(|o| o.attr("t")) == Some("inlineStr");
+    // Strict files' ISO dates, which the model holds as their text.
+    let iso_date = origin.as_ref().and_then(|o| o.attr("t")) == Some("d");
     let empty_v = origin.as_ref().and_then(|o| o.child(ns::X, "v")).is_some_and(|v| v.text().is_empty());
     let mut c = origin.unwrap_or_else(|| Element::new(ns::X, "c"));
     c.children.retain(|n| !matches!(n, Node::Element(e) if e.is(ns::X, "f") || e.is(ns::X, "v") || e.is(ns::X, "is")));
@@ -391,6 +424,7 @@ fn write_cell(cell: &SheetCell, at: CellRef, strings: &mut Strings, same: bool) 
         Value::Error(e) => (Some("e"), Some(v(e.clone()))),
         // A formula's text result is a plain string, not a shared one.
         Value::Text(s) if has_formula => (Some("str"), Some(v(escape(s)))),
+        Value::Text(s) if iso_date => (Some("d"), Some(v(s.clone()))),
         value @ (Value::Text(_) | Value::Rich(_)) if inline => (Some("inlineStr"), Some(string_item("is", value))),
         value @ (Value::Text(_) | Value::Rich(_)) => (Some("s"), Some(v(strings.add(value).to_string()))),
     };

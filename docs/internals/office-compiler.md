@@ -139,7 +139,7 @@ After this PR: the three layers, then WebAssembly bindings (the core already bui
 
 These are the core's own, not the layers':
 
-- **Big workbooks** are parsed as whole XML trees. A sheet with millions of cells will want a streaming reader and writer.
+- **Big workbooks** are read and written a few hundred kilobytes of rows at a time (`xml::stream`), cells keep an origin only when they have markup the writer couldn't make again, and saving skips sheets whose fingerprint shows nobody touched them. A million cells read in about 2 s and write in about 2 s in a release build; most of that is allocating and freeing each batch's XML tree, which interning element names would cut further.
 - **Excel's phonetic guides** (`rPh`, for Japanese) survive on strings that don't change; a string whose text changes is written without them.
 - **Word runs split by a page break** are written back as separate runs, and a changed hyperlink is written with `w:history`. Both mean the same to Word.
 - **Characters XML can't hold** (control characters other than tab and line breaks) are dropped from Word and PowerPoint text. Excel keeps them with its `_xHHHH_` escape.

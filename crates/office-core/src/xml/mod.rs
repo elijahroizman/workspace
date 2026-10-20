@@ -9,6 +9,7 @@
 
 pub mod ns;
 mod parse;
+pub mod stream;
 mod write;
 
 use std::sync::Arc;
@@ -303,6 +304,12 @@ impl Element {
     /// This element alone as XML, with every namespace it uses declared on it.
     pub fn to_xml_string(&self) -> String {
         write::element_to_string(self)
+    }
+
+    /// This element as XML where `scope`'s namespace declarations are in force (as
+    /// [`stream::Hollow::scope`] gives them), declaring only what they don't.
+    pub fn to_xml_string_in(&self, scope: &[Attr]) -> String {
+        write::element_to_string_in(self, scope)
     }
 }
 

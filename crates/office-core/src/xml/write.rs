@@ -21,7 +21,14 @@ pub fn doc_to_bytes(doc: &XmlDoc) -> Vec<u8> {
 }
 
 pub fn element_to_string(el: &Element) -> String {
-    let mut w = Writer { out: String::new(), scope: Vec::new() };
+    element_to_string_in(el, &[])
+}
+
+/// One element as XML where `scope`'s namespace declarations are already in force, so it
+/// declares only what they don't.
+pub fn element_to_string_in(el: &Element, scope: &[Attr]) -> String {
+    let scope = scope.iter().filter(|a| a.is_ns_decl()).map(|a| (a.prefix.as_ref().map(|_| a.local.clone()), a.value.clone())).collect();
+    let mut w = Writer { out: String::new(), scope };
     w.element(el);
     w.out
 }

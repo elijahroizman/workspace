@@ -1,8 +1,8 @@
 use super::props::read_string;
 use crate::formats::common::{read_theme, rel_attr, shell, PartRels};
-use crate::model::{Body, CellRef, Document, Kind, Origin, Range, Sheet, SheetCell, SheetRow, Value};
+use crate::model::{Body, CellRef, Document, Fingerprint, Kind, Origin, Range, Sheet, SheetCell, SheetRow, Value};
 use crate::opc::{rels::kind, Package, Properties};
-use crate::xml::{ns, Element};
+use crate::xml::{ns, stream, Element};
 use crate::{Error, Result};
 
 pub fn read(pkg: Package) -> Result<Document> {
@@ -14,7 +14,7 @@ pub fn read(pkg: Package) -> Result<Document> {
     doc.theme = read_theme(&pkg, &main)?;
 
     let strings = match pkg.related(&main, kind::SHARED_STRINGS)?.into_iter().next() {
-        Some((_, part)) if pkg.has(&part) => pkg.xml(&part)?.root.children_named(ns::X, "si").map(read_string).collect(),
+        Some((_, part)) if pkg.has(&part) => shared_strings(&pkg, &part)?.iter().map(read_string).collect(),
         _ => Vec::new(),
     };
 
@@ -41,24 +41,50 @@ pub fn read(pkg: Package) -> Result<Document> {
     Ok(doc)
 }
 
+/// A shared string table's `si` elements, read one at a time: the table can be huge.
+pub(super) fn shared_strings(pkg: &Package, part: &str) -> Result<Vec<Element>> {
+    let bad = |message: String| Error::Xml { part: part.to_string(), message };
+    let hollow = stream::parse_hollow(pkg.part(part)?, None).map_err(bad)?;
+    let mut items = Vec::new();
+    stream::for_each_batch(hollow.inner.as_deref().unwrap_or(""), 256 * 1024, |source| {
+        items.extend(stream::parse_all_in(source, &hollow.scope)?.into_iter().filter(|el| el.is(ns::X, "si")));
+        Ok(())
+    })
+    .map_err(bad)?;
+    Ok(items)
+}
+
+/// Reads a worksheet a row at a time, so a sheet with millions of cells never becomes one big
+/// tree. Rows and cells keep an origin only when they have markup the writer couldn't make
+/// again from the model (Excel's row attributes, a shared formula, an inline string).
 fn read_sheet(pkg: &Package, part: &str, strings: &[Value]) -> Result<Sheet> {
-    let xml = pkg.xml(part)?;
-    let root = &xml.root;
+    let bad = |message: String| Error::Xml { part: part.to_string(), message };
+    let hollow = stream::parse_hollow(pkg.part(part)?, Some("sheetData")).map_err(bad)?;
+    let root = &hollow.doc.root;
     let mut rows = Vec::new();
     let mut next_row = 0u32;
-    for row in root.child(ns::X, "sheetData").into_iter().flat_map(|d| d.children_named(ns::X, "row")) {
-        // `r` is 1-based and may be left out, meaning the row after the last.
-        let index = row.attr("r").and_then(|r| r.parse::<u32>().ok()).map(|r| r.saturating_sub(1)).unwrap_or(next_row);
-        next_row = index + 1;
-        let mut cells = Vec::new();
-        let mut next_col = 0u32;
-        for c in row.children_named(ns::X, "c") {
-            let col = c.attr("r").and_then(CellRef::parse).map(|r| r.col).unwrap_or(next_col);
-            next_col = col + 1;
-            cells.push(read_cell(c, col, strings).map_err(|message| Error::Xml { part: part.to_string(), message })?);
+    // A few hundred kilobytes of rows at a time.
+    stream::for_each_batch(hollow.inner.as_deref().unwrap_or(""), 256 * 1024, |source| {
+        for row in stream::parse_all_in(source, &hollow.scope)? {
+            if !row.is(ns::X, "row") {
+                continue;
+            }
+            // `r` is 1-based and may be left out, meaning the row after the last.
+            let index = row.attr("r").and_then(|r| r.parse::<u32>().ok()).map(|r| r.saturating_sub(1)).unwrap_or(next_row);
+            next_row = index + 1;
+            let mut cells = Vec::new();
+            let mut next_col = 0u32;
+            for c in row.children_named(ns::X, "c") {
+                let col = c.attr("r").and_then(CellRef::parse).map(|r| r.col).unwrap_or(next_col);
+                next_col = col + 1;
+                cells.push(read_cell(c, col, strings)?);
+            }
+            let origin = if row_needs_origin(&row) { shell(&row, |e| e.is(ns::X, "c")) } else { Origin::default() };
+            rows.push(SheetRow { index, cells, origin });
         }
-        rows.push(SheetRow { index, cells, origin: shell(row, |e| e.is(ns::X, "c")) });
-    }
+        Ok(())
+    })
+    .map_err(bad)?;
     // Files are meant to list rows and cells in order; not every writer does.
     rows.sort_by_key(|r| r.index);
     for r in &mut rows {
@@ -74,10 +100,36 @@ fn read_sheet(pkg: &Package, part: &str, strings: &[Value]) -> Result<Sheet> {
     // The sheet without its cells and merges; columns, views, formatting rules and the rest stay.
     let mut origin = root.clone();
     origin.remove_children(ns::X, "mergeCells");
-    if let Some(data) = origin.child_mut(ns::X, "sheetData") {
-        data.children.clear();
-    }
-    Ok(Sheet { name: String::new(), rows, merges, hidden: false, part: Some(part.to_string()), origin: Origin::new(origin) })
+    let mut sheet = Sheet {
+        name: String::new(),
+        rows,
+        merges,
+        hidden: false,
+        part: Some(part.to_string()),
+        origin: Origin::new(origin),
+        read_as: Default::default(),
+    };
+    sheet.read_as = Fingerprint(Some(sheet.fingerprint()));
+    Ok(sheet)
+}
+
+/// Whether a row has more than its number and column span hint: a height, a style, Excel's
+/// extension attributes, something besides cells.
+fn row_needs_origin(row: &Element) -> bool {
+    row.attrs.iter().any(|a| !(a.ns.is_none() && matches!(a.local.as_str(), "r" | "spans"))) || row.elements().any(|e| !e.is(ns::X, "c"))
+}
+
+/// Whether a cell has markup the writer can't make again from its value, formula and style.
+fn cell_needs_origin(c: &Element) -> bool {
+    let plain_attrs = c.attrs.iter().all(|a| a.ns.is_none() && matches!(a.local.as_str(), "r" | "s" | "t"));
+    let plain_type = matches!(c.attr("t"), None | Some("n" | "s" | "b" | "e" | "str"));
+    let plain_children = c.elements().all(|e| match e.local.as_str() {
+        // An empty `v`: a formula nobody has calculated, which the writer keeps.
+        "v" => !e.text().is_empty() && e.attrs.is_empty(),
+        "f" => e.attrs.is_empty(),
+        _ => false,
+    });
+    !(plain_attrs && plain_type && plain_children)
 }
 
 fn read_cell(c: &Element, col: u32, strings: &[Value]) -> Result<SheetCell, String> {
@@ -108,6 +160,6 @@ fn read_cell(c: &Element, col: u32, strings: &[Value]) -> Result<SheetCell, Stri
         formula,
         style: c.attr("s").and_then(|s| s.parse().ok()),
         // The origin keeps `v`, so the writer can tell an uncalculated formula's empty value.
-        origin: shell(c, |e| e.is(ns::X, "is")),
+        origin: if cell_needs_origin(c) { shell(c, |e| e.is(ns::X, "is")) } else { Origin::default() },
     })
 }
