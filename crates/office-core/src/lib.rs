@@ -7,6 +7,7 @@
 //! See `docs/internals/office-compiler.md` for the design.
 
 mod error;
+pub mod opc;
 pub mod xml;
 
 pub use error::{Error, Result};
