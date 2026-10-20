@@ -2,6 +2,33 @@
 
 Every release's notes. The release workflow copies a version's section into its GitHub release, and the app's update panel shows it.
 
+## 0.9.3 — 2026-10-20
+
+### A new look
+- A new icon: a W made of three blue sheets of paper on a dark tile. It sits beside the name on Home, too.
+- Buttons, fields, dialogs and menus come from one set of shared pieces, so every screen matches. Primary buttons keep their blue when you point at them.
+- Faint dots fade in from Home's top corners.
+
+### Welcome tour
+- The first-launch screen is now a short tour: the command palette, Word documents, presentations, PDFs, fonts and extensions, and split view, with default apps at the end on a Mac or Windows. **Skip tour** leaves it at any step, and **Settings › General › Show the tour again** brings it back.
+
+### Version history
+- Redesigned. Changes show as a page of the document: edited paragraphs are marked word by word, added ones in green and removed ones struck through in red. Unchanged stretches fold into a row you can click to open.
+- Versions run down a timeline on the right. Right-click one, or use its **⋯** button, to name it, open a copy or delete it.
+
+### Recent
+- Home's Recent list filters by **Office**, **Notes** (Markdown and text), **PDF**, **Images** and **LaTeX** instead of one tab per file type. Folders are under **All**.
+
+### Plugins
+- Excalidraw, EPUB and Mermaid are gone, and their downloaded files are removed from your computer. Images is built in. LaTeX is still optional and off until you turn it on.
+- The open-source licenses list matches: the removed plugins' packages are gone, and the image viewer's are listed with the app's.
+
+### Polish
+- The command palette matches words from their start, so "open" no longer finds New presentation. On Home, document commands show greyed out instead of missing.
+- Esc leaves focus mode, and the hidden tab bar no longer leaves an empty band.
+- Many labels, contrast fixes and sentence-case menus across Home, Settings, Word, PDF and PowerPoint.
+- Recent paths read ~/Documents instead of Documents/~.
+
 ## 0.9.2 — 2026-10-20
 
 ### Find and replace
