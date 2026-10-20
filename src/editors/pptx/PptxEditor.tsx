@@ -678,9 +678,9 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
           <IconButton label="Zoom out (⌘−)" size="sm" onClick={() => zoomStep('out')} disabled={tb.scale <= ZOOM_STEPS[0] + 0.001}>
             <Minus size={14} />
           </IconButton>
-          <button type="button" className="icon-btn sm readout" title={platform.shortcut('Fit to window (⌘0)')} onClick={() => zoomStep('fit')}>
+          <IconButton label="Fit to window (⌘0)" size="sm" className="readout" aria-label={formatZoom(tb.scale)} onClick={() => zoomStep('fit')}>
             {formatZoom(tb.scale)}
-          </button>
+          </IconButton>
           <IconButton label="Zoom in (⌘+)" size="sm" onClick={() => zoomStep('in')} disabled={tb.scale >= ZOOM_STEPS[ZOOM_STEPS.length - 1] - 0.001}>
             <Plus size={14} />
           </IconButton>

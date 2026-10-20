@@ -1,7 +1,7 @@
 import type { Editor, HighlightRange } from '@docx-editor.dev/react'
 import { Check, MessageSquarePlus, RotateCcw, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { IconButton, Section } from '../../components/ui'
+import { Button, IconButton, Section, TextField } from '../../components/ui'
 import { withKeys } from '../../state/shortcuts'
 import type { Anchor, Note, Thread } from './commentXml'
 import { hasComments, initialsOf, nearest, newParaId, readComments, writeComments } from './commentXml'
@@ -320,11 +320,7 @@ function Composer({ placeholder, submitLabel, onSubmit, onCancel, autoFocus }: {
   }
   return (
     <div className="comment-composer" onClick={(e) => e.stopPropagation()}>
-      {needsName && (
-        <label className="field">
-          <input value={name} placeholder="Your name" onChange={(e) => setName(e.currentTarget.value)} />
-        </label>
-      )}
+      {needsName && <TextField value={name} placeholder="Your name" onChange={(e) => setName(e.currentTarget.value)} />}
       <textarea
         className="comment-input"
         value={text}
@@ -343,14 +339,10 @@ function Composer({ placeholder, submitLabel, onSubmit, onCancel, autoFocus }: {
         }}
       />
       <div className="row">
-        <button type="button" className="btn primary" disabled={!text.trim() || !name.trim()} onClick={submit}>
+        <Button variant="primary" disabled={!text.trim() || !name.trim()} onClick={submit}>
           {submitLabel}
-        </button>
-        {onCancel && (
-          <button type="button" className="btn" onClick={onCancel}>
-            Cancel
-          </button>
-        )}
+        </Button>
+        {onCancel && <Button onClick={onCancel}>Cancel</Button>}
       </div>
     </div>
   )

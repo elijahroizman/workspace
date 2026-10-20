@@ -52,7 +52,7 @@ import { InspectorHeader } from '../../components/Workbench'
 import type { MenuEntry } from '../../components/ui'
 import * as platform from '../../lib/platform'
 import { withKeys } from '../../state/shortcuts'
-import { ColorField, IconButton, NumberField, PopoverMenu, Section, Segmented, SelectField, TableSizePicker, normalizeHex } from '../../components/ui'
+import { Button, ColorField, IconButton, NumberField, PopoverMenu, Section, Segmented, SelectField, TableSizePicker, TextField, ToolButton, normalizeHex } from '../../components/ui'
 import type { Restack } from './arrange'
 import { mapPicked, pickedShapes, pickedText, styleShape, styleText, withElements } from './arrange'
 import { SlidePreview } from './SlideStrip'
@@ -118,21 +118,23 @@ export function Inspector({
 
       <Section title="Insert">
         <div className="insert-grid">
-          <ToolButton icon={<Type size={15} />} label="Text" onClick={tb.onAddTextBox} />
+          <ToolButton icon={<Type size={15} />} label="Text" onMouseDown={(e) => e.preventDefault()} onClick={tb.onAddTextBox} />
           <ToolButton
             icon={<Shapes size={15} />}
             label="Shape"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={(e) => {
               const r = e.currentTarget.getBoundingClientRect()
               setShapeMenu({ x: r.left, y: r.bottom + 4 })
             }}
           />
-          <ToolButton icon={<Table size={15} />} label="Table" active={tableOpen} onClick={() => setTableOpen(!tableOpen)} />
-          <ToolButton icon={<ImageIcon size={15} />} label="Image" onClick={onInsertImage} />
-          <ToolButton icon={<Video size={15} />} label="Video" active={videoOpen} onClick={() => setVideoOpen(!videoOpen)} />
+          <ToolButton icon={<Table size={15} />} label="Table" active={tableOpen} onMouseDown={(e) => e.preventDefault()} onClick={() => setTableOpen(!tableOpen)} />
+          <ToolButton icon={<ImageIcon size={15} />} label="Image" onMouseDown={(e) => e.preventDefault()} onClick={onInsertImage} />
+          <ToolButton icon={<Video size={15} />} label="Video" active={videoOpen} onMouseDown={(e) => e.preventDefault()} onClick={() => setVideoOpen(!videoOpen)} />
           <ToolButton
             icon={<Plus size={15} />}
             label="Slide"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={(e) => {
               const r = e.currentTarget.getBoundingClientRect()
               onNewSlide({ x: r.left, y: r.bottom + 4 })
@@ -174,16 +176,16 @@ export function Inspector({
         <>
           <Section title={`${selectedSlides.length} slides`}>
             <div className="grid-2">
-              <button type="button" className="btn" onClick={() => handle.current?.duplicateSlides([...selectedSlides])}>
+              <Button onClick={() => handle.current?.duplicateSlides([...selectedSlides])}>
                 <Copy size={14} /> Duplicate
-              </button>
-              <button type="button" className="btn danger" onClick={() => onDeleteSlides(selectedSlides)}>
+              </Button>
+              <Button variant="danger" onClick={() => onDeleteSlides(selectedSlides)}>
                 <Trash2 size={14} /> Delete
-              </button>
+              </Button>
             </div>
-            <button type="button" className="btn block" onClick={() => handle.current?.toggleHideSlides([...selectedSlides])}>
+            <Button block onClick={() => handle.current?.toggleHideSlides([...selectedSlides])}>
               <EyeOff size={14} /> Hide or show in slideshow
-            </button>
+            </Button>
             <p className="faint hint">Shift-click picks a run of slides; {platform.isMac ? '⌘' : 'Ctrl'}-click adds or removes one.</p>
           </Section>
           <TransitionSection deck={deck} indexes={selectedSlides} />
@@ -201,22 +203,22 @@ export function Inspector({
               />
             )}
             <div className="grid-2">
-              <button type="button" className="btn" onClick={() => handle.current?.duplicateSlides([activeIndex])}>
+              <Button onClick={() => handle.current?.duplicateSlides([activeIndex])}>
                 <Copy size={14} /> Duplicate
-              </button>
-              <button type="button" className="btn danger" onClick={() => onDeleteSlides([activeIndex])}>
+              </Button>
+              <Button variant="danger" onClick={() => onDeleteSlides([activeIndex])}>
                 <Trash2 size={14} /> Delete
-              </button>
-              <button type="button" className="btn" disabled={activeIndex === 0} onClick={() => handle.current?.moveSlide(activeIndex, activeIndex - 1)}>
+              </Button>
+              <Button disabled={activeIndex === 0} onClick={() => handle.current?.moveSlide(activeIndex, activeIndex - 1)}>
                 <ArrowUpToLine size={14} /> Move up
-              </button>
-              <button type="button" className="btn" disabled={activeIndex >= slides.length - 1} onClick={() => handle.current?.moveSlide(activeIndex, activeIndex + 1)}>
+              </Button>
+              <Button disabled={activeIndex >= slides.length - 1} onClick={() => handle.current?.moveSlide(activeIndex, activeIndex + 1)}>
                 <ArrowDownToLine size={14} /> Move down
-              </button>
+              </Button>
             </div>
-            <button type="button" className="btn block" onClick={() => tb.onToggleHideSlide?.()}>
+            <Button block onClick={() => tb.onToggleHideSlide?.()}>
               <EyeOff size={14} /> {slide.hidden ? 'Show slide in slideshow' : 'Hide slide in slideshow'}
-            </button>
+            </Button>
             <p className="faint hint">Drag across the slide or shift-click to select several objects. Double-click text to edit it.</p>
           </Section>
           <TransitionSection deck={deck} indexes={[activeIndex]} />
@@ -225,12 +227,12 @@ export function Inspector({
       )}
 
       <Section title="Present">
-        <button type="button" className="btn primary block" disabled={!slides.length} onClick={() => onPresent(false)}>
+        <Button variant="primary" block disabled={!slides.length} onClick={() => onPresent(false)}>
           <Play size={14} /> Play from this slide
-        </button>
-        <button type="button" className="btn block" disabled={!slides.length} onClick={() => onPresent(true)}>
+        </Button>
+        <Button block disabled={!slides.length} onClick={() => onPresent(true)}>
           Play from start
-        </button>
+        </Button>
       </Section>
 
       {shapeMenu && (
@@ -252,15 +254,6 @@ export function Inspector({
   )
 }
 
-function ToolButton({ icon, label, onClick, active }: { icon: ReactNode; label: string; onClick: (e: React.MouseEvent<HTMLButtonElement>) => void; active?: boolean }) {
-  return (
-    <button type="button" className={`tool-btn ${active ? 'on' : ''}`} onMouseDown={(e) => e.preventDefault()} onClick={onClick}>
-      {icon}
-      <span>{label}</span>
-    </button>
-  )
-}
-
 function UrlField({ placeholder, submitLabel, initial = '', onSubmit, onClear }: { placeholder: string; submitLabel: string; initial?: string; onSubmit: (url: string) => void; onClear?: () => void }) {
   const [value, setValue] = useState(initial)
   const [busy, setBusy] = useState(false)
@@ -276,28 +269,21 @@ function UrlField({ placeholder, submitLabel, initial = '', onSubmit, onClear }:
   }
   return (
     <div className="url-field">
-      <label className="field">
-        <Link size={13} className="faint" />
-        <input
-          value={value}
-          placeholder={placeholder}
-          spellCheck={false}
-          autoFocus={!initial}
-          onChange={(e) => setValue(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') void submit()
-          }}
-        />
-      </label>
+      <TextField
+        icon={<Link size={13} className="faint" />}
+        value={value}
+        placeholder={placeholder}
+        autoFocus={!initial}
+        onChange={(e) => setValue(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') void submit()
+        }}
+      />
       <div className="row">
-        <button type="button" className="btn primary" disabled={!value.trim() || busy} onClick={() => void submit()}>
+        <Button variant="primary" disabled={!value.trim() || busy} onClick={() => void submit()}>
           {busy ? 'Adding…' : submitLabel}
-        </button>
-        {onClear && initial && (
-          <button type="button" className="btn" onClick={onClear}>
-            Remove
-          </button>
-        )}
+        </Button>
+        {onClear && initial && <Button onClick={onClear}>Remove</Button>}
       </div>
     </div>
   )
@@ -358,12 +344,12 @@ function TableSection({ deck, el }: { deck: Deck; el: TableElement }) {
         ))}
       </div>
       <div className="grid-2">
-        <button type="button" className={`btn ${header ? 'active-chip' : ''}`} onClick={() => commit(restyle({ ...data, firstRowHeader: !header }))}>
+        <Button className={header ? 'active-chip' : ''} onClick={() => commit(restyle({ ...data, firstRowHeader: !header }))}>
           Header row
-        </button>
-        <button type="button" className={`btn ${banded ? 'active-chip' : ''}`} onClick={() => commit(restyle({ ...data, bandedRows: !banded }))}>
+        </Button>
+        <Button className={banded ? 'active-chip' : ''} onClick={() => commit(restyle({ ...data, bandedRows: !banded }))}>
           Banded rows
-        </button>
+        </Button>
       </div>
       <div className="grid-2">
         <Stepper label="Rows" value={data.rows.length} min={1} max={50} onChange={(n) => commit(restyle(resizeRows(data, n)))} />
@@ -460,9 +446,9 @@ function FillSection({ deck, el }: { deck: Deck; el: Element }) {
     <Section title="Fill & line">
       <div className="docx-color-row">
         <ColorField value={noFill ? null : normalizeHex(s.fillColor)} label="No fill" onChange={(hex) => tb.onUpdateElementStyle({ fillMode: 'solid', fillColor: `#${hex}` })} />
-        <button type="button" className={`btn ${noFill ? 'active-chip' : ''}`} onClick={() => tb.onUpdateElementStyle({ fillMode: 'none' })}>
+        <Button className={noFill ? 'active-chip' : ''} onClick={() => tb.onUpdateElementStyle({ fillMode: 'none' })}>
           None
-        </button>
+        </Button>
       </div>
       <Swatches value={noFill ? null : normalizeHex(s.fillColor)} onPick={(hex) => tb.onUpdateElementStyle({ fillMode: 'solid', fillColor: `#${hex}` })} />
       <div className="grid-2">
@@ -508,23 +494,23 @@ function ArrangeSection({
         </div>
       </div>
       {(el.type === 'image' || el.type === 'picture') && (
-        <button type="button" className="btn block" disabled={!onCrop} title={onCrop ? 'Crop' : 'A rotated or flipped picture can’t be cropped here'} onClick={() => onCrop?.()}>
+        <Button block disabled={!onCrop} title={onCrop ? 'Crop' : 'A rotated or flipped picture can’t be cropped here'} onClick={() => onCrop?.()}>
           <Crop size={14} /> Crop
-        </button>
+        </Button>
       )}
       <LayerButtons onArrange={onArrange} canArrange={canArrange} />
       {el.type === 'group' && (
-        <button type="button" className="btn block" onClick={tb.onUngroupElement} title={platform.shortcut(withKeys('Ungroup', 'pptx.ungroup'))}>
+        <Button block onClick={tb.onUngroupElement} title={platform.shortcut(withKeys('Ungroup', 'pptx.ungroup'))}>
           <Ungroup size={14} /> Ungroup
-        </button>
+        </Button>
       )}
       <div className="grid-2">
-        <button type="button" className="btn" onClick={tb.onDuplicate} title={platform.shortcut(withKeys('Duplicate', 'pptx.duplicate'))}>
+        <Button onClick={tb.onDuplicate} title={platform.shortcut(withKeys('Duplicate', 'pptx.duplicate'))}>
           <Copy size={14} /> Duplicate
-        </button>
-        <button type="button" className="btn danger" onClick={tb.onDelete}>
+        </Button>
+        <Button variant="danger" onClick={tb.onDelete}>
           <Trash2 size={14} /> Delete
-        </button>
+        </Button>
       </div>
     </Section>
   )
@@ -533,9 +519,9 @@ function ArrangeSection({
 /** Stacking order for the selected objects, as PowerPoint's Arrange menu. */
 function LayerButtons({ onArrange, canArrange }: { onArrange: (how: Restack) => void; canArrange: (how: Restack) => boolean }) {
   const layer = (how: Restack, short: string, label: string, icon: ReactNode) => (
-    <button type="button" className="btn layer-btn" disabled={!canArrange(how)} title={platform.shortcut(withKeys(label, `pptx.${how}`))} aria-label={label} onClick={() => onArrange(how)}>
+    <Button className="layer-btn" disabled={!canArrange(how)} title={platform.shortcut(withKeys(label, `pptx.${how}`))} aria-label={label} onClick={() => onArrange(how)}>
       {icon} {short}
-    </button>
+    </Button>
   )
   return (
     <>
@@ -576,12 +562,12 @@ function MultiSelection({ deck, count, onArrange, canArrange }: { deck: Deck; co
     <>
     <Section title={`${count} objects`}>
       <div className="grid-2">
-        <button type="button" className="btn" disabled={!tb.selectionGroupable} onClick={tb.onGroupElements} title={platform.shortcut(withKeys('Group', 'pptx.group'))}>
+        <Button disabled={!tb.selectionGroupable} onClick={tb.onGroupElements} title={platform.shortcut(withKeys('Group', 'pptx.group'))}>
           <Group size={14} /> Group
-        </button>
-        <button type="button" className="btn danger" onClick={tb.onDelete}>
+        </Button>
+        <Button variant="danger" onClick={tb.onDelete}>
           <Trash2 size={14} /> Delete
-        </button>
+        </Button>
       </div>
       <div className="toggle-row">
         <IconButton label="Align left" onClick={() => tb.onAlignElements('left')}>
@@ -604,12 +590,12 @@ function MultiSelection({ deck, count, onArrange, canArrange }: { deck: Deck; co
         </IconButton>
       </div>
       <div className="grid-2">
-        <button type="button" className="btn" disabled={!tb.canDistribute} onClick={() => tb.onDistributeElements('horizontal')}>
+        <Button disabled={!tb.canDistribute} onClick={() => tb.onDistributeElements('horizontal')}>
           Space across
-        </button>
-        <button type="button" className="btn" disabled={!tb.canDistribute} onClick={() => tb.onDistributeElements('vertical')}>
+        </Button>
+        <Button disabled={!tb.canDistribute} onClick={() => tb.onDistributeElements('vertical')}>
           Space down
-        </button>
+        </Button>
       </div>
       <LayerButtons onArrange={onArrange} canArrange={canArrange} />
     </Section>
@@ -685,9 +671,7 @@ function GroupFillSection({ deck }: { deck: Deck }) {
     <Section title="Fill">
       <div className="docx-color-row">
         <ColorField value={value} label="Fill" onChange={(hex) => set({ fillMode: 'solid', fillColor: `#${hex}` })} />
-        <button type="button" className="btn" onClick={() => set({ fillMode: 'none' })}>
-          None
-        </button>
+        <Button onClick={() => set({ fillMode: 'none' })}>None</Button>
       </div>
       <Swatches value={value} onPick={(hex) => set({ fillMode: 'solid', fillColor: `#${hex}` })} />
     </Section>
@@ -743,9 +727,9 @@ function TransitionSection({ deck, indexes }: { deck: Deck; indexes: readonly nu
           </button>
         </>
       )}
-      <button type="button" className="btn block" disabled={slides.length < 2} onClick={() => set(() => current, slides.map((_, i) => i))}>
+      <Button block disabled={slides.length < 2} onClick={() => set(() => current, slides.map((_, i) => i))}>
         Use on every slide
-      </button>
+      </Button>
     </Section>
   )
 }

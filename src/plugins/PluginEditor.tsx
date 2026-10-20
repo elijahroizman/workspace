@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { EditorProps } from '../App'
-import { CenterState } from '../components/ui'
+import { Button, CenterState } from '../components/ui'
 import type { ViewMode } from '../components/ViewSwitch'
 import { initialView, nextView, ViewSwitch } from '../components/ViewSwitch'
 import { FindBar, Workbench } from '../components/Workbench'
@@ -188,9 +188,7 @@ export default function PluginEditor({ tab, active }: EditorProps) {
     return (
       <CenterState title={`Couldn’t start ${plugin.name}`}>
         <p className="muted">{error.message}</p>
-        <button type="button" className="btn" onClick={() => useSettings.getState().setOpen(true, 'plugins')}>
-          Open Plugins settings
-        </button>
+        <Button onClick={() => useSettings.getState().setOpen(true, 'plugins')}>Open Plugins settings</Button>
       </CenterState>
     )
   }
