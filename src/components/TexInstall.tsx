@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { formatSize } from '../state/plugins'
 import { INSTALL_CHOICES, useTex } from '../state/tex'
-import { Spinner } from './ui'
+import { Button, Checkbox, Modal, Spinner } from './ui'
 
 export function TexInstall() {
   const installing = useTex((s) => s.installing)
@@ -33,7 +33,7 @@ export function TexInstall() {
           : null
 
   return (
-    <div className="new-file-backdrop tex-install-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+    <Modal placement="top" dim="light" layer="dialog" onClose={close}>
       <div className="tex-install" role="dialog" aria-modal="true" aria-labelledby="tex-install-title">
         <h2 id="tex-install-title">Install TeX for LaTeX documents?</h2>
         <p className="muted">
@@ -65,12 +65,10 @@ export function TexInstall() {
         )}
         {error && <p className="plugin-error">{error}</p>}
         <div className="tex-install-actions">
-          <button type="button" className="btn" onClick={close}>
-            {installing ? 'Hide' : error ? 'Close' : 'Not now'}
-          </button>
+          <Button onClick={close}>{installing ? 'Hide' : error ? 'Close' : 'Not now'}</Button>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -93,7 +91,7 @@ export function TexRemove() {
 
   if (!removal) return null
   return (
-    <div className="new-file-backdrop tex-install-backdrop" onMouseDown={(e) => e.target === e.currentTarget && void answerTurnOff(false, false)}>
+    <Modal placement="top" dim="light" layer="dialog" onClose={() => void answerTurnOff(false, false)}>
       <div className="tex-install" role="dialog" aria-modal="true" aria-labelledby="tex-remove-title">
         <h2 id="tex-remove-title">Turn off LaTeX?</h2>
         <p className="muted">
@@ -108,10 +106,7 @@ export function TexRemove() {
         )}
         {removal.method && (
           <>
-            <label className="check">
-              <input type="checkbox" checked={remove} disabled={removal.busy || !!removal.error} onChange={(e) => setRemove(e.currentTarget.checked)} />
-              Also remove TeX from this computer
-            </label>
+            <Checkbox checked={remove} disabled={removal.busy || !!removal.error} onChange={setRemove} label="Also remove TeX from this computer" />
             <p className="settings-hint">Uninstalls it with {removal.method}. Other programs that use TeX lose it too, and putting it back means downloading it again.</p>
           </>
         )}
@@ -123,14 +118,14 @@ export function TexRemove() {
         )}
         {removal.error && <p className="plugin-error">{removal.error}</p>}
         <div className="tex-install-actions">
-          <button type="button" className="btn" disabled={removal.busy} onClick={() => void answerTurnOff(false, false)}>
+          <Button disabled={removal.busy} onClick={() => void answerTurnOff(false, false)}>
             Cancel
-          </button>
-          <button type="button" className="btn primary" disabled={removal.busy} onClick={() => void answerTurnOff(true, remove)}>
+          </Button>
+          <Button variant="primary" disabled={removal.busy} onClick={() => void answerTurnOff(true, remove)}>
             {removal.error ? 'Turn off anyway' : remove && removal.method ? 'Turn off and remove TeX' : 'Turn off'}
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }

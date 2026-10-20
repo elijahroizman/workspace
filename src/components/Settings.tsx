@@ -23,8 +23,7 @@ import { useFolder } from '../state/folder'
 import { useWorkspace } from '../state/workspace'
 import { PluginRow } from './PluginList'
 import { formatSize as formatVersionSize } from './VersionHistory'
-import { DocBadge } from './ui'
-import { IconButton, Segmented, Spinner, Switch } from './ui'
+import { Button, Checkbox, DocBadge, IconButton, LinkButton, Modal, Segmented, SettingsRow, Spinner, Switch, TextField } from './ui'
 
 const LicensesPage = lazy(() => import('./Licenses'))
 
@@ -65,7 +64,7 @@ export default function SettingsPanel() {
   }, [setOpen])
 
   return (
-    <div className="settings-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
+    <Modal placement="center" dim="normal" layer="sheet" onClose={() => setOpen(false)}>
       <div className="settings" role="dialog" aria-modal="true" aria-labelledby="settings-title" tabIndex={-1} ref={dialog}>
         <nav className="settings-nav" aria-label="Settings sections">
           <h2 id="settings-title">Settings</h2>
@@ -110,7 +109,7 @@ export default function SettingsPanel() {
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -128,17 +127,9 @@ function GeneralPage() {
   useEffect(() => void linuxPackage().then(setLinux), [])
   return (
     <>
-      <div className="settings-row">
-        <div className="settings-row-text">
-          <span className="settings-label">Workspace {__APP_VERSION__}</span>
-          <span className="settings-hint">{updateHint(linux)}</span>
-        </div>
-        <div className="settings-row-control">
-          <button type="button" className="btn" onClick={() => (setOpen(false), openUpdatePanel())}>
-            Check for updates
-          </button>
-        </div>
-      </div>
+      <SettingsRow label={`Workspace ${__APP_VERSION__}`} hint={updateHint(linux)}>
+        <Button onClick={() => (setOpen(false), openUpdatePanel())}>Check for updates</Button>
+      </SettingsRow>
 
       <DefaultAppsRow />
 
@@ -146,29 +137,16 @@ function GeneralPage() {
 
       <CommandLineRow />
 
-      <div className="settings-row">
-        <div className="settings-row-text">
-          <span className="settings-label">Setup</span>
-          <span className="settings-hint">{canSetDefaults ? 'Go through the first-launch screen again: plugins and default apps.' : 'Go through the first-launch screen again to choose plugins.'}</span>
-        </div>
-        <div className="settings-row-control">
-          <button type="button" className="btn" onClick={() => (setOpen(false), useSetup.getState().show())}>
-            Run setup again
-          </button>
-        </div>
-      </div>
+      <SettingsRow
+        label="Setup"
+        hint={canSetDefaults ? 'Go through the first-launch screen again: plugins and default apps.' : 'Go through the first-launch screen again to choose plugins.'}
+      >
+        <Button onClick={() => (setOpen(false), useSetup.getState().show())}>Run setup again</Button>
+      </SettingsRow>
 
-      <div className="settings-row">
-        <div className="settings-row-text">
-          <span className="settings-label">Open-source licenses</span>
-          <span className="settings-hint">Workspace is built on open-source engines, including PDFium, docx-editor and CodeMirror.</span>
-        </div>
-        <div className="settings-row-control">
-          <button type="button" className="btn" onClick={() => setPage('licenses')}>
-            View licenses
-          </button>
-        </div>
-      </div>
+      <SettingsRow label="Open-source licenses" hint="Workspace is built on open-source engines, including PDFium, docx-editor and CodeMirror.">
+        <Button onClick={() => setPage('licenses')}>View licenses</Button>
+      </SettingsRow>
     </>
   )
 }
@@ -193,25 +171,22 @@ function CommandLineRow() {
     }
   }
   return (
-    <div className="settings-row">
-      <div className="settings-row-text">
-        <span className="settings-label">Command line</span>
-        <span className="settings-hint">
-          {status.taken
-            ? `Something else is already at ${status.path}, so Workspace can’t put its command there.`
-            : status.supported
-              ? `Open files and folders from Terminal: workspace . opens the folder you’re in, workspace notes.md a file. ${status.installed ? `Installed at ${status.path}.` : 'Installing asks for your password.'}`
-              : 'Open files and folders from a terminal: workspace . opens the folder you’re in, workspace notes.md a file.'}
-        </span>
-      </div>
+    <SettingsRow
+      label="Command line"
+      hint={
+        status.taken
+          ? `Something else is already at ${status.path}, so Workspace can’t put its command there.`
+          : status.supported
+            ? `Open files and folders from Terminal: workspace . opens the folder you’re in, workspace notes.md a file. ${status.installed ? `Installed at ${status.path}.` : 'Installing asks for your password.'}`
+            : 'Open files and folders from a terminal: workspace . opens the folder you’re in, workspace notes.md a file.'
+      }
+    >
       {status.supported && !status.taken && (
-        <div className="settings-row-control">
-          <button type="button" className="btn" disabled={busy} onClick={() => void toggle()}>
-            {status.installed ? 'Remove command' : 'Install command'}
-          </button>
-        </div>
+        <Button disabled={busy} onClick={() => void toggle()}>
+          {status.installed ? 'Remove command' : 'Install command'}
+        </Button>
       )}
-    </div>
+    </SettingsRow>
   )
 }
 
@@ -226,30 +201,23 @@ function RecentFilesRow() {
   const folders = useFolder((s) => s.recent.length)
   const count = files + folders
   return (
-    <div className="settings-row column">
-      <div className="settings-row-text">
-        <span className="settings-label">Recent files and folders</span>
-        <span className="settings-hint">Every file and folder you open is under All. Choose which types also get a tab of their own on Home.</span>
-      </div>
+    <SettingsRow column bare label="Recent files and folders" hint="Every file and folder you open is under All. Choose which types also get a tab of their own on Home.">
       <div className="settings-inline">
         <span className="settings-hint">Keep them in Recent for</span>
         <Segmented value={String(recentDays)} options={RECENT_DAYS.map((d) => ({ value: String(d), label: d === 1 ? '1 day' : `${d} days` }))} onChange={(v) => setRecentDays(Number(v))} />
       </div>
       <div className="kind-checks">
         {enabledKinds(plugins).map((k) => (
-          <label key={k.id} className="check">
-            <input type="checkbox" checked={recentTabs[k.id] !== false} onChange={(e) => setRecentTab(k.id, e.currentTarget.checked)} />
-            {k.short}
-          </label>
+          <Checkbox key={k.id} checked={recentTabs[k.id] !== false} onChange={(on) => setRecentTab(k.id, on)} label={k.short} />
         ))}
       </div>
       <div className="settings-inline">
-        <button type="button" className="btn" disabled={!count} onClick={() => useWorkspace.getState().clearRecents()}>
+        <Button disabled={!count} onClick={() => useWorkspace.getState().clearRecents()}>
           Clear file history
-        </button>
+        </Button>
         <span className="settings-hint">{count ? `Forgets the ${count === 1 ? (files ? 'file' : 'folder') : `${count} ${folders ? 'files and folders' : 'files'}`} on Home. The files themselves stay where they are.` : 'There’s nothing in the history.'}</span>
       </div>
-    </div>
+    </SettingsRow>
   )
 }
 
@@ -285,13 +253,12 @@ function DefaultAppsRow() {
   if (!canSetDefaults) return null
   const missing = kinds.filter((k) => status[k.id] === false).map((k) => k.id)
   return (
-    <div className="settings-row column">
-      <div className="settings-row-text">
-        <span className="settings-label">Default apps</span>
-        <span className="settings-hint">
-          {isMac ? 'Double-clicking these files in Finder opens them in Workspace.' : 'Windows asks you to confirm each one in Settings › Default apps.'}
-        </span>
-      </div>
+    <SettingsRow
+      column
+      bare
+      label="Default apps"
+      hint={isMac ? 'Double-clicking these files in Finder opens them in Workspace.' : 'Windows asks you to confirm each one in Settings › Default apps.'}
+    >
       <div className="default-apps">
         {kinds.map((k) => (
           <div key={k.id} className="default-app">
@@ -302,21 +269,21 @@ function DefaultAppsRow() {
             {status[k.id] ? (
               <span className="faint">Opens in Workspace</span>
             ) : (
-              <button type="button" className="btn" disabled={busy || status[k.id] == null} onClick={() => void set([k.id])}>
+              <Button disabled={busy || status[k.id] == null} onClick={() => void set([k.id])}>
                 Make default
-              </button>
+              </Button>
             )}
           </div>
         ))}
       </div>
       {missing.length > 1 && (
         <div>
-          <button type="button" className="btn" disabled={busy} onClick={() => void set(missing)}>
+          <Button disabled={busy} onClick={() => void set(missing)}>
             Make Workspace the default for all
-          </button>
+          </Button>
         </div>
       )}
-    </div>
+    </SettingsRow>
   )
 }
 
@@ -351,9 +318,9 @@ function PluginsPage() {
               )
             }
           >
-            <button type="button" className="link-btn" title={p.homepage} onClick={() => void openExternal(p.homepage)}>
+            <LinkButton title={p.homepage} onClick={() => void openExternal(p.homepage)}>
               {linkText(p.homepage)}
-            </button>
+            </LinkButton>
             {p.services?.includes('tex') && enabled[p.id] && <TexSettings />}
           </PluginRow>
         ))}
@@ -393,9 +360,7 @@ function FontRow({ font }: { font: ExtraFont }) {
         <span className="settings-hint">{font.about}</span>
         <span className="settings-hint plugin-meta">
           {font.maker} · {formatSize(font.size)} download ·{' '}
-          <button type="button" className="link-btn" onClick={() => void openExternal(font.licenseUrl)}>
-            License
-          </button>
+          <LinkButton onClick={() => void openExternal(font.licenseUrl)}>License</LinkButton>
         </span>
         {error && <span className="plugin-error">{error}</span>}
       </span>
@@ -430,16 +395,12 @@ function TexSettings() {
               : 'TeX isn’t installed, so documents can’t compile.'}
         </span>
         {installing ? (
-          <button type="button" className="btn" onClick={() => useTex.setState({ offer: true })}>
-            Show progress
-          </button>
+          <Button onClick={() => useTex.setState({ offer: true })}>Show progress</Button>
         ) : (
           status &&
           !status.installed &&
           INSTALL_CHOICES.length > 0 && (
-            <button type="button" className="btn" onClick={() => void useTex.getState().offerInstall()}>
-              Install TeX…
-            </button>
+            <Button onClick={() => void useTex.getState().offerInstall()}>Install TeX…</Button>
           )
         )}
       </div>
@@ -491,45 +452,27 @@ function AutosavePage() {
         A file that already lives somewhere is saved there a few seconds after you stop editing. A new document stays unsaved until you save it with {shortcut('⌘S')}.
       </p>
 
-      <div className="settings-row">
-        <div className="settings-row-text">
-          <span className="settings-label">Save automatically</span>
-          <span className="settings-hint">Turn this off and every file waits for {shortcut('Save')}.</span>
-        </div>
-        <div className="settings-row-control">
-          <Switch label="Autosave" checked={autosave.enabled} onChange={(enabled) => setAutosave({ enabled })} />
-        </div>
-      </div>
+      <SettingsRow label="Save automatically" hint={`Turn this off and every file waits for ${shortcut('Save')}.`}>
+        <Switch label="Autosave" checked={autosave.enabled} onChange={(enabled) => setAutosave({ enabled })} />
+      </SettingsRow>
 
       <fieldset className="settings-fields" disabled={!autosave.enabled}>
-        <div className="settings-row">
-          <div className="settings-row-text">
-            <span className="settings-label">Save after you stop editing for</span>
-            <span className="settings-hint">If you keep going, it still saves every 30 seconds.</span>
-          </div>
-          <div className="settings-row-control">
-            <Segmented value={String(autosave.delay)} options={DELAYS} onChange={(v) => setAutosave({ delay: Number(v) })} disabled={!autosave.enabled} />
-          </div>
-        </div>
+        <SettingsRow label="Save after you stop editing for" hint="If you keep going, it still saves every 30 seconds.">
+          <Segmented value={String(autosave.delay)} options={DELAYS} onChange={(v) => setAutosave({ delay: Number(v) })} disabled={!autosave.enabled} />
+        </SettingsRow>
 
-        <div className="settings-row column">
-          <div className="settings-row-text">
-            <span className="settings-label">Autosave these files</span>
-            <span className="settings-hint">Files you untick wait for {shortcut('Save')}.</span>
-          </div>
+        <SettingsRow column bare label="Autosave these files" hint={`Files you untick wait for ${shortcut('Save')}.`}>
           <div className="kind-checks">
             {enabledKinds(plugins).map((k) => (
-              <label key={k.id} className="check">
-                <input
-                  type="checkbox"
-                  checked={autosave.kinds[k.id] !== false}
-                  onChange={(e) => setAutosave({ kinds: { ...autosave.kinds, [k.id]: e.currentTarget.checked } })}
-                />
-                {k.short}
-              </label>
+              <Checkbox
+                key={k.id}
+                checked={autosave.kinds[k.id] !== false}
+                onChange={(on) => setAutosave({ kinds: { ...autosave.kinds, [k.id]: on } })}
+                label={k.short}
+              />
             ))}
           </div>
-        </div>
+        </SettingsRow>
       </fieldset>
 
       <HistoryRows />
@@ -559,28 +502,17 @@ function HistoryRows() {
   }
   return (
     <>
-      <div className="settings-row">
-        <div className="settings-row-text">
-          <span className="settings-label">Version history</span>
-          <span className="settings-hint">
-            Keep a copy each time a file is saved, so you can compare with or go back to an earlier version (right-click a tab, then Version history). Every save from the last hour is kept, then fewer as they get older. Copies stay on this computer.
-          </span>
-        </div>
-        <div className="settings-row-control">
-          <Switch label="Version history" checked={history} onChange={setHistory} />
-        </div>
-      </div>
-      <div className="settings-row">
-        <div className="settings-row-text">
-          <span className="settings-label">Space used</span>
-          <span className="settings-hint">{usage === null ? '…' : usage === 0 ? 'Nothing yet.' : `${formatVersionSize(usage)} for every file’s versions.`}</span>
-        </div>
-        <div className="settings-row-control">
-          <button type="button" className="btn danger" disabled={!usage} onClick={() => void clear()}>
-            Delete all versions
-          </button>
-        </div>
-      </div>
+      <SettingsRow
+        label="Version history"
+        hint="Keep a copy each time a file is saved, so you can compare with or go back to an earlier version (right-click a tab, then Version history). Every save from the last hour is kept, then fewer as they get older. Copies stay on this computer."
+      >
+        <Switch label="Version history" checked={history} onChange={setHistory} />
+      </SettingsRow>
+      <SettingsRow label="Space used" hint={usage === null ? '…' : usage === 0 ? 'Nothing yet.' : `${formatVersionSize(usage)} for every file’s versions.`}>
+        <Button variant="danger" disabled={!usage} onClick={() => void clear()}>
+          Delete all versions
+        </Button>
+      </SettingsRow>
     </>
   )
 }
@@ -599,31 +531,28 @@ function AppearancePage() {
 
   return (
     <>
-      <div className="settings-row">
-        <div className="settings-row-text">
-          <span className="settings-label">Light and dark</span>
-          <span className="settings-hint">{shortcut(keysFor('toggle-theme') ? `System follows your computer. Switch between light and dark any time with ${keysFor('toggle-theme')}.` : 'System follows your computer.')}</span>
-        </div>
-        <div className="settings-row-control">
-          <Segmented
-            value={mode}
-            onChange={setThemeMode}
-            options={[
-              { value: 'system', label: 'System', icon: <Monitor size={14} /> },
-              { value: 'light', label: 'Light', icon: <Sun size={14} /> },
-              { value: 'dark', label: 'Dark', icon: <Moon size={14} /> },
-            ]}
-          />
-        </div>
-      </div>
+      <SettingsRow
+        label="Light and dark"
+        hint={shortcut(keysFor('toggle-theme') ? `System follows your computer. Switch between light and dark any time with ${keysFor('toggle-theme')}.` : 'System follows your computer.')}
+      >
+        <Segmented
+          value={mode}
+          onChange={setThemeMode}
+          options={[
+            { value: 'system', label: 'System', icon: <Monitor size={14} /> },
+            { value: 'light', label: 'Light', icon: <Sun size={14} /> },
+            { value: 'dark', label: 'Dark', icon: <Moon size={14} /> },
+          ]}
+        />
+      </SettingsRow>
 
       <section className="theme-section">
         <div className="theme-section-header">
           <h4>Themes</h4>
           {!editing && (
-            <button type="button" className="btn" title="Starts as a copy of the theme you’re using" onClick={() => setEditing(copyOf(current))}>
+            <Button title="Starts as a copy of the theme you’re using" onClick={() => setEditing(copyOf(current))}>
               <Plus size={14} /> Create theme
-            </button>
+            </Button>
           )}
         </div>
         {editing && (
@@ -711,21 +640,17 @@ function ThemeEditor({ theme, onChange, onSave, onCancel }: { theme: ThemeDef; o
         <span className="theme-orb-ball" style={{ background: orbBackground(theme, 'dark') }} />
       </div>
       <div className="theme-editor-fields">
-        <label className="field">
-          <input value={theme.name} maxLength={40} placeholder="Theme name" spellCheck={false} onChange={(e) => onChange({ ...theme, name: e.currentTarget.value })} />
-        </label>
+        <TextField value={theme.name} maxLength={40} placeholder="Theme name" onChange={(e) => onChange({ ...theme, name: e.currentTarget.value })} />
         <div className="theme-colors">
           {swatch('Accent', 'accent')}
           {swatch('Light tone', 'light')}
           {swatch('Dark tone', 'dark')}
         </div>
         <div className="theme-editor-actions">
-          <button type="button" className="btn primary" disabled={!valid} onClick={onSave}>
+          <Button variant="primary" disabled={!valid} onClick={onSave}>
             Save theme
-          </button>
-          <button type="button" className="btn" onClick={onCancel}>
-            Cancel
-          </button>
+          </Button>
+          <Button onClick={onCancel}>Cancel</Button>
         </div>
       </div>
     </div>
@@ -748,13 +673,10 @@ function ShortcutsPage() {
     <>
       <p className="settings-intro">Click a shortcut and press the keys you want instead. Press {isMac ? '⌫' : 'Backspace'} to remove one, or Esc to leave it as it was.</p>
       <div className="shortcut-tools">
-        <label className="field shortcut-search">
-          <Search size={13} className="faint" />
-          <input value={query} placeholder="Search shortcuts" spellCheck={false} onChange={(e) => setQuery(e.currentTarget.value)} />
-        </label>
-        <button type="button" className="btn" disabled={!changed} onClick={() => (resetAll(), setNote(null))}>
+        <TextField className="shortcut-search" icon={<Search size={13} className="faint" />} value={query} placeholder="Search shortcuts" onChange={(e) => setQuery(e.currentTarget.value)} />
+        <Button disabled={!changed} onClick={() => (resetAll(), setNote(null))}>
           <RotateCcw size={13} /> Reset all
-        </button>
+        </Button>
       </div>
       {groups.map((group) => (
         <section key={group} className="shortcut-group">

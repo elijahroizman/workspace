@@ -1,6 +1,7 @@
 import { CircleAlert, Info, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { answerDialog, useDialogs } from '../lib/dialogs'
+import { Button, Modal } from './ui'
 
 const ICONS = { info: Info, warning: TriangleAlert, error: CircleAlert }
 
@@ -61,7 +62,7 @@ export function Dialogs() {
   if (!current) return null
   const Icon = ICONS[current.kind]
   return (
-    <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && answerDialog(current.id, current.cancelValue)}>
+    <Modal placement="top" dim="light" layer="dialog" onClose={() => answerDialog(current.id, current.cancelValue)}>
       <div
         ref={ref}
         className={`dialog dialog-${current.kind}`}
@@ -79,17 +80,16 @@ export function Dialogs() {
         </div>
         <div className="dialog-actions">
           {current.buttons.map((b) => (
-            <button
+            <Button
               key={b.value}
-              type="button"
-              className={`btn ${b.primary ? 'primary' : ''} ${b.danger ? 'danger' : ''}`}
+              variant={b.primary ? (b.danger ? 'primary-danger' : 'primary') : b.danger ? 'danger' : 'default'}
               onClick={() => answerDialog(current.id, b.value)}
             >
               {b.label}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }

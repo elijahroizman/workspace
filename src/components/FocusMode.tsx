@@ -90,7 +90,8 @@ export function FocusMode() {
     if (!on) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return
-      if (document.querySelector('.menu, .find-bar, .palette-backdrop, .settings-backdrop, .new-file-backdrop, .dialog-backdrop, .present')) return
+      // PDF signing still draws .dialog-backdrop; every other overlay is a Modal.
+      if (document.querySelector('.menu, .find-bar, .modal-backdrop, .dialog-backdrop, .present')) return
       useFocus.getState().setOn(false)
     }
     window.addEventListener('keydown', onKey)

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { create } from 'zustand'
 import { enabledKinds, usePlugins } from '../state/plugins'
 import { useWorkspace } from '../state/workspace'
-import { DocBadge } from './ui'
+import { DocBadge, Kbd, Modal } from './ui'
 
 export const useNewFile = create<{ open: boolean; setOpen(open: boolean): void }>((set) => ({
   open: false,
@@ -42,7 +42,7 @@ export function NewFilePicker() {
   })
 
   return (
-    <div className="new-file-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+    <Modal placement="top" dim="light" layer="picker" onClose={close}>
       <div className="new-file" role="dialog" aria-modal="true" aria-label="New file">
         <h2>New file</h2>
         <div className="new-file-list" role="listbox" tabIndex={-1} ref={list} aria-activedescendant={`new-${kinds[index]?.id}`}>
@@ -62,11 +62,11 @@ export function NewFilePicker() {
                 <strong>{k.create!.title}</strong>
                 <span className="muted">{k.create!.hint}</span>
               </span>
-              {i < 9 && <span className="kbd">{i + 1}</span>}
+              {i < 9 && <Kbd keys={String(i + 1)} />}
             </button>
           ))}
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }

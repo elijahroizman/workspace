@@ -10,8 +10,7 @@ import type { DocKind } from '../lib/kinds'
 import { pickSplit } from '../App'
 import { UpdateButton } from './UpdateButton'
 import { showVersionHistory } from './VersionHistory'
-import { KindIcon } from './ui'
-import { PopoverMenu } from './ui'
+import { IconButton, KindIcon, PopoverMenu } from './ui'
 
 export function TitleBar() {
   const tabs = useWorkspace((s) => s.tabs)
@@ -137,9 +136,9 @@ export function TitleBar() {
           )
         })}
       </div>
-      <button
-        type="button"
-        className="icon-btn new-tab-btn"
+      <IconButton
+        label="New"
+        className="new-tab-btn"
         aria-label="New"
         title="New document or open a file"
         onClick={(e) => {
@@ -148,7 +147,7 @@ export function TitleBar() {
         }}
       >
         <Plus size={16} />
-      </button>
+      </IconButton>
       <div className="titlebar-spacer" data-tauri-drag-region />
       <AutosaveChip />
       <UpdateButton />
