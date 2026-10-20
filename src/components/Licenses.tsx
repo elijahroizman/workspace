@@ -1,7 +1,7 @@
 import { ChevronRight, Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { openExternal } from '../lib/platform'
-import { Spinner } from './ui'
+import { LinkButton, Spinner, TextField } from './ui'
 
 interface LicensedPackage {
   group: string
@@ -50,15 +50,16 @@ export default function LicensesPage() {
       </p>
       <p className="settings-intro">
         The theme picker in Settings › Appearance is heavily inspired by the one in{' '}
-        <button type="button" className="link-btn" onClick={() => void openExternal('https://github.com/pingdotgg/t3code')}>
-          T3 Code
-        </button>
+        <LinkButton onClick={() => void openExternal('https://github.com/pingdotgg/t3code')}>T3 Code</LinkButton>
         .
       </p>
-      <label className="field shortcut-search">
-        <Search size={13} className="faint" />
-        <input value={query} placeholder="Search packages or licenses" spellCheck={false} onChange={(e) => setQuery(e.currentTarget.value)} />
-      </label>
+      <TextField
+        className="shortcut-search"
+        icon={<Search size={13} className="faint" />}
+        value={query}
+        placeholder="Search packages or licenses"
+        onChange={(e) => setQuery(e.currentTarget.value)}
+      />
       {groups.map(({ group, packages }) => {
         const folded = !query.trim() && !unfolded.has(group)
         const toggle = () =>
@@ -90,9 +91,9 @@ export default function LicensesPage() {
                   {expanded && (
                     <div className="license-body">
                       {p.homepage && (
-                        <button type="button" className="link-btn" onClick={() => void openExternal(p.homepage!.replace(/^git:\/\//, 'https://'))}>
+                        <LinkButton onClick={() => void openExternal(p.homepage!.replace(/^git:\/\//, 'https://'))}>
                           {p.homepage.replace(/^(git|https?):\/\//, '')}
-                        </button>
+                        </LinkButton>
                       )}
                       {p.files.length ? (
                         p.files.map((f) => (

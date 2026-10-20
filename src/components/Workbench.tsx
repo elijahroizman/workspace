@@ -6,7 +6,7 @@ import type { DocTab } from '../state/workspace'
 import { useWorkspace } from '../state/workspace'
 import { withKeys } from '../state/shortcuts'
 import { shortcut } from '../lib/platform'
-import { DocBadge, IconButton } from './ui'
+import { Button, DocBadge, IconButton } from './ui'
 
 const WIDTH_KEY = 'workspace.sidebarWidths'
 const savedWidths = (() => {
@@ -256,12 +256,12 @@ export function FindBar({
               }
             }}
           />
-          <button type="button" className="btn find-btn" title="Replace (↩)" disabled={!count} onClick={() => onReplace(replacement)}>
+          <Button className="find-btn" title="Replace (↩)" disabled={!count} onClick={() => onReplace(replacement)}>
             Replace
-          </button>
-          <button type="button" className="btn find-btn" title={shortcut('Replace all (⌘↩)')} disabled={!count} onClick={() => onReplaceAll(replacement)}>
+          </Button>
+          <Button className="find-btn" title={shortcut('Replace all (⌘↩)')} disabled={!count} onClick={() => onReplaceAll(replacement)}>
             All
-          </button>
+          </Button>
         </div>
       )}
     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Button } from './ui'
 
 /** A box on screen, in client pixels. */
 export interface Rect {
@@ -121,15 +122,13 @@ export function CropOverlay({
         style={{ left: frame.x + frame.width / 2, top: below ? frame.y + frame.height + 12 : Math.max(8, frame.y - 46) }}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <button type="button" className="btn" disabled={sameRect(frame, image)} onClick={() => setFrame(image)}>
+        <Button disabled={sameRect(frame, image)} onClick={() => setFrame(image)}>
           Reset
-        </button>
-        <button type="button" className="btn" onClick={() => end.current(false)}>
-          Cancel
-        </button>
-        <button type="button" className="btn primary" onClick={() => end.current(true)}>
+        </Button>
+        <Button onClick={() => end.current(false)}>Cancel</Button>
+        <Button variant="primary" onClick={() => end.current(true)}>
           Done
-        </button>
+        </Button>
       </div>
     </div>,
     document.body,

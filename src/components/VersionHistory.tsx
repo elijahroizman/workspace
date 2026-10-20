@@ -8,7 +8,7 @@ import type { FileVersion } from '../lib/platform'
 import * as platform from '../lib/platform'
 import { useSettings } from '../state/settings'
 import { getEditor, useWorkspace } from '../state/workspace'
-import { IconButton, Segmented, Spinner } from './ui'
+import { Button, IconButton, Modal, Segmented, Spinner, TextField } from './ui'
 
 /** Which tab's history is showing, if any. */
 export const useVersionHistory = create<{ tabId: string | null; show(tabId: string | null): void }>((set) => ({
@@ -239,7 +239,7 @@ export function VersionHistory() {
 
   let lastDay = ''
   return (
-    <div className="settings-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+    <Modal placement="center" dim="normal" layer="sheet" onClose={close}>
       <div className="settings history" role="dialog" aria-modal="true" aria-label={`Version history of ${tab.title}`}>
         <nav className="settings-nav history-nav" aria-label="Versions">
           <h2>Version history</h2>
@@ -274,29 +274,27 @@ export function VersionHistory() {
               void saveVersion()
             }}
           >
-            <label className="field">
-              <input value={message} placeholder="Name this save (optional)" spellCheck={false} onChange={(e) => setMessage(e.currentTarget.value)} />
-            </label>
-            <button type="submit" className="btn">
+            <TextField value={message} placeholder="Name this save (optional)" onChange={(e) => setMessage(e.currentTarget.value)} />
+            <Button type="submit">
               <Save size={14} /> Save version
-            </button>
+            </Button>
           </form>
         </nav>
         <div className="settings-page">
           <header className="settings-page-header">
             {version && renaming ? (
-              <label className="field history-rename">
-                <input
-                  autoFocus
-                  defaultValue={version.label ?? ''}
-                  placeholder="Name this version"
-                  onBlur={(e) => void rename(e.currentTarget.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void rename(e.currentTarget.value)
-                    if (e.key === 'Escape') setRenaming(false)
-                  }}
-                />
-              </label>
+              <TextField
+                className="history-rename"
+                autoFocus
+                spellCheck
+                defaultValue={version.label ?? ''}
+                placeholder="Name this version"
+                onBlur={(e) => void rename(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void rename(e.currentTarget.value)
+                  if (e.key === 'Escape') setRenaming(false)
+                }}
+              />
             ) : version ? (
               <button type="button" className="history-name" title="Name this version (named versions are always kept)" onClick={() => setRenaming(true)}>
                 <h3>{version.label || 'Unnamed version'}</h3>
@@ -320,12 +318,12 @@ export function VersionHistory() {
                     <IconButton label="Delete this version" onClick={() => void remove()}>
                       <Trash2 size={15} />
                     </IconButton>
-                    <button type="button" className="btn" onClick={() => void openCopy()} title="Open this version in a new tab, without changing the file">
+                    <Button onClick={() => void openCopy()} title="Open this version in a new tab, without changing the file">
                       <Copy size={14} /> Open copy
-                    </button>
-                    <button type="button" className="btn primary" disabled={index === 0 && !tab.dirty} onClick={() => void restore()}>
+                    </Button>
+                    <Button variant="primary" disabled={index === 0 && !tab.dirty} onClick={() => void restore()}>
                       <ArchiveRestore size={14} /> Restore
-                    </button>
+                    </Button>
                   </div>
                 </div>
                 <div className="history-compare">
@@ -351,7 +349,7 @@ export function VersionHistory() {
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }
 

@@ -425,7 +425,7 @@ export function PopoverMenu({
             >
               {item.icon}
               <span className="label">{item.label}</span>
-              {item.shortcut && <span className="kbd">{shortcut(item.shortcut)}</span>}
+              <Kbd keys={item.shortcut} />
             </button>
           </div>
         ))}
@@ -578,15 +578,29 @@ export function ActionCard({ icon, title, hint, keys, onClick }: { icon: ReactNo
 
 /* ───────────────────────── Settings & forms ───────────────────────── */
 
-/** One setting: its name and a hint on the left, the control on the right (or below with `column`). */
-export function SettingsRow({ label, hint, children, column, className = '' }: { label: ReactNode; hint?: ReactNode; children?: ReactNode; column?: boolean; className?: string }) {
+/** One setting: its name and a hint on the left, the control on the right (or below with `column`). `bare` leaves children unwrapped, for several blocks under the label. */
+export function SettingsRow({
+  label,
+  hint,
+  children,
+  column,
+  bare,
+  className = '',
+}: {
+  label: ReactNode
+  hint?: ReactNode
+  children?: ReactNode
+  column?: boolean
+  bare?: boolean
+  className?: string
+}) {
   return (
     <div className={`settings-row ${column ? 'column' : ''} ${className}`}>
       <div className="settings-row-text">
         <span className="settings-label">{label}</span>
         {hint && <span className="settings-hint">{hint}</span>}
       </div>
-      {children && <div className="settings-row-control">{children}</div>}
+      {children && (bare ? children : <div className="settings-row-control">{children}</div>)}
     </div>
   )
 }

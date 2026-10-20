@@ -64,14 +64,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { create } from 'zustand'
 import { commandAvailable, runCommand } from '../App'
 import { KINDS } from '../lib/kinds'
-import { basename, dirname, shortcut, tildify } from '../lib/platform'
+import { basename, dirname, tildify } from '../lib/platform'
 import { enabledKinds, usePlugins } from '../state/plugins'
 import type { SettingsPage } from '../state/settings'
 import { useSettings } from '../state/settings'
 import type { Scope } from '../state/shortcuts'
 import { SHORTCUTS, keysFor } from '../state/shortcuts'
 import { getEditor, HOME_TAB_ID, useWorkspace } from '../state/workspace'
-import { KindIcon } from './ui'
+import { Kbd, KindIcon, Modal } from './ui'
 
 /**
  * ⌘K: one box to find anything. Type to search commands, open tabs and recent files; start
@@ -455,7 +455,7 @@ export function CommandPalette() {
   })
 
   return (
-    <div className="palette-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+    <Modal placement="top" dim="light" layer="picker" onClose={close}>
       <div className="palette" role="dialog" aria-modal="true" aria-label={picker ? picker.placeholder : 'Command palette'}>
         <input
           ref={input}
@@ -492,13 +492,13 @@ export function CommandPalette() {
                   </span>
                   {item.detail && <span className="palette-detail">{item.detail}</span>}
                   {q && <span className="palette-kind">{item.group === 'Commands' ? 'Command' : item.group === 'Tabs' ? 'Tab' : item.group}</span>}
-                  {item.keys && <span className="kbd">{shortcut(item.keys)}</span>}
+                  <Kbd keys={item.keys} />
                 </button>
               </div>
             )
           })}
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }
