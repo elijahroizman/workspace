@@ -5103,10 +5103,13 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "workspace"
-version = "0.9.1"
+version = "0.9.2"
 dependencies = [
  "base64 0.22.1",
+ "gtk",
  "minisign-verify",
+ "objc2",
+ "objc2-app-kit",
  "objc2-foundation",
  "serde",
  "serde_json",
@@ -5121,6 +5124,7 @@ dependencies = [
  "tauri-plugin-window-state",
  "ureq",
  "webview2-com",
+ "windows",
  "windows-core",
  "windows-registry",
  "zip",

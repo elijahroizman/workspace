@@ -8,9 +8,12 @@ mod history;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod launch_services;
 mod menu;
+mod open_dialog;
 mod plugins;
 mod tex;
 mod update;
+#[cfg(windows)]
+mod window_chrome;
 
 use std::sync::Mutex;
 
@@ -80,6 +83,19 @@ fn disable_browser_shortcuts(window: &tauri::WebviewWindow) {
             let _ = settings.SetAreBrowserAcceleratorKeysEnabled(false);
         }
     });
+}
+
+/// The app's chrome colors, for the parts of the window Windows draws (title and menu bars).
+/// Other systems draw no bars of their own over the page.
+#[tauri::command]
+fn set_window_chrome<R: tauri::Runtime>(window: tauri::WebviewWindow<R>, background: String, text: String, hot: String, disabled: String, theme: Option<String>) -> Result<(), String> {
+    #[cfg(windows)]
+    return window_chrome::set(window, background, text, hot, disabled, theme);
+    #[cfg(not(windows))]
+    {
+        let _ = (window, background, text, hot, disabled, theme);
+        Ok(())
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -163,6 +179,8 @@ pub fn run() {
             update::linux_package,
             update::package_upgrade,
             menu::set_menu_shortcuts,
+            open_dialog::pick_paths,
+            set_window_chrome,
             plugins::installed_plugins,
             plugins::install_plugin,
             plugins::remove_plugin,

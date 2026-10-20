@@ -41,6 +41,8 @@ export interface EditorHandle {
   /** Called after a successful save so the editor can reset its own dirty state. */
   markSaved?(): void
   find?(): void
+  /** Find with the replace field showing. */
+  replace?(): void
   zoom?(direction: 'in' | 'out' | 'reset'): void
   print?(): Promise<void>
   /** Source-and-preview editors (Markdown, Mermaid, LaTeX): read, split, write, or cycle through them. */
@@ -359,8 +361,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     },
 
     openDialog: async () => {
-      const files = await platform.pickFiles()
-      get().openFiles(files)
+      if (!platform.isTauri) return get().openFiles(await platform.pickFiles())
+      // Documents open in tabs, a folder in the sidebar.
+      await get().openPaths(await platform.pickPaths())
     },
 
     openUnsaved: (bytes, name, replace) => {

@@ -2,6 +2,7 @@
 // The appearance itself (light, dark, or the system's) is `theme` in the workspace store.
 
 import { create } from 'zustand'
+import { isTauri, isWindows } from '../lib/platform'
 import type { Appearance, ThemeDef } from '../lib/themes'
 import { DEFAULT_THEME_ID, isHex, PRESET_THEMES, themeVars } from '../lib/themes'
 import { useWorkspace } from './workspace'
@@ -76,11 +77,38 @@ function apply() {
   const vars = themeVars(themeById(theme === 'dark' ? dark : light), theme)
   for (const [name, value] of Object.entries(vars)) root.style.setProperty(name, value)
   applied = Object.keys(vars)
+  if (isTauri && isWindows) void paintWindowChrome()
+}
+
+/** "#rrggbb" for a CSS color, as the page draws it. */
+function hexOf(color: string) {
+  const probe = document.createElement('i')
+  probe.style.color = color
+  document.body.appendChild(probe)
+  const rgb = getComputedStyle(probe).color.match(/\d+(\.\d+)?/g)?.map(Number) ?? [0, 0, 0]
+  probe.remove()
+  return `#${rgb
+    .slice(0, 3)
+    .map((v) => Math.round(v).toString(16).padStart(2, '0'))
+    .join('')}`
+}
+
+/** Windows draws the title and menu bars itself; give them the tab bar's colors so the top of the window is one band. */
+async function paintWindowChrome() {
+  const { themeMode } = useWorkspace.getState()
+  const { invoke } = await import('@tauri-apps/api/core')
+  await invoke('set_window_chrome', {
+    background: hexOf('var(--chrome)'),
+    text: hexOf('var(--fg)'),
+    hot: hexOf('var(--field-hover)'),
+    disabled: hexOf('var(--fg-faint)'),
+    theme: themeMode === 'system' ? null : themeMode,
+  }).catch((err) => console.warn('Window colors', err))
 }
 
 /** Applies now, and again whenever the appearance or the theme changes. */
 export function startAppearance() {
   apply()
-  useWorkspace.subscribe((s, prev) => s.theme !== prev.theme && apply())
+  useWorkspace.subscribe((s, prev) => (s.theme !== prev.theme || s.themeMode !== prev.themeMode) && apply())
   useAppearance.subscribe(apply)
 }

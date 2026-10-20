@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { EditorProps } from '../../App'
 import { Workbench } from '../../components/Workbench'
 import { IconButton } from '../../components/ui'
+import { focusReplace } from '../../lib/codemirror'
 import { registerEditor, useWorkspace } from '../../state/workspace'
 import './text.css'
 
@@ -65,6 +66,7 @@ export default function TextEditor({ tab, active }: EditorProps) {
           savedText.current = currentText(viewRef.current)
         },
         find: () => viewRef.current && openSearchPanel(viewRef.current),
+        replace: () => viewRef.current && focusReplace(viewRef.current),
         print: async () => {
           const root = document.getElementById('print-root')!
           root.innerHTML = ''

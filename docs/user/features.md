@@ -10,6 +10,12 @@ Every file opens as a tab across the top. Each kind of document gets its own sid
 | Markdown | Heading outline | Hidden by default. Read / Split / Write switch at the bottom (⌘E). Front matter, such as an Agent Skill's name and description, shows as a table |
 | Text | None | None |
 
+## Find and replace
+
+⌘F finds text in the document in front of you. ⌃H (Ctrl+H on Windows and Linux) opens find with a **Replace with** field, or click the arrow at the left of the find box. **Replace** changes the highlighted match and moves to the next; **All** (⌘↩) changes every one. This works in Word documents, PowerPoint presentations, Markdown and text files. PDFs can be searched but not replaced.
+
+In Word, typing `- `, `* `, `1. ` or `1) ` at the start of a paragraph starts a bulleted or numbered list. ⌘Z takes it back.
+
 ## Signing PDFs and filling in forms
 
 Pick **Sign** in a PDF's inspector. The first time, make a signature: draw it with the trackpad or mouse, type your name in a handwriting style, or use a picture of it (Workspace can make the white paper see-through). Make initials the same way. They're kept on this computer only, and you can have a few of each.
@@ -38,7 +44,7 @@ The Home tab's **Recent** list has the files and folders you've opened. Each dro
 
 ## Folders
 
-**File › Open Folder…** (⇧⌘O) opens a folder in a sidebar to the left of everything, like a project in a code editor. It lists the folder's documents, with subfolders you can expand; click a file to open it in a tab. Files Workspace can't open are hidden unless you pick **Show All Files** from the sidebar's **⋯** menu. Hidden files and folders such as `.git` and `node_modules` are always left out.
+**File › Open…** (⌘O) opens a folder as well as files: on a Mac, pick the folder in the panel; on Windows and Linux, go into it and click **Open Folder**. It opens in a sidebar to the left of everything, like a project in a code editor. It lists the folder's documents, with subfolders you can expand; click a file to open it in a tab. Files Workspace can't open are hidden unless you pick **Show All Files** from the sidebar's **⋯** menu. Hidden files and folders such as `.git` and `node_modules` are always left out.
 
 Type in **Find a file** to search every document under the folder by name. ⇧⌘E hides and shows the sidebar. The folder (and which subfolders were expanded) comes back the next time you open Workspace, and Home's Recent list has the folders you've opened, under All and Folders. Dropping a folder on the window opens it too. The list refreshes when you come back to Workspace from another app; the **⋯** menu also has **Refresh**, **Collapse All Folders** and **Close Folder**. Drag the sidebar's edge to make it wider.
 

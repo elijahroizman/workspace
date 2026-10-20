@@ -642,6 +642,14 @@ button {
   cursor: default;
 }
 
+/* Windows draws a list's options with the page's colors but on its own white popup, so light
+   text on a dark theme came out grey on white. Give the options the theme's colors. */
+select option,
+select optgroup {
+  background-color: var(--raised);
+  color: var(--fg);
+}
+
 .field .chevron {
   flex: none;
   color: var(--fg-faint);
@@ -974,12 +982,39 @@ button {
   right: 16px;
   z-index: 25;
   display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 4px 4px 10px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 4px 4px 6px;
   border-radius: 10px;
   background: var(--raised);
   box-shadow: var(--shadow-pop);
+}
+
+.find-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.find-row > .lucide-search {
+  margin: 0 5px;
+}
+
+.find-gap {
+  width: 24px;
+  flex: none;
+}
+
+.find-row + .find-row input {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
+
+.find-bar .find-btn {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
 }
 
 .find-bar input {
@@ -1271,11 +1306,20 @@ button {
 
 /* ───────────────────────── Printing ───────────────────────── */
 
+/* Paper is white whatever the app's appearance. Text in Word's "automatic" color has no color of
+   its own and would otherwise print in the app's text color: near-white in dark mode, so pages
+   came out grey. */
 #print-root {
   display: none;
+  color: #000;
+  background: #fff;
+  color-scheme: light;
 }
 
 @media print {
+  :root[data-theme] {
+    color-scheme: light;
+  }
   html,
   body {
     height: auto;

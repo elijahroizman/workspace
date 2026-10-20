@@ -1,4 +1,64 @@
-import { ArrowRight, Clock, Command, FileText, FolderOpen } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowRight,
+  ArrowUp,
+  BookOpen,
+  Bold,
+  BringToFront,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Code,
+  Columns2,
+  Copy,
+  CopyPlus,
+  Eye,
+  FilePlus,
+  FileText,
+  Focus,
+  FolderOpen,
+  FolderTree,
+  FolderX,
+  Fullscreen,
+  Group,
+  History,
+  Italic,
+  LayoutGrid,
+  Link,
+  LogOut,
+  MessageSquarePlus,
+  Monitor,
+  Moon,
+  PanelBottom,
+  PanelLeft,
+  PanelRight,
+  PanelTop,
+  Play,
+  Presentation,
+  Printer,
+  Replace,
+  Rocket,
+  RotateCcw,
+  Save,
+  ScrollText,
+  Search,
+  SendToBack,
+  Settings,
+  SlidersHorizontal,
+  SquareChevronRight,
+  SquarePlus,
+  StickyNote,
+  Sun,
+  SunMoon,
+  Terminal,
+  Trash2,
+  Underline,
+  Ungroup,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { create } from 'zustand'
@@ -52,6 +112,70 @@ export interface PaletteItem {
   run(): void | Promise<void>
 }
 
+/** Each command's icon. Commands without one get a plain prompt arrow, which reads the same on every system. */
+const COMMAND_ICONS: Record<string, LucideIcon> = {
+  'new-tab': SquarePlus,
+  new: FilePlus,
+  open: FolderOpen,
+  'open-folder': FolderTree,
+  'close-folder': FolderX,
+  save: Save,
+  'save-as': Save,
+  print: Printer,
+  'close-tab': X,
+  'reopen-tab': RotateCcw,
+  'version-history': History,
+  'duplicate-tab': Copy,
+  'next-tab': ChevronRight,
+  'prev-tab': ChevronLeft,
+  settings: Settings,
+  'install-cli': Terminal,
+  quit: LogOut,
+  find: Search,
+  replace: Replace,
+  'toggle-explorer': FolderTree,
+  'split-view': Columns2,
+  'toggle-left': PanelLeft,
+  'toggle-right': PanelRight,
+  'zoom-in': ZoomIn,
+  'zoom-out': ZoomOut,
+  'zoom-reset': Fullscreen,
+  'focus-mode': Focus,
+  typewriter: ScrollText,
+  'focus-dim': SunMoon,
+  'toggle-theme': SunMoon,
+  'toggle-fullscreen': Fullscreen,
+  'view-read': Eye,
+  'view-split': Columns2,
+  'view-write': Code,
+  'view-cycle': BookOpen,
+  'text.bold': Bold,
+  'text.italic': Italic,
+  'text.underline': Underline,
+  'docx.link': Link,
+  'docx.comment': MessageSquarePlus,
+  'docx.header': PanelTop,
+  'docx.footer': PanelBottom,
+  'pptx.new-slide': SquarePlus,
+  'pptx.duplicate': CopyPlus,
+  'pptx.group': Group,
+  'pptx.ungroup': Ungroup,
+  'pptx.front': BringToFront,
+  'pptx.forward': ArrowUp,
+  'pptx.backward': ArrowDown,
+  'pptx.back': SendToBack,
+  'pptx.notes': StickyNote,
+  'pptx.present': Play,
+  'pptx.present-start': Presentation,
+}
+
+const commandIcon = (id: string) => {
+  const Icon = COMMAND_ICONS[id]
+  return Icon ? <Icon size={14} /> : undefined
+}
+
+const THEME_ICONS = { light: <Sun size={14} />, dark: <Moon size={14} />, system: <Monitor size={14} /> }
+
 /** Commands that make no sense in a list you pick from (they're keys, or they're this). */
 const HIDDEN = new Set(['command-palette', 'tab-number', 'fullscreen-mac'])
 
@@ -77,14 +201,14 @@ function commandItems(): PaletteItem[] {
     const keys = keysFor(def.id)
     if (def.scope === 'app') {
       if (!commandAvailable(def.id)) continue
-      items.push({ id: `cmd:${def.id}`, label: sentence(def.label), group: 'Commands', keys, keywords: def.group, run: () => runCommand(def.id) })
+      items.push({ id: `cmd:${def.id}`, label: sentence(def.label), group: 'Commands', icon: commandIcon(def.id), keys, keywords: def.group, run: () => runCommand(def.id) })
       continue
     }
     // Editor commands, for the kind of document in front of you.
     const fits = def.scope === 'text' ? scope !== null : def.scope === scope
     const action = editor?.actions?.[def.id]
     if (!fits || !action) continue
-    items.push({ id: `cmd:${def.id}`, label: sentence(def.label), group: 'Commands', keys, keywords: def.group, run: () => void action() })
+    items.push({ id: `cmd:${def.id}`, label: sentence(def.label), group: 'Commands', icon: commandIcon(def.id), keys, keywords: def.group, run: () => void action() })
   }
 
   for (const kind of enabledKinds(usePlugins.getState().enabled)) {
@@ -104,21 +228,22 @@ function commandItems(): PaletteItem[] {
       id: `theme:${mode}`,
       label: `Appearance: ${mode === 'system' ? 'match the system' : sentence(mode)}`,
       group: 'Commands',
+      icon: THEME_ICONS[mode],
       keywords: 'theme color mode',
       run: () => ws.setThemeMode(mode),
     })
   }
   for (const { page, label } of SETTINGS_PAGES) {
-    items.push({ id: `settings:${page}`, label: `Settings: ${label}`, group: 'Commands', keywords: 'preferences options', run: () => useSettings.getState().setOpen(true, page) })
+    items.push({ id: `settings:${page}`, label: `Settings: ${label}`, group: 'Commands', icon: <SlidersHorizontal size={14} />, keywords: 'preferences options', run: () => useSettings.getState().setOpen(true, page) })
   }
-  items.push({ id: 'check-updates', label: 'Check for updates…', group: 'Commands', keywords: 'version upgrade', run: () => runCommand('check-updates') })
-  if (ws.recents.length) items.push({ id: 'clear-recents', label: 'Clear recent files', group: 'Commands', keywords: 'history', run: () => ws.clearRecents() })
+  items.push({ id: 'check-updates', label: 'Check for updates…', group: 'Commands', icon: <Rocket size={14} />, keywords: 'version upgrade', run: () => runCommand('check-updates') })
+  if (ws.recents.length) items.push({ id: 'clear-recents', label: 'Clear recent files', group: 'Commands', icon: <Trash2 size={14} />, keywords: 'history', run: () => ws.clearRecents() })
   return items
 }
 
 function tabItems(): PaletteItem[] {
   const ws = useWorkspace.getState()
-  const items: PaletteItem[] = [{ id: `tab:${HOME_TAB_ID}`, label: 'Home', group: 'Tabs', icon: <Command size={14} />, run: () => ws.activate(HOME_TAB_ID) }]
+  const items: PaletteItem[] = [{ id: `tab:${HOME_TAB_ID}`, label: 'Home', group: 'Tabs', icon: <LayoutGrid size={14} />, run: () => ws.activate(HOME_TAB_ID) }]
   for (const t of ws.tabs) {
     items.push({
       id: `tab:${t.id}`,
@@ -212,7 +337,7 @@ function Highlight({ text, at }: { text: string; at: number[] }) {
   return <>{parts}</>
 }
 
-const GROUP_ICON = { Tabs: <ArrowRight size={14} />, Recent: <Clock size={14} />, Folder: <FileText size={14} />, Open: <FolderOpen size={14} />, Commands: <Command size={14} /> }
+const GROUP_ICON = { Tabs: <ArrowRight size={14} />, Recent: <Clock size={14} />, Folder: <FileText size={14} />, Open: <FolderOpen size={14} />, Commands: <SquareChevronRight size={14} /> }
 
 export function CommandPalette() {
   const initial = usePalette((s) => s.query)

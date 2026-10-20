@@ -8,13 +8,13 @@ On Windows and Linux, use Ctrl for ⌘, Alt for ⌥ and Shift for ⇧. Ctrl+Tab 
 | --- | --- |
 | Command palette: search commands, open tabs and recent files | ⌘K |
 | New file (pick the kind) | ⌘N |
-| Open… | ⌘O |
-| Open folder… / show or hide the folder | ⇧⌘O / ⇧⌘E |
+| Open files or a folder (the dialog's **Open Folder** button, or pick a folder on a Mac) | ⌘O |
+| Show or hide the folder | ⇧⌘E |
 | Save / Save As… | ⌘S / ⇧⌘S |
 | Close tab / Reopen closed tab | ⌘W / ⇧⌘T |
 | Home tab | ⌘T or ⌘1 |
 | Switch tabs | ⌘1–⌘9, ⇧⌘] / ⇧⌘[ |
-| Find | ⌘F |
+| Find / find and replace | ⌘F / ⌃H (Ctrl+H on Windows and Linux) |
 | Toggle sidebar / inspector | ⌘\ / ⌥⌘\ |
 | Split view | ⇧⌘\ |
 | Zoom in / out / reset | ⌘+ / ⌘− / ⌘0 |
