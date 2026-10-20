@@ -197,7 +197,11 @@ mod windows_dialog {
 
     pub fn pick(owner: isize, extensions: &[String]) -> std::result::Result<Vec<String>, String> {
         unsafe {
-            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+            // The dialog needs a single-threaded apartment; a pool thread already in another one can't show it.
+            let init = CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+            if init.is_err() {
+                return Err(init.message());
+            }
             let result = show(HWND(owner as _), extensions).map_err(|e| e.message());
             CoUninitialize();
             result

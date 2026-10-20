@@ -14,7 +14,7 @@ Every file opens as a tab across the top. Each kind of document gets its own sid
 
 ⌘F finds text in the document in front of you. ⌃H (Ctrl+H on Windows and Linux) opens find with a **Replace with** field, or click the arrow at the left of the find box. **Replace** changes the highlighted match and moves to the next; **All** (⌘↩) changes every one. This works in Word documents, PowerPoint presentations, Markdown and text files. PDFs can be searched but not replaced.
 
-In Word, typing `- `, `* ` or `1. ` at the start of a paragraph starts a bulleted or numbered list. ⌘Z takes it back.
+In Word, typing `- `, `* `, `1. ` or `1) ` at the start of a paragraph starts a bulleted or numbered list. ⌘Z takes it back.
 
 ## Signing PDFs and filling in forms
 

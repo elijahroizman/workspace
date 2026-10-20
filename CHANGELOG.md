@@ -8,7 +8,7 @@ Every release's notes. The release workflow copies a version's section into its 
 - **⌃H** (Ctrl+H on Windows and Linux) opens find with a **Replace with** field, in Word documents, presentations, Markdown and text files. **Replace** changes the highlighted match and moves on; **All** changes every one. The arrow at the left of the find box shows and hides the field.
 
 ### Lists as you type
-- In Word documents, typing `- `, `* ` or `1. ` at the start of a paragraph starts a bulleted or numbered list.
+- In Word documents, typing `- `, `* `, `1. ` or `1) ` at the start of a paragraph starts a bulleted or numbered list.
 
 ### One Open command
 - **⌘O** opens files or a folder. On a Mac, pick a folder in the panel; on Windows and Linux, the dialog has an **Open Folder** button. Open Folder no longer has its own shortcut.

@@ -232,7 +232,8 @@ export function FindBar({
           }}
           onKeyDown={(e) => {
             if (escape(e)) return
-            if (e.key === 'Enter') {
+            // Enter that confirms an input method's candidate isn't a search.
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
               e.preventDefault()
               if (e.shiftKey) onPrev()
               else onNext()
@@ -261,7 +262,7 @@ export function FindBar({
             onChange={(e) => setReplacement(e.currentTarget.value)}
             onKeyDown={(e) => {
               if (escape(e)) return
-              if (e.key === 'Enter') {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
                 e.preventDefault()
                 if (!count) return
                 if (e.metaKey || e.ctrlKey) onReplaceAll(replacement)

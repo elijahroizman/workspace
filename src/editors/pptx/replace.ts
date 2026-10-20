@@ -26,8 +26,13 @@ const runs = <T extends Run>(list: T[], query: string, by: string) => list.map((
 export function replaceInElement(el: Element, query: string, by: string): Element {
   const parts = el as TextParts
   const next: TextParts = {}
-  if (typeof parts.text === 'string') next.text = replaceText(parts.text, query, by)
-  if (parts.textSegments) next.textSegments = runs(parts.textSegments, query, by)
+  if (parts.textSegments?.length) {
+    // The text follows the runs, so a match the runs couldn't replace still shows in Find.
+    next.textSegments = runs(parts.textSegments, query, by)
+    if (typeof parts.text === 'string') next.text = next.textSegments.map((s) => s.text ?? '').join('')
+  } else if (typeof parts.text === 'string') {
+    next.text = replaceText(parts.text, query, by)
+  }
   if (parts.tableData) {
     next.tableData = {
       ...parts.tableData,
