@@ -12,5 +12,6 @@
 
 - [Development: building, running and testing](internals/development.md)
 - [Releases and signing](internals/releasing.md)
+- [The office compiler (work in progress)](internals/office-compiler.md)
 - [Writing a plugin](../plugins/README.md)
 - [Contributing rules](../CONTRIBUTING.md)

@@ -1,0 +1,18 @@
+# The office compiler: one library that reads and writes Word, PowerPoint, Excel and CSV.
+# Kept apart from src-tauri, which has its own lock file and target/ (the release builds use them).
+# See docs/internals/office-compiler.md.
+[workspace]
+resolver = "2"
+members = ["office-core"]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+publish = false
+
+[workspace.dependencies]
+quick-xml = "0.42"
+# Same major version and backend as src-tauri, so the app builds one copy.
+zip = { version = "4", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
