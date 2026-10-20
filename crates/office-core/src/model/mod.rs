@@ -93,6 +93,10 @@ pub struct Document {
     /// Data that belongs to one format or layer (see [`Extensions`]).
     #[serde(skip)]
     pub extensions: Extensions,
+    /// The main part's markup around the body: Word's `w:document` (with the body's final
+    /// section properties), PowerPoint's `p:presentation`, Excel's `workbook`.
+    #[serde(skip)]
+    pub origin: Origin,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -175,6 +179,7 @@ impl Document {
             body,
             package: None,
             extensions: Extensions::default(),
+            origin: Origin::default(),
         }
     }
 

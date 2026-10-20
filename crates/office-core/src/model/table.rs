@@ -41,7 +41,8 @@ pub struct Cell {
     pub col_span: u32,
     #[serde(default = "one", skip_serializing_if = "is_one")]
     pub row_span: u32,
-    /// Covered by a neighbor's span. Word and PowerPoint both keep a cell in the grid there.
+    /// Covered by a neighbor's span. PowerPoint keeps a cell in the grid under every span; Word
+    /// only under row spans (`w:vMerge`), so its column spans have no covered cells.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub covered: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -1,0 +1,229 @@
+use super::props::{read_para_props, read_run_props, val};
+use crate::formats::common::{read_theme, rel_attr, shell, PartRels};
+use crate::model::{Block, Body, BreakKind, Cell, Document, Image, Inline, Kind, Link, Origin, Paragraph, Row, Run, Table};
+use crate::opc::{Package, Properties};
+use crate::units::Emu;
+use crate::xml::{ns, Element};
+use crate::Result;
+
+pub fn read(pkg: Package) -> Result<Document> {
+    let main = pkg.main_part()?;
+    let xml = pkg.xml(&main)?;
+    let rels = PartRels::new(&pkg, &main)?;
+    let mut doc = Document::new(Kind::Word);
+    doc.properties = Properties::read(&pkg)?;
+    doc.theme = read_theme(&pkg, &main)?;
+
+    let body = xml.root.child(ns::W, "body");
+    let blocks = body.map(|b| read_blocks(b, &rels, &mut doc, |e| e.is(ns::W, "sectPr"))).unwrap_or_default();
+    doc.body = Body::Flow { blocks };
+    // The document without the body's blocks; the final section properties stay at its end.
+    let mut origin = xml.root.clone();
+    if let Some(body) = origin.child_mut(ns::W, "body") {
+        let kept = shell(body, |e| !e.is(ns::W, "sectPr"));
+        *body = kept.get().unwrap().clone();
+    }
+    doc.origin = Origin::new(origin);
+    doc.package = Some(pkg);
+    Ok(doc)
+}
+
+/// The block-level children of `w:body`, a table cell, or another container. `skip` says which
+/// children belong to the container itself.
+fn read_blocks(parent: &Element, rels: &PartRels, doc: &mut Document, skip: impl Fn(&Element) -> bool) -> Vec<Block> {
+    parent
+        .elements()
+        .filter(|e| !skip(e))
+        .map(|e| {
+            if e.is(ns::W, "p") {
+                Block::Paragraph(read_paragraph(e, rels, doc))
+            } else if e.is(ns::W, "tbl") {
+                Block::Table(read_table(e, rels, doc))
+            } else {
+                // Content controls, custom XML, bookmarks between paragraphs, section breaks.
+                Block::Raw { xml: e.clone() }
+            }
+        })
+        .collect()
+}
+
+fn read_paragraph(p: &Element, rels: &PartRels, doc: &mut Document) -> Paragraph {
+    let ppr = p.child(ns::W, "pPr");
+    let mut content = Vec::new();
+    for child in p.elements() {
+        if child.is(ns::W, "pPr") {
+            continue;
+        }
+        if child.is(ns::W, "r") {
+            read_run(child, None, rels, doc, &mut content);
+        } else if child.is(ns::W, "hyperlink") && child.elements().all(|r| r.is(ns::W, "r") && is_plain_run(r)) {
+            let link = Link {
+                url: rel_attr(child, "id").and_then(|id| rels.url(id)),
+                anchor: child.attr_ns(ns::W, "anchor").map(str::to_string),
+                tooltip: child.attr_ns(ns::W, "tooltip").map(str::to_string),
+            };
+            for r in child.elements() {
+                read_run(r, Some(&link), rels, doc, &mut content);
+            }
+        } else {
+            // Bookmarks, fields, tracked changes, comment marks, equations, content controls…
+            content.push(Inline::Raw { xml: child.clone() });
+        }
+    }
+    Paragraph {
+        props: ppr.map(read_para_props).unwrap_or_default(),
+        content,
+        mark: ppr.and_then(|p| p.child(ns::W, "rPr")).map(read_run_props),
+        origin: shell(p, |c| !c.is(ns::W, "pPr")),
+    }
+}
+
+/// Run children the model turns into text.
+fn is_text_child(e: &Element) -> bool {
+    e.in_ns(ns::W)
+        && matches!(e.local.as_str(), "rPr" | "t" | "tab" | "br" | "cr" | "noBreakHyphen" | "softHyphen" | "lastRenderedPageBreak")
+}
+
+/// A run of only text (and the breaks and tabs the model writes as characters).
+fn is_plain_run(r: &Element) -> bool {
+    r.elements().all(is_text_child)
+}
+
+/// A run with an inline picture and nothing else but formatting.
+fn inline_picture(r: &Element) -> Option<&Element> {
+    let mut drawings = r.elements().filter(|e| !e.is(ns::W, "rPr"));
+    let drawing = drawings.next().filter(|d| d.is(ns::W, "drawing"))?;
+    if drawings.next().is_some() {
+        return None;
+    }
+    let inline = drawing.child(ns::WP, "inline")?;
+    inline.descendant(ns::PIC, "pic").and(Some(inline))
+}
+
+fn read_run(r: &Element, link: Option<&Link>, rels: &PartRels, doc: &mut Document, out: &mut Vec<Inline>) {
+    let props = r.child(ns::W, "rPr").map(read_run_props).unwrap_or_default();
+    if let Some(inline) = inline_picture(r) {
+        if let Some(image) = read_inline_picture(r, inline, rels, doc) {
+            out.push(Inline::Image(image));
+            return;
+        }
+    }
+    if !is_plain_run(r) {
+        out.push(Inline::Raw { xml: r.clone() });
+        return;
+    }
+    // A run's text, split where a page or column break sits inside it.
+    let origin = shell(r, |c| !c.is(ns::W, "rPr"));
+    let push = |text: &mut String, out: &mut Vec<Inline>| {
+        if !text.is_empty() {
+            out.push(Inline::Text(Run { text: std::mem::take(text), props: props.clone(), link: link.cloned(), origin: origin.clone() }));
+        }
+    };
+    let mut text = String::new();
+    let mut any = false;
+    for c in r.elements() {
+        match c.local.as_str() {
+            "t" => text.push_str(&c.text()),
+            "tab" => text.push('\t'),
+            "cr" => text.push('\n'),
+            "noBreakHyphen" => text.push('\u{2011}'),
+            "softHyphen" => text.push('\u{AD}'),
+            "br" => match c.attr_ns(ns::W, "type") {
+                Some(kind @ ("page" | "column")) => {
+                    push(&mut text, out);
+                    out.push(Inline::Break { kind: if kind == "page" { BreakKind::Page } else { BreakKind::Column } });
+                    any = true;
+                    continue;
+                }
+                _ => text.push('\n'),
+            },
+            // Word's note of where the last layout broke the page; Word writes it again.
+            _ => continue,
+        }
+        any = true;
+    }
+    if !text.is_empty() || !any {
+        // An empty run still carries formatting someone put there; keep it.
+        out.push(Inline::Text(Run { text, props, link: link.cloned(), origin }));
+    }
+}
+
+fn read_inline_picture(r: &Element, inline: &Element, rels: &PartRels, doc: &mut Document) -> Option<Image> {
+    let blip = inline.descendant(ns::A, "blip")?;
+    let media = rels.media(doc, rel_attr(blip, "embed")?)?;
+    let extent = inline.child(ns::WP, "extent");
+    let size = |k: &str| extent.and_then(|e| e.attr(k)).and_then(|v| v.parse().ok()).map(Emu).unwrap_or_default();
+    let doc_pr = inline.child(ns::WP, "docPr");
+    Some(Image {
+        media,
+        width: size("cx"),
+        height: size("cy"),
+        name: doc_pr.and_then(|d| d.attr("name")).unwrap_or("").to_string(),
+        description: doc_pr.and_then(|d| d.attr("descr")).map(str::to_string),
+        origin: Origin::new(r.clone()),
+    })
+}
+
+fn read_table(tbl: &Element, rels: &PartRels, doc: &mut Document) -> Table {
+    let columns = tbl
+        .child(ns::W, "tblGrid")
+        .map(|g| {
+            g.children_named(ns::W, "gridCol")
+                .map(|c| c.attr_ns(ns::W, "w").and_then(|w| Emu::parse(w, Emu::PER_TWIP)).unwrap_or_default())
+                .collect()
+        })
+        .unwrap_or_default();
+    let style = tbl.path(ns::W, &["tblPr", "tblStyle"]).and_then(val).map(str::to_string);
+
+    let mut rows: Vec<Row> = Vec::new();
+    // For each row, the grid column each cell starts at, and whether it continues a row span.
+    let mut grid: Vec<Vec<(usize, Option<bool>)>> = Vec::new();
+    for tr in tbl.children_named(ns::W, "tr") {
+        let trpr = tr.child(ns::W, "trPr");
+        let mut cells = Vec::new();
+        let mut at = Vec::new();
+        let mut col = 0;
+        for tc in tr.children_named(ns::W, "tc") {
+            let tcpr = tc.child(ns::W, "tcPr");
+            let span: u32 = tcpr.and_then(|p| p.child(ns::W, "gridSpan")).and_then(val).and_then(|v| v.parse().ok()).unwrap_or(1).max(1);
+            // vMerge="restart" starts a row span; a bare vMerge continues one.
+            let vmerge = tcpr.and_then(|p| p.child(ns::W, "vMerge")).map(|m| val(m) != Some("restart"));
+            let fill = tcpr
+                .and_then(|p| p.child(ns::W, "shd"))
+                .and_then(|s| s.attr_ns(ns::W, "fill"))
+                .and_then(crate::drawing::Rgb::parse)
+                .map(crate::drawing::Color::rgb);
+            cells.push(Cell {
+                blocks: read_blocks(tc, rels, doc, |e| e.is(ns::W, "tcPr")),
+                col_span: span,
+                row_span: 1,
+                covered: vmerge == Some(true),
+                fill,
+                origin: shell(tc, |c| !c.is(ns::W, "tcPr")),
+            });
+            at.push((col, vmerge));
+            col += span as usize;
+        }
+        rows.push(Row {
+            cells,
+            height: trpr
+                .and_then(|p| p.child(ns::W, "trHeight"))
+                .and_then(|h| h.attr_ns(ns::W, "val"))
+                .and_then(|v| Emu::parse(v, Emu::PER_TWIP)),
+            header: trpr.and_then(|p| super::props::toggle(p, "tblHeader")).unwrap_or(false),
+            origin: shell(tr, |c| c.is(ns::W, "tc")),
+        });
+        grid.push(at);
+    }
+    // A restart cell spans down over the continuing cells at its grid column.
+    for r in 0..rows.len() {
+        for (i, &(col, vmerge)) in grid[r].clone().iter().enumerate() {
+            if vmerge != Some(false) {
+                continue;
+            }
+            let below = (r + 1..rows.len()).take_while(|&b| grid[b].iter().any(|&(c, v)| c == col && v == Some(true))).count();
+            rows[r].cells[i].row_span = 1 + below as u32;
+        }
+    }
+    Table { columns, rows, style, origin: shell(tbl, |c| c.is(ns::W, "tblGrid") || c.is(ns::W, "tr")) }
+}

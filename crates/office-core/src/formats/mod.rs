@@ -1,6 +1,11 @@
 //! A front end and a back end for each format.
 
+mod common;
 pub mod csv;
+pub mod dml;
+pub mod docx;
+pub mod pptx;
+pub mod xlsx;
 
 use crate::model::{Document, Kind};
 use crate::opc::Package;
@@ -20,7 +25,9 @@ pub fn read(bytes: &[u8], kind: Kind, name: Option<&str>) -> Result<Document> {
             let tsv = name.is_some_and(|n| n.to_ascii_lowercase().ends_with(".tsv"));
             csv::read(bytes, stem.filter(|s| !s.is_empty()).unwrap_or("Sheet1"), tsv)
         }
-        Kind::Word | Kind::Slides | Kind::Sheets => Err(Error::Invalid(format!("reading .{} isn't written yet", kind.extension()))),
+        Kind::Word => docx::read(Package::read(bytes)?),
+        Kind::Slides => pptx::read(Package::read(bytes)?),
+        Kind::Sheets => xlsx::read(Package::read(bytes)?),
     }
 }
 
