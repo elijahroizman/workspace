@@ -52,7 +52,7 @@ import { InspectorHeader } from '../../components/Workbench'
 import type { MenuEntry } from '../../components/ui'
 import * as platform from '../../lib/platform'
 import { withKeys } from '../../state/shortcuts'
-import { Button, ColorField, IconButton, NumberField, PopoverMenu, Section, Segmented, SelectField, TableSizePicker, TextField, ToolButton, normalizeHex } from '../../components/ui'
+import { Button, ColorField, Hint, IconButton, normalizeHex, NumberField, PopoverMenu, Section, Segmented, SelectField, TableSizePicker, TextField, ToolButton } from '../../components/ui'
 import type { Restack } from './arrange'
 import { mapPicked, pickedShapes, pickedText, styleShape, styleText, withElements } from './arrange'
 import { SlidePreview } from './SlideStrip'
@@ -186,7 +186,7 @@ export function Inspector({
             <Button block onClick={() => handle.current?.toggleHideSlides([...selectedSlides])}>
               <EyeOff size={14} /> Hide or show in slideshow
             </Button>
-            <p className="faint hint">Shift-click picks a run of slides; {platform.isMac ? '⌘' : 'Ctrl'}-click adds or removes one.</p>
+            <Hint tone="faint" as="p">Shift-click picks a run of slides; {platform.isMac ? '⌘' : 'Ctrl'}-click adds or removes one.</Hint>
           </Section>
           <TransitionSection deck={deck} indexes={selectedSlides} />
         </>
@@ -219,7 +219,7 @@ export function Inspector({
             <Button block onClick={() => tb.onToggleHideSlide?.()}>
               <EyeOff size={14} /> {slide.hidden ? 'Show slide in slideshow' : 'Hide slide in slideshow'}
             </Button>
-            <p className="faint hint">Drag across the slide or shift-click to select several objects. Double-click text to edit it.</p>
+            <Hint tone="faint" as="p">Drag across the slide or shift-click to select several objects. Double-click text to edit it.</Hint>
           </Section>
           <TransitionSection deck={deck} indexes={[activeIndex]} />
           </>
@@ -368,7 +368,7 @@ function TableSection({ deck, el }: { deck: Deck; el: TableElement }) {
           { value: 'right', icon: <AlignRight size={15} />, title: 'Align right' },
         ]}
       />
-      <p className="faint hint">Double-click a cell to type in it. Drag the frame to resize the table.</p>
+      <Hint tone="faint" as="p">Double-click a cell to type in it. Drag the frame to resize the table.</Hint>
     </Section>
   )
 }
@@ -433,7 +433,7 @@ function TextSection({ deck, el }: { deck: Deck; el: Element & { textStyle?: Tex
       />
       <ColorField value={normalizeHex(style.color)} label="Text color" onChange={(hex) => set({ color: `#${hex}` })} />
       <Swatches value={normalizeHex(style.color)} onPick={(hex) => set({ color: `#${hex}` })} />
-      <p className="faint hint">Select words while editing to style just those.</p>
+      <Hint tone="faint" as="p">Select words while editing to style just those.</Hint>
     </Section>
   )
 }
@@ -551,7 +551,7 @@ function LinkSection({ el, update }: { el: Element; update: (patch: Partial<Elem
         }}
         onClear={() => update({ actionClick: undefined } as Partial<Element>)}
       />
-      <p className="faint hint">Clicking this object during a slideshow opens the link. Video links play in the slide.</p>
+      <Hint tone="faint" as="p">Clicking this object during a slideshow opens the link. Video links play in the slide.</Hint>
     </Section>
   )
 }

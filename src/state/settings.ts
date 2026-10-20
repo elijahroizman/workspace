@@ -13,8 +13,6 @@ export interface Settings {
   autosave: AutosaveSettings
   /** Seconds after typing stops before a slow preview (a LaTeX compile) rebuilds. */
   previewDelay: number
-  /** By kind id: whether Home's Recent list has a tab for it. Every file is still under All. */
-  recentTabs: Record<string, boolean>
   /** Keep a copy of each saved version (see src-tauri/src/history.rs). */
   history: boolean
   /** Days a file or folder stays in Home's Recent list after it was last opened. */
@@ -28,7 +26,6 @@ export const DEFAULT_SETTINGS: Settings = {
     kinds: {},
   },
   previewDelay: 3,
-  recentTabs: {},
   history: true,
   recentDays: 3,
 }
@@ -54,13 +51,9 @@ function load(): Settings {
     const parsed: unknown = JSON.parse(localStorage.getItem(KEY) || '{}')
     if (!isRecord(parsed)) return DEFAULT_SETTINGS
     const previewDelay = typeof parsed.previewDelay === 'number' && PREVIEW_DELAYS.includes(parsed.previewDelay) ? parsed.previewDelay : DEFAULT_SETTINGS.previewDelay
-    const recentTabs: Record<string, boolean> = {}
-    if (isRecord(parsed.recentTabs)) {
-      for (const [kind, on] of Object.entries(parsed.recentTabs)) if (typeof on === 'boolean') recentTabs[kind] = on
-    }
     const history = typeof parsed.history === 'boolean' ? parsed.history : DEFAULT_SETTINGS.history
     const recentDays = typeof parsed.recentDays === 'number' && RECENT_DAYS.includes(parsed.recentDays) ? parsed.recentDays : DEFAULT_SETTINGS.recentDays
-    if (!isRecord(parsed.autosave)) return { ...DEFAULT_SETTINGS, previewDelay, recentTabs, history, recentDays }
+    if (!isRecord(parsed.autosave)) return { ...DEFAULT_SETTINGS, previewDelay, history, recentDays }
     const old = parsed.autosave
     const defaults = DEFAULT_SETTINGS.autosave
     const kinds = { ...defaults.kinds }
@@ -75,7 +68,7 @@ function load(): Settings {
     let enabled = defaults.enabled
     if (typeof old.enabled === 'boolean') enabled = old.enabled
     else if ('root' in old) enabled = typeof old.root === 'string' && old.root.length > 0
-    return { autosave: { enabled, delay, kinds }, previewDelay, recentTabs, history, recentDays }
+    return { autosave: { enabled, delay, kinds }, previewDelay, history, recentDays }
   } catch {
     return DEFAULT_SETTINGS
   }
@@ -92,14 +85,13 @@ interface SettingsState extends Settings {
   setPage(page: SettingsPage): void
   setAutosave(patch: Partial<AutosaveSettings>): void
   setPreviewDelay(seconds: number): void
-  setRecentTab(kind: string, on: boolean): void
   setHistory(on: boolean): void
   setRecentDays(days: number): void
 }
 
 const persist = () => {
-  const { autosave, previewDelay, recentTabs, history, recentDays } = useSettings.getState()
-  localStorage.setItem(KEY, JSON.stringify({ version: VERSION, autosave, previewDelay, recentTabs, history, recentDays } satisfies Settings & { version: number }))
+  const { autosave, previewDelay, history, recentDays } = useSettings.getState()
+  localStorage.setItem(KEY, JSON.stringify({ version: VERSION, autosave, previewDelay, history, recentDays } satisfies Settings & { version: number }))
 }
 
 export const useSettings = create<SettingsState>((set, get) => ({
@@ -115,10 +107,6 @@ export const useSettings = create<SettingsState>((set, get) => ({
   },
   setPreviewDelay: (previewDelay) => {
     set({ previewDelay })
-    persist()
-  },
-  setRecentTab: (kind, on) => {
-    set({ recentTabs: { ...get().recentTabs, [kind]: on } })
     persist()
   },
   setHistory: (history) => {

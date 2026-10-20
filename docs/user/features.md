@@ -30,7 +30,7 @@ Placing a signature puts a picture of it on the page. It isn't a cryptographic (
 
 Open as many files as you like and switch with ⌘1–⌘9 or ⇧⌘[ / ⇧⌘]. Drag tabs to reorder them. Right-click a tab to duplicate it (⇧⌘D), for example to keep a textbook's questions and answers side by side. Open tabs come back the next time you launch. A restored tab loads its document the first time you look at it.
 
-The Home tab's **Recent** list has the files and folders you've opened. Each drops off a few days after you last opened it: 3 days unless you pick 1, 7 or 30 in **Settings › General**.
+The Home tab's **Recent** list has the files and folders you've opened, and its filters show only Office files, notes (Markdown and text), PDFs, images or LaTeX. Each drops off a few days after you last opened it: 3 days unless you pick 1, 7 or 30 in **Settings › General**.
 
 ## Command palette
 
@@ -99,4 +99,4 @@ On a Mac, install it from **Settings › General › Command line** or **Workspa
 
 ## Default apps
 
-The setup screen on first launch asks which file types Workspace should open, and **Settings › General › Default apps** can change that later. On Windows, each one is confirmed in Windows' own Default apps settings. Workspace also appears in every Open With menu.
+The welcome tour on first launch ends by asking which file types Workspace should open, and **Settings › General › Default apps** can change that later. On Windows, each one is confirmed in Windows' own Default apps settings. Workspace also appears in every Open With menu.

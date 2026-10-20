@@ -138,10 +138,10 @@ function GeneralPage() {
       <CommandLineRow />
 
       <SettingsRow
-        label="Setup"
-        hint={canSetDefaults ? 'Go through the first-launch screen again: plugins and default apps.' : 'Go through the first-launch screen again to choose plugins.'}
+        label="Welcome tour"
+        hint={canSetDefaults ? 'The first-launch tour of the app, with extensions and default apps at the end.' : 'The first-launch tour of the app, with its extensions.'}
       >
-        <Button onClick={() => (setOpen(false), useSetup.getState().show())}>Run setup again</Button>
+        <Button onClick={() => (setOpen(false), useSetup.getState().show())}>Show the tour again</Button>
       </SettingsRow>
 
       <SettingsRow label="Open-source licenses" hint="Workspace is built on open-source engines, including PDFium, docx-editor and CodeMirror.">
@@ -192,24 +192,16 @@ function CommandLineRow() {
 
 /** Home's Recent list: how long things stay, which file types get a tab, and clearing it. */
 function RecentFilesRow() {
-  const plugins = usePlugins((s) => s.enabled)
-  const recentTabs = useSettings((s) => s.recentTabs)
-  const setRecentTab = useSettings((s) => s.setRecentTab)
   const recentDays = useSettings((s) => s.recentDays)
   const setRecentDays = useSettings((s) => s.setRecentDays)
   const files = useWorkspace((s) => s.recents.length)
   const folders = useFolder((s) => s.recent.length)
   const count = files + folders
   return (
-    <SettingsRow column bare label="Recent files and folders" hint="Every file and folder you open is under All. Choose which types also get a tab of their own on Home.">
+    <SettingsRow column bare label="Recent files and folders" hint="Home lists the files and folders you open, newest first.">
       <div className="settings-inline">
         <span className="settings-hint">Keep them in Recent for</span>
         <Segmented value={String(recentDays)} options={RECENT_DAYS.map((d) => ({ value: String(d), label: d === 1 ? '1 day' : `${d} days` }))} onChange={(v) => setRecentDays(Number(v))} />
-      </div>
-      <div className="kind-checks">
-        {enabledKinds(plugins).map((k) => (
-          <Checkbox key={k.id} checked={recentTabs[k.id] !== false} onChange={(on) => setRecentTab(k.id, on)} label={k.short} />
-        ))}
       </div>
       <div className="settings-inline">
         <Button disabled={!count} onClick={() => useWorkspace.getState().clearRecents()}>

@@ -44,7 +44,7 @@ src/
   lib/platform.ts         native file dialogs and file I/O (browser fallbacks for dev)
   lib/dialogs.ts          the app's own questions and alerts (components/Dialogs.tsx)
   lib/updater.ts          update checks, the Tauri updater, and apt on Linux
-  components/             title bar and tabs, Home, setup, Settings, the three-pane workbench
+  components/             title bar and tabs, Home, the welcome tour (Setup.tsx), Settings, the three-pane workbench; ui.tsx is the design system the rest are built from
   editors/{docx,pptx,pdf,markdown,text}/   built-in editors, each loaded the first time it's needed
   plugins/catalog.ts      every plugin and the file types it opens
   plugins/api.ts          the contract an optional plugin's editor implements

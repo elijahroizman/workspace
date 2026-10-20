@@ -512,8 +512,8 @@ export function Kbd({ keys, className = '' }: { keys: string | null | undefined;
 }
 
 /** Secondary text under a label: “muted” for something to read, “faint” for something to skim. */
-export function Hint({ tone = 'muted', className = '', children }: { tone?: 'muted' | 'faint'; className?: string; children: ReactNode }) {
-  return <span className={`hint ${tone} ${className}`}>{children}</span>
+export function Hint({ tone = 'muted', as: Tag = 'span', className = '', children }: { tone?: 'muted' | 'faint'; as?: 'span' | 'p'; className?: string; children: ReactNode }) {
+  return <Tag className={`hint ${tone} ${className}`}>{children}</Tag>
 }
 
 /** A dashed box saying there's nothing here yet. */

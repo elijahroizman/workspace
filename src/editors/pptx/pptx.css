@@ -123,12 +123,6 @@
   background: #fff;
 }
 
-.hint {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 .url-field {
   display: flex;
   flex-direction: column;

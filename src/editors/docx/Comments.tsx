@@ -1,7 +1,7 @@
 import type { Editor, HighlightRange } from '@docx-editor.dev/react'
 import { Check, MessageSquarePlus, RotateCcw, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { Button, IconButton, Section, TextField } from '../../components/ui'
+import { Button, Hint, IconButton, Section, TextField } from '../../components/ui'
 import { withKeys } from '../../state/shortcuts'
 import type { Anchor, Note, Thread } from './commentXml'
 import { hasComments, initialsOf, nearest, newParaId, readComments, writeComments } from './commentXml'
@@ -471,7 +471,7 @@ export function CommentsSection({ store, editor, canAdd }: { store: CommentStore
       {store.threads.map((t) => (
         <ThreadCard key={t.id} store={store} editor={editor} thread={t} />
       ))}
-      {!store.draft && !store.threads.length && <p className="faint hint">Select text, then add a comment.</p>}
+      {!store.draft && !store.threads.length && <Hint tone="faint" as="p">Select text, then add a comment.</Hint>}
     </Section>
   )
 }

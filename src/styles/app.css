@@ -776,8 +776,9 @@ kbd.kbd {
 }
 
 .hint {
+  margin: 0;
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .empty-state {
