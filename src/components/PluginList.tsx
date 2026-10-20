@@ -3,9 +3,11 @@ import type { PluginInfo } from '../plugins/catalog'
 import { formatSize, usePlugins } from '../state/plugins'
 import { DocBadge } from './Workbench'
 
-/** SPDX ids as words: “MIT, (MPL-2.0 OR Apache-2.0)” reads “Licenses: MIT and MPL-2.0 or Apache-2.0”. */
+/** SPDX ids as words: “MIT, (MPL-2.0 OR Apache-2.0)” reads “Licenses: MIT and (MPL-2.0 or Apache-2.0)”. */
 function licenseText(spdx: string) {
-  const parts = spdx.split(/,\s*/).map((p) => p.replace(/[()]/g, '').replace(/ OR /g, ' or ').replace(/ AND /g, ' and '))
+  const parts = spdx.split(/,\s*/).map((p) => p.replace(/ OR /g, ' or ').replace(/ AND /g, ' and '))
+  // A lone group needs no parentheses; next to another license they keep its meaning.
+  if (parts.length === 1) parts[0] = parts[0].replace(/^\((.*)\)$/, '$1')
   return `${parts.length > 1 ? 'Licenses' : 'License'}: ${parts.join(' and ')}`
 }
 
