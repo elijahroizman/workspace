@@ -57,3 +57,12 @@ fn themes_parse() {
         }
     }
 }
+
+#[test]
+fn csv_round_trips() {
+    for (path, bytes) in samples(&["csv", "tsv"]) {
+        let name = path.file_name().unwrap().to_str().unwrap();
+        let doc = office_core::read(&bytes, Some(name)).unwrap();
+        assert_eq!(office_core::write(&doc, office_core::Kind::Csv).unwrap(), bytes, "{}", path.display());
+    }
+}
