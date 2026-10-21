@@ -56,6 +56,7 @@ src-tauri/
   src/tex.rs              finds, runs, installs and removes the system's TeX
   src/fonts.rs            downloads the optional fonts (Michelangelus, Ubuntu, JetBrains Mono…)
   src/update.rs           the latest release's notes, Mac relaunch, apt updates on Linux
+  windows/hooks.nsh       closes Workspace before a Windows install or uninstall
   src/defaults.rs         makes Workspace the default app for its file types
   src/files.rs            raw-bytes file reading and atomic saving
   src/menu.rs             the native menu bar
