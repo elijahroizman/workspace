@@ -105,8 +105,10 @@ fn reference(r: &Reference, book: &mut dyn Book) -> R {
         let (row, col) = (r.start.row.ok_or("#REF!")?, r.start.col.ok_or("#REF!")?);
         return Ok(book.cell(sheet, row, col));
     };
-    let (last_row, last_col) = book.extent(sheet).unwrap_or((0, 0));
-    // A whole column (or row) runs to the last row (or column) the sheet uses.
+    // A whole column (or row) runs to the last row (or column) the sheet uses; only those need
+    // the sheet's extent.
+    let open = [r.start.row, r.start.col, end.row, end.col].iter().any(Option::is_none);
+    let (last_row, last_col) = if open { book.extent(sheet).unwrap_or((0, 0)) } else { (0, 0) };
     let span = |a: Option<u32>, b: Option<u32>, last: u32| match (a, b) {
         (Some(a), Some(b)) => (a.min(b), a.max(b)),
         _ => (0, last),
@@ -766,6 +768,39 @@ mod tests {
 
     fn ev(f: &str) -> V {
         eval(&parse(f).unwrap(), &mut book())
+    }
+
+    /// A book that counts how often a formula asks how big a sheet is.
+    struct Counting(Values, std::cell::Cell<usize>);
+
+    impl Book for Counting {
+        fn cell(&mut self, sheet: Option<&str>, row: u32, col: u32) -> V {
+            self.0.cell(sheet, row, col)
+        }
+        fn extent(&self, sheet: Option<&str>) -> Option<(u32, u32)> {
+            self.1.set(self.1.get() + 1);
+            self.0.extent(sheet)
+        }
+        fn name(&self, name: &str) -> Option<Expr> {
+            self.0.name(name)
+        }
+        fn date_system(&self) -> DateSystem {
+            self.0.date_system()
+        }
+        fn now(&self) -> Option<f64> {
+            None
+        }
+    }
+
+    #[test]
+    fn only_whole_columns_measure_the_sheet() {
+        // Measuring a sheet means looking at every row, so a formula with an ordinary range
+        // (most of them) mustn't: with thousands of formulas, recalculation would be quadratic.
+        let mut b = Counting(book(), Default::default());
+        assert_eq!(eval(&parse("SUM(A1:A3)").unwrap(), &mut b), V::Num(6.0));
+        assert_eq!(b.1.get(), 0);
+        assert!(matches!(eval(&parse("SUM(A:A)").unwrap(), &mut b), V::Num(_)));
+        assert_eq!(b.1.get(), 1);
     }
 
     #[test]

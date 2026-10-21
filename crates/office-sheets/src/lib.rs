@@ -255,6 +255,7 @@ pub fn recalculate(doc: &mut Document, now: Option<f64>) -> usize {
         working: HashSet::new(),
         current: vec![0],
         deep: None,
+        extents: vec![Default::default(); sheets.len()],
     };
     // Top to bottom, so a chain that runs down the sheet (a running total) is worked out a
     // cell at a time instead of all at once from its last cell.
@@ -305,6 +306,8 @@ struct Workbook<'a> {
     /// The cell where a chain of formulas got too deep to follow; nothing worked out on the
     /// way to it is kept.
     deep: Option<(usize, u32, u32)>,
+    /// Each sheet's last used row and column, once asked for.
+    extents: Vec<std::cell::OnceCell<Option<(u32, u32)>>>,
 }
 
 /// How many formulas deep one is worked out before [`Workbook::deep`] takes over. Each level
@@ -365,8 +368,9 @@ impl Book for Workbook<'_> {
     }
 
     fn extent(&self, sheet: Option<&str>) -> Option<(u32, u32)> {
-        let used = self.sheets.get(self.sheet_index(sheet)?)?.used_range()?;
-        Some((used.end.row, used.end.col))
+        let s = self.sheet_index(sheet)?;
+        // The sheets don't change while formulas are worked out, so each is measured once.
+        *self.extents.get(s)?.get_or_init(|| self.sheets[s].used_range().map(|u| (u.end.row, u.end.col)))
     }
 
     fn name(&self, name: &str) -> Option<Expr> {
