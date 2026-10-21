@@ -16,6 +16,9 @@ pub struct Dialect {
     pub trailing_newline: bool,
     /// The file starts with Excel's `sep=;` line naming the delimiter.
     pub sep_line: bool,
+    /// Fields that start or end with a space go in quotes, so nothing trims them. Off when
+    /// the file had such fields unquoted (`name, age`).
+    pub quote_spaces: bool,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -46,6 +49,7 @@ impl Default for Dialect {
             quote_all: false,
             trailing_newline: true,
             sep_line: false,
+            quote_spaces: true,
         }
     }
 }
@@ -73,20 +77,14 @@ pub fn read(bytes: &[u8], sheet_name: &str, tab_hint: bool) -> Result<Document> 
         }
     }
     let delimiter = delimiter.unwrap_or_else(|| sniff_delimiter(text, tab_hint));
-    let line_ending = if text.contains("\r\n") {
-        LineEnding::CrLf
-    } else if text.contains('\n') || !text.contains('\r') {
-        LineEnding::Lf
-    } else {
-        LineEnding::Cr
-    };
     let trailing_newline = text.ends_with(['\n', '\r']);
 
-    let (records, quote_all) = parse(text, delimiter);
+    let Parsed { records, quote_all, line_ending, spaces_unquoted } = parse(text, delimiter);
     let mut sheet = Sheet::new(sheet_name);
     for (r, fields) in records.into_iter().enumerate() {
         let mut row = SheetRow { index: r as u32, ..Default::default() };
         let last = fields.len().saturating_sub(1);
+        let blank = fields.len() == 1;
         for (c, field) in fields.into_iter().enumerate() {
             let value = infer(field);
             // Inner empty fields are implied by the columns around them; a row's last one marks
@@ -96,8 +94,9 @@ pub fn read(bytes: &[u8], sheet_name: &str, tab_hint: bool) -> Result<Document> 
             }
             row.cells.push(crate::model::SheetCell { col: c as u32, value, ..Default::default() });
         }
-        // A blank line is one empty field; there's nothing to keep but the row.
-        if row.cells.len() == 1 && row.cells[0].value.is_empty() {
+        // A blank line is one empty field; there's nothing to keep but the row. (`,,` is three
+        // empty fields, and keeps its last one so it's written back the same.)
+        if blank && row.cells.len() == 1 && row.cells[0].value.is_empty() {
             row.cells.clear();
         }
         sheet.rows.push(row);
@@ -105,7 +104,16 @@ pub fn read(bytes: &[u8], sheet_name: &str, tab_hint: bool) -> Result<Document> 
 
     let mut doc = Document::new(Kind::Csv);
     doc.body = Body::Workbook { sheets: vec![sheet] };
-    doc.extensions.insert(Dialect { delimiter, line_ending, encoding, quote_all, trailing_newline, sep_line });
+    let line_ending = line_ending.unwrap_or(LineEnding::Lf);
+    doc.extensions.insert(Dialect {
+        delimiter,
+        line_ending,
+        encoding,
+        quote_all,
+        trailing_newline,
+        sep_line,
+        quote_spaces: !spaces_unquoted,
+    });
     Ok(doc)
 }
 
@@ -154,7 +162,8 @@ pub fn write(doc: &Document) -> Result<Vec<u8>> {
 }
 
 fn write_field(out: &mut String, text: &str, d: &Dialect) {
-    let needs = d.quote_all || text.contains([d.delimiter, '"', '\n', '\r']) || text.starts_with(' ') || text.ends_with(' ');
+    let needs =
+        d.quote_all || text.contains([d.delimiter, '"', '\n', '\r']) || (d.quote_spaces && (text.starts_with(' ') || text.ends_with(' ')));
     if needs {
         out.push('"');
         out.push_str(&text.replace('"', "\"\""));
@@ -181,8 +190,17 @@ fn infer(field: String) -> Value {
 
 /// Splits CSV text into records. Lenient where files are commonly wrong: a quote inside an
 /// unquoted field is just a character, and text after a closing quote joins the field.
-/// Also says whether every field was quoted.
-fn parse(text: &str, delimiter: char) -> (Vec<Vec<String>>, bool) {
+struct Parsed {
+    records: Vec<Vec<String>>,
+    /// Every field was quoted.
+    quote_all: bool,
+    /// The first line ending outside quotes (inside them, line breaks are field text).
+    line_ending: Option<LineEnding>,
+    /// Some unquoted field starts or ends with a space.
+    spaces_unquoted: bool,
+}
+
+fn parse(text: &str, delimiter: char) -> Parsed {
     let mut records = Vec::new();
     let mut record = Vec::new();
     let mut field = String::new();
@@ -192,7 +210,12 @@ fn parse(text: &str, delimiter: char) -> (Vec<Vec<String>>, bool) {
     let mut at_start = true;
     let mut in_quotes = false;
     let mut was_quoted = false;
-    let end_field = |record: &mut Vec<String>, field: &mut String, was_quoted: &mut bool, fields: &mut usize, quoted: &mut usize| {
+    let mut line_ending = None;
+    let mut spaces_unquoted = false;
+    let mut end_field = |record: &mut Vec<String>, field: &mut String, was_quoted: &mut bool, fields: &mut usize, quoted: &mut usize| {
+        if !*was_quoted && (field.starts_with(' ') || field.ends_with(' ')) {
+            spaces_unquoted = true;
+        }
         record.push(std::mem::take(field));
         *fields += 1;
         if *was_quoted {
@@ -225,9 +248,14 @@ fn parse(text: &str, delimiter: char) -> (Vec<Vec<String>>, bool) {
                 at_start = true;
             }
             '\r' | '\n' => {
-                if c == '\r' && chars.peek() == Some(&'\n') {
-                    chars.next();
-                }
+                let ending = if c == '\n' {
+                    LineEnding::Lf
+                } else if chars.next_if_eq(&'\n').is_some() {
+                    LineEnding::CrLf
+                } else {
+                    LineEnding::Cr
+                };
+                line_ending.get_or_insert(ending);
                 end_field(&mut record, &mut field, &mut was_quoted, &mut fields, &mut quoted_fields);
                 records.push(std::mem::take(&mut record));
                 at_start = true;
@@ -244,7 +272,7 @@ fn parse(text: &str, delimiter: char) -> (Vec<Vec<String>>, bool) {
         records.push(record);
     }
     let quote_all = fields > 0 && quoted_fields == fields;
-    (records, quote_all)
+    Parsed { records, quote_all, line_ending, spaces_unquoted }
 }
 
 /// The delimiter that splits the first lines into the same number of fields most often:
@@ -253,7 +281,7 @@ fn sniff_delimiter(text: &str, tab_hint: bool) -> char {
     let sample: String = text.chars().take(64 * 1024).collect();
     let mut best = (if tab_hint { '\t' } else { ',' }, 0usize, 0usize);
     for d in [',', ';', '\t', '|'] {
-        let (records, _) = parse(&sample, d);
+        let records = parse(&sample, d).records;
         let lines: Vec<usize> = records.iter().take(50).filter(|r| !(r.len() == 1 && r[0].is_empty())).map(Vec::len).collect();
         let Some(&first) = lines.first() else { continue };
         if first < 2 {
@@ -372,6 +400,27 @@ mod tests {
         assert_eq!(doc.sheet_value(CellRef::new(4, 0)), Some(&Value::Text("two\nlines".into())));
         assert_eq!(doc.sheet_value(CellRef::new(3, 2)), Some(&Value::Text("e".into())));
         round_trip(b"a,b,\n");
+    }
+
+    #[test]
+    fn line_endings_come_from_outside_quotes() {
+        let doc = round_trip(b"\"a\r\nb\",c\nd,e\n");
+        assert_eq!(doc.extensions.get::<Dialect>().unwrap().line_ending, LineEnding::Lf);
+        let doc = round_trip(b"one,\"x\ny\"\rtwo\r");
+        assert_eq!(doc.extensions.get::<Dialect>().unwrap().line_ending, LineEnding::Cr);
+    }
+
+    #[test]
+    fn empty_rows_in_the_used_range_keep_their_commas() {
+        let doc = round_trip(b"a,b,c\r\n,,\r\n1,2,3\r\n");
+        let Body::Workbook { sheets } = &doc.body else { unreachable!() };
+        assert_eq!(sheets[0].rows[1].cells.len(), 1, "the last field marks the width");
+    }
+
+    #[test]
+    fn spaces_are_quoted_only_if_the_file_quoted_them() {
+        round_trip(b"name, age\nBob, 3\n");
+        round_trip(b"\" padded \",x\n");
     }
 
     #[test]

@@ -138,12 +138,11 @@ fn run_props(run: &Run) -> Option<Element> {
         p.strike.map(|s| if s == crate::model::Strike::None { val("strike", "0".into()) } else { Element::new(ns::X, "strike") }),
         p.color.as_ref().map(color),
         p.size.map(|s| val("sz", format_number(s.points()))),
-        p.underline.as_ref().map(|u| {
-            if u == "single" {
-                Element::new(ns::X, "u")
-            } else {
-                val("u", if u == "double" { u.clone() } else { "single".into() })
-            }
+        // Excel's underlines; Word's others (dotted, wavy…) come out single.
+        p.underline.as_ref().map(|u| match u.as_str() {
+            "single" => Element::new(ns::X, "u"),
+            "double" | "singleAccounting" | "doubleAccounting" | "none" => val("u", u.clone()),
+            _ => val("u", "single".into()),
         }),
         p.baseline.map(|b| val("vertAlign", if b == Baseline::Superscript { "superscript" } else { "subscript" }.into())),
     ];
@@ -229,10 +228,6 @@ pub fn write(doc: &Document) -> Result<Package> {
     let old_sheets: Vec<&Element> = old_list.iter().flat_map(|l| l.children_named(ns::X, "sheet")).collect();
     let mut next_id = old_sheets.iter().filter_map(|s| s.attr("sheetId")?.parse::<u32>().ok()).max().unwrap_or(0) + 1;
     let mut list = old_list.clone().unwrap_or_else(|| Element::new(ns::X, "sheets"));
-    // Chart sheets aren't in the model; they keep their place at the end.
-    list.children.retain(
-        |n| matches!(n, Node::Element(e) if rel_attr(e, "id").and_then(|id| ctx.rels.get(id)).is_some_and(|r| !r.is(kind::WORKSHEET))),
-    );
     let mut entries = Vec::new();
     for (sheet, untouched) in sheets.iter().zip(untouched) {
         let part = match sheet.part.as_deref().filter(|p| same && out.pkg.has(p)) {
@@ -259,9 +254,33 @@ pub fn write(doc: &Document) -> Result<Package> {
         if hidden_now != sheet.hidden {
             crate::formats::dml::set_opt(&mut el, "state", sheet.hidden.then(|| "hidden".to_string()));
         }
-        entries.push(Node::Element(el));
+        entries.push(el);
     }
-    list.children.splice(0..0, entries);
+    // Chart sheets aren't in the model; they keep their places, and the worksheets fill the
+    // worksheets' places in order (any more go at the end).
+    let rids = |list: &Element| list.children_named(ns::X, "sheet").map(|e| rel_attr(e, "id").map(str::to_string)).collect::<Vec<_>>();
+    let old_rids = rids(&list);
+    let mut entries = entries.into_iter();
+    let mut children = Vec::new();
+    for n in std::mem::take(&mut list.children) {
+        match n {
+            Node::Element(e) if e.is(ns::X, "sheet") => {
+                let chart = rel_attr(&e, "id").and_then(|id| ctx.rels.get(id)).is_some_and(|r| !r.is(kind::WORKSHEET));
+                if chart {
+                    children.push(Node::Element(e));
+                } else if let Some(w) = entries.next() {
+                    children.push(Node::Element(w));
+                }
+            }
+            other => children.push(other),
+        }
+    }
+    children.extend(entries.map(Node::Element));
+    list.children = children;
+    let new_rids = rids(&list);
+    if old_rids != new_rids {
+        follow_sheet_positions(&mut workbook.root, &old_rids, &new_rids);
+    }
     const WORKBOOK: &[&[&str]] = &[
         &["fileVersion"],
         &["fileSharing"],
@@ -304,6 +323,42 @@ pub fn write(doc: &Document) -> Result<Package> {
     ctx.finish(&mut out.pkg);
     doc.properties.write(&mut out.pkg)?;
     Ok(std::mem::take(&mut out.pkg))
+}
+
+/// Points what refers to sheets by position (sheet-scoped names, the active and first tabs)
+/// at where those sheets are now. A name scoped to a sheet that's gone goes with it.
+fn follow_sheet_positions(workbook: &mut Element, old: &[Option<String>], new: &[Option<String>]) {
+    let moved = |i: &str| -> Option<usize> {
+        let rid = old.get(i.parse::<usize>().ok()?)?.as_ref()?;
+        new.iter().position(|r| r.as_ref() == Some(rid))
+    };
+    if let Some(names) = workbook.child_mut(ns::X, "definedNames") {
+        names.children.retain_mut(|n| {
+            let Node::Element(e) = n else { return true };
+            let Some(i) = e.attr("localSheetId").map(str::to_string) else { return true };
+            match moved(&i) {
+                Some(to) => {
+                    e.set_attr("", "localSheetId", to.to_string());
+                    true
+                }
+                None => false,
+            }
+        });
+    }
+    if let Some(views) = workbook.child_mut(ns::X, "bookViews") {
+        for view in views.elements_mut() {
+            for attr in ["activeTab", "firstSheet"] {
+                if let Some(i) = view.attr(attr).map(str::to_string) {
+                    let to = moved(&i).unwrap_or(0);
+                    if to == 0 {
+                        view.remove_attr("", attr);
+                    } else {
+                        view.set_attr("", attr, to.to_string());
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Where the rows go in a sheet written as text; see [`splice`].

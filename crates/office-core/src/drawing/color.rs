@@ -21,8 +21,11 @@ impl Rgb {
     /// `RRGGBB`, or Excel's `AARRGGBB` (the alpha is dropped; Excel ignores it too).
     pub fn parse(hex: &str) -> Option<Rgb> {
         let hex = hex.trim().trim_start_matches('#');
+        if !hex.is_ascii() {
+            return None;
+        }
         let hex = if hex.len() == 8 { &hex[2..] } else { hex };
-        if hex.len() != 6 || !hex.is_ascii() {
+        if hex.len() != 6 {
             return None;
         }
         let byte = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).ok();
@@ -481,6 +484,7 @@ mod tests {
         assert_eq!(Rgb::parse("4472C4"), Some(Rgb(0x44, 0x72, 0xC4)));
         assert_eq!(Rgb::parse("FF4472C4"), Some(Rgb(0x44, 0x72, 0xC4)));
         assert_eq!(Rgb::parse("auto"), None);
+        assert_eq!(Rgb::parse("Aé12345"), None, "a multi-byte character where the alpha would be");
         assert_eq!(Rgb(1, 2, 255).hex(), "0102FF");
     }
 

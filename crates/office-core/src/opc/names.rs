@@ -8,8 +8,8 @@
 /// The part a relationship target points at, from the part that owns the relationship
 /// (`""` for the package's own relationships).
 pub fn resolve(source: &str, target: &str) -> String {
-    let target = percent_decode(target);
-    let target = target.split(['#', '?']).next().unwrap_or("");
+    // The fragment and query go first: an encoded `%23` is part of the name.
+    let target = percent_decode(target.split(['#', '?']).next().unwrap_or(""));
     let mut segments: Vec<&str> =
         if target.starts_with('/') { Vec::new() } else { folder(source).split('/').filter(|s| !s.is_empty()).collect() };
     for seg in target.split('/') {
@@ -111,7 +111,12 @@ mod tests {
         assert_eq!(relative("ppt/slides/slide1.xml", "ppt/media/image1.png"), "../media/image1.png");
         assert_eq!(relative("ppt/slides/slide1.xml", "ppt/slides/slide2.xml"), "slide2.xml");
         assert_eq!(relative("word/document.xml", "word/media/a b.png"), "media/a%20b.png");
-        for (src, part) in [("ppt/slides/slide1.xml", "ppt/media/x.png"), ("", "docProps/core.xml"), ("a/b/c.xml", "d/e.xml")] {
+        for (src, part) in [
+            ("ppt/slides/slide1.xml", "ppt/media/x.png"),
+            ("", "docProps/core.xml"),
+            ("a/b/c.xml", "d/e.xml"),
+            ("word/document.xml", "word/media/a#b?.png"),
+        ] {
             assert_eq!(resolve(src, &relative(src, part)), part);
         }
     }

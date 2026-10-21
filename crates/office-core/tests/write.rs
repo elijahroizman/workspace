@@ -198,3 +198,115 @@ fn removing_slides_and_sheets() {
     let Body::Workbook { sheets } = &back.body else { panic!() };
     assert_eq!(sheets.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["Two"]);
 }
+
+#[test]
+fn copied_slides_get_their_own_part() {
+    let mut read = round_trip(&slides(), Kind::Slides);
+    let Body::Slides { slides, .. } = &mut read.body else { panic!() };
+    let mut copy = slides[0].clone();
+    if let FrameContent::Shape { text: Some(body), .. } = &mut copy.frames[0].content {
+        body.paragraphs = vec![Paragraph::text("the copy")];
+    }
+    slides.insert(1, copy);
+    let back = round_trip(&read, Kind::Slides);
+    let Body::Slides { slides: after, .. } = &back.body else { panic!() };
+    let Body::Slides { slides: before, .. } = &read.body else { panic!() };
+    assert_eq!(after.len(), before.len());
+    assert_eq!(after[1].frames[0].paragraphs()[0].plain_text(), "the copy");
+    assert_eq!(
+        after[0].frames[0].paragraphs()[0].plain_text(),
+        before[0].frames[0].paragraphs()[0].plain_text(),
+        "the original is untouched"
+    );
+    assert_ne!(after[0].part, after[1].part);
+    assert!(matches!(after[1].frames[1].content, FrameContent::Picture { .. }), "the copy's picture still resolves");
+    let pkg = back.package.as_ref().unwrap();
+    let pres = pkg.xml("ppt/presentation.xml").unwrap();
+    let ids: Vec<&str> =
+        pres.root.descendant(office_core::xml::ns::P, "sldIdLst").unwrap().elements().filter_map(|e| e.attr("id")).collect();
+    let mut unique = ids.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(ids.len(), after.len());
+    assert_eq!(unique.len(), ids.len(), "{ids:?}");
+}
+
+/// A workbook of sheets A, B and C as Excel might have saved it: a chart sheet between A and
+/// B, names scoped to B and C, C the active tab, and a date written as ISO text in A.
+fn workbook_with_chart_sheet() -> Document {
+    let mut doc = Document::new(Kind::Sheets);
+    let Body::Workbook { sheets } = &mut doc.body else { panic!() };
+    sheets[0].name = "A".into();
+    sheets[0].set(CellRef::new(0, 0), Value::Number(1.0));
+    sheets.push(Sheet::new("B"));
+    sheets.push(Sheet::new("C"));
+    let mut pkg = Package::read(&office_core::write(&doc, Kind::Sheets).unwrap()).unwrap();
+    let main = "xl/workbook.xml";
+    let chart = "xl/chartsheets/sheet1.xml";
+    pkg.put(
+        chart,
+        br#"<chartsheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"/></sheetViews></chartsheet>"#.to_vec(),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.chartsheet+xml",
+    );
+    let rid = pkg.relate(main, "chartsheet", chart).unwrap();
+    let text = String::from_utf8(pkg.part(main).unwrap().to_vec()).unwrap();
+    let sheets_at = text.find("<sheet ").unwrap();
+    let after_a = sheets_at + text[sheets_at..].find("/>").unwrap() + 2;
+    let mut text = format!("{}<sheet name=\"Chart\" sheetId=\"9\" r:id=\"{rid}\"/>{}", &text[..after_a], &text[after_a..]);
+    text = text.replace("<workbookView/>", r#"<workbookView activeTab="3"/>"#);
+    text = text.replace("</sheets>", r#"</sheets><definedNames><definedName name="inB" localSheetId="2">B!$A$1</definedName><definedName name="inC" localSheetId="3">C!$A$1</definedName><definedName name="all">A!$A$1</definedName></definedNames>"#);
+    pkg.replace(main, text.into_bytes()).unwrap();
+    let sheet = "xl/worksheets/sheet1.xml";
+    let text = String::from_utf8(pkg.part(sheet).unwrap().to_vec()).unwrap();
+    let text = text.replace("</row>", r#"<c r="B1" t="d"><v>2024-03-01T00:00:00</v></c></row>"#);
+    pkg.replace(sheet, text.into_bytes()).unwrap();
+    office_core::read(&pkg.to_bytes().unwrap(), Some("x.xlsx")).unwrap()
+}
+
+fn workbook_xml(doc: &Document) -> String {
+    let bytes = office_core::write(doc, Kind::Sheets).unwrap();
+    String::from_utf8(Package::read(&bytes).unwrap().part("xl/workbook.xml").unwrap().to_vec()).unwrap()
+}
+
+#[test]
+fn chart_sheets_keep_their_place() {
+    let doc = workbook_with_chart_sheet();
+    let before = String::from_utf8(doc.package.as_ref().unwrap().part("xl/workbook.xml").unwrap().to_vec()).unwrap();
+    assert_eq!(workbook_xml(&doc), before, "an unchanged workbook is written as it was");
+
+    // Without B, C moves up to where B was: its name and the active tab follow it, and B's
+    // own name goes with B.
+    let mut doc = doc;
+    let Body::Workbook { sheets } = &mut doc.body else { panic!() };
+    sheets.remove(1);
+    let xml = workbook_xml(&doc);
+    let names: Vec<&str> = xml.match_indices("<sheet name=\"").map(|(i, m)| xml[i + m.len()..].split('"').next().unwrap()).collect();
+    assert_eq!(names, ["A", "Chart", "C"]);
+    assert!(xml.contains(r#"<definedName name="inC" localSheetId="2">"#), "{xml}");
+    assert!(!xml.contains("inB"), "{xml}");
+    assert!(xml.contains(r#"<definedName name="all">"#));
+    assert!(xml.contains(r#"activeTab="2""#), "{xml}");
+}
+
+#[test]
+fn iso_date_cells_stay_dates() {
+    let mut doc = workbook_with_chart_sheet();
+    let Body::Workbook { sheets } = &mut doc.body else { panic!() };
+    sheets[0].set(CellRef::new(1, 0), Value::Number(2.0));
+    let bytes = office_core::write(&doc, Kind::Sheets).unwrap();
+    let sheet = String::from_utf8(Package::read(&bytes).unwrap().part("xl/worksheets/sheet1.xml").unwrap().to_vec()).unwrap();
+    assert!(sheet.contains(r#"<c r="B1" t="d"><v>2024-03-01T00:00:00</v></c>"#), "{sheet}");
+}
+
+#[test]
+fn underline_off_stays_off_in_excel() {
+    let mut doc = Document::new(Kind::Sheets);
+    let mut run = Run::new("plain");
+    run.props.underline = Some("none".into());
+    let Body::Workbook { sheets } = &mut doc.body else { panic!() };
+    sheets[0].set(CellRef::new(0, 0), Value::Rich(vec![run, Run::new(" and more")]));
+    let bytes = office_core::write(&doc, Kind::Sheets).unwrap();
+    let pkg = Package::read(&bytes).unwrap();
+    let strings = String::from_utf8(pkg.part("xl/sharedStrings.xml").unwrap().to_vec()).unwrap();
+    assert!(strings.contains(r#"<u val="none"/>"#), "{strings}");
+}

@@ -8,6 +8,10 @@ use super::{ns, Attr, Declaration, Element, Node, XmlDoc};
 
 /// Parses a part. Accepts UTF-8 (with or without a byte order mark) and UTF-16, which some
 /// producers write. Custom entities are never expanded, so a part can't reach outside itself.
+/// How deep elements may nest. Office markup stays far below this; a part nested deeper is
+/// rejected, because walking (and dropping) the tree is recursive.
+pub const MAX_DEPTH: usize = 1024;
+
 pub fn parse(bytes: &[u8]) -> Result<XmlDoc, String> {
     let text = decode(bytes)?;
     let mut reader = Reader::from_str(&text);
@@ -26,6 +30,9 @@ pub fn parse(bytes: &[u8]) -> Result<XmlDoc, String> {
         let event = reader.read_event().map_err(|e| format!("{e} at byte {}", reader.error_position()))?;
         let node = match event {
             Event::Start(start) => {
+                if stack.len() >= MAX_DEPTH {
+                    return Err(format!("elements nested more than {MAX_DEPTH} deep"));
+                }
                 stack.push(parser.open(&start)?);
                 continue;
             }

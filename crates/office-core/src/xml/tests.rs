@@ -180,3 +180,10 @@ fn characters_xml_cant_hold_are_left_out() {
     assert_eq!(back.attr("v"), Some("xy"));
     assert_eq!(back.text(), "formfeed");
 }
+
+#[test]
+fn deep_nesting_is_rejected() {
+    let deep = |n: usize| format!("{}{}", "<a>".repeat(n), "</a>".repeat(n));
+    assert!(super::parse(deep(super::parse::MAX_DEPTH).as_bytes()).is_ok());
+    assert!(super::parse(deep(200_000).as_bytes()).unwrap_err().contains("nested"));
+}

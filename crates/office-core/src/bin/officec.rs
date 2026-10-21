@@ -11,6 +11,7 @@
 use std::path::Path;
 use std::process::ExitCode;
 
+use office_core::formats::csv::Dialect;
 use office_core::opc::Package;
 use office_core::xml::{Element, Node};
 use office_core::Kind;
@@ -49,7 +50,19 @@ fn kind_of(file: &str) -> Result<Kind> {
     Path::new(file)
         .extension()
         .and_then(|e| Kind::from_extension(e.to_str()?))
-        .ok_or_else(|| format!("{file}: not a .docx, .pptx, .xlsx or .csv name").into())
+        .ok_or_else(|| format!("{file}: not a .docx, .pptx, .xlsx, .csv or .tsv name").into())
+}
+
+/// `doc` written as `out`'s extension says. A `.tsv` is tab-separated, keeping the rest of
+/// the source's CSV dialect.
+fn write_as(mut doc: office_core::Document, out: &str) -> Result<Vec<u8>> {
+    let kind = kind_of(out)?;
+    if Path::new(out).extension().is_some_and(|e| e.eq_ignore_ascii_case("tsv")) {
+        let mut dialect = doc.extensions.get::<Dialect>().cloned().unwrap_or_default();
+        dialect.delimiter = '\t';
+        doc.extensions.insert(dialect);
+    }
+    Ok(office_core::write(&doc, kind)?)
 }
 
 fn inspect(file: &str) -> Result {
@@ -60,14 +73,14 @@ fn inspect(file: &str) -> Result {
 
 fn convert(from: &str, to: &str) -> Result {
     let doc = read(from)?;
-    std::fs::write(to, office_core::write(&doc, kind_of(to)?)?)?;
+    std::fs::write(to, write_as(doc, to)?)?;
     Ok(())
 }
 
 fn save(file: &str, out: &str) -> Result {
     let before = std::fs::read(file)?;
     let doc = read(file)?;
-    let after = office_core::write(&doc, kind_of(out)?)?;
+    let after = write_as(doc, out)?;
     std::fs::write(out, &after)?;
     if let (Ok(a), Ok(b)) = (Package::read(&before), Package::read(&after)) {
         report(&a, &b);

@@ -52,10 +52,13 @@ pub fn write(doc: &Document) -> Result<Package> {
         + 1;
     let mut list = Element::new(ns::P, "sldIdLst");
     let mut layout = first_layout(&out.pkg, &main)?;
+    let mut written: Vec<String> = Vec::new();
     for slide in slides {
         // The slide's own layout, if it names one this package has.
         let wanted = slide.layout.clone().filter(|l| same && out.pkg.has(l));
-        let part = match slide.part.as_deref().filter(|p| same && out.pkg.has(p)) {
+        // A slide copied in the model has its original's part too; the first one keeps it.
+        let copy_of = slide.part.as_deref().filter(|p| same && written.iter().any(|w| w == p));
+        let part = match slide.part.as_deref().filter(|p| same && out.pkg.has(p) && copy_of.is_none()) {
             Some(p) => {
                 let current = out.pkg.related(p, kind::SLIDE_LAYOUT)?.into_iter().next();
                 if let (Some(w), Some((rel, now))) = (&wanted, &current) {
@@ -77,14 +80,32 @@ pub fn write(doc: &Document) -> Result<Package> {
                 // to keep speaker notes with it), if the name is free.
                 let named = slide.part.clone().filter(|p| !out.pkg.has(p) && p.starts_with("ppt/slides/") && p.ends_with(".xml"));
                 let p = named.unwrap_or_else(|| out.pkg.unused_name("ppt/slides/slide{}.xml"));
-                let layout = wanted.or_else(|| layout.clone()).ok_or_else(|| Error::MissingPart("a slide layout".into()))?;
                 out.pkg.put_xml(&p, &XmlDoc::new(Element::new(ns::P, "sld")), types::PPTX_SLIDE);
-                out.pkg.relate(&p, kind::SLIDE_LAYOUT, &layout)?;
+                match copy_of {
+                    // A copy takes its original's relationships, which the markup it kept refers
+                    // to (pictures, charts, its layout), all but the notes, which stay with the
+                    // original. It's in the same folder, so the targets still hold.
+                    Some(original) => {
+                        let mut rels = out.pkg.rels(original)?;
+                        rels.0.retain(|r| !r.is(kind::NOTES_SLIDE));
+                        if let Some(w) = &wanted {
+                            for r in rels.0.iter_mut().filter(|r| r.is(kind::SLIDE_LAYOUT)) {
+                                r.target = crate::opc::names::relative(&p, w);
+                            }
+                        }
+                        out.pkg.put_rels(&p, &rels);
+                    }
+                    None => {
+                        let layout = wanted.or_else(|| layout.clone()).ok_or_else(|| Error::MissingPart("a slide layout".into()))?;
+                        out.pkg.relate(&p, kind::SLIDE_LAYOUT, &layout)?;
+                    }
+                }
                 p
             }
         };
         write_slide(slide, &part, &mut out)?;
         let rid = pres_ctx.relate(kind::SLIDE, &part);
+        written.push(part);
         let existing =
             old_ids.iter().flat_map(|l| l.children_named(ns::P, "sldId")).find(|s| rel_attr(s, "id") == Some(rid.as_str())).cloned();
         list.push(existing.unwrap_or_else(|| {

@@ -135,3 +135,22 @@ fn properties_keep_what_the_model_doesnt_cover() {
     props.write(&mut again).unwrap();
     assert_eq!(again.to_bytes().unwrap(), before);
 }
+
+#[test]
+fn a_part_bigger_than_it_says_is_refused() {
+    let mut pkg = sample();
+    pkg.put("word/big.bin", vec![0; 4096], "application/octet-stream");
+    let mut bytes = pkg.to_bytes().unwrap();
+    // Say the part is 16 bytes, in its local header and in the central directory.
+    let name = b"word/big.bin";
+    let find = |bytes: &[u8], sig: &[u8], name_at: usize| {
+        (0..bytes.len() - name_at - name.len()).find(|&i| bytes[i..].starts_with(sig) && bytes[i + name_at..].starts_with(name)).unwrap()
+    };
+    let local = find(&bytes, b"PK\x03\x04", 30);
+    bytes[local + 22..local + 26].copy_from_slice(&16u32.to_le_bytes());
+    let central = find(&bytes, b"PK\x01\x02", 46);
+    bytes[central + 24..central + 28].copy_from_slice(&16u32.to_le_bytes());
+    let pkg = Package::read(&bytes).unwrap();
+    assert!(pkg.part("word/document.xml").is_ok());
+    assert!(pkg.part("word/big.bin").is_err());
+}

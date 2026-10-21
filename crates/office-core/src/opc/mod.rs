@@ -121,8 +121,14 @@ impl Package {
     fn decompress(&self, entry: usize) -> Result<Vec<u8>> {
         let mut archive = self.source.clone().expect("parts with an entry come from a source zip");
         let file = archive.by_index(entry)?;
-        let mut out = Vec::with_capacity(file.size() as usize);
-        file.take(MAX_SIZE).read_to_end(&mut out).map_err(|e| Error::Zip(e.to_string()))?;
+        // The declared size is the limit: `read` added them up against MAX_SIZE, so an entry
+        // that inflates past its own can't get round that.
+        let declared = file.size();
+        let mut out = Vec::with_capacity(declared.min(1 << 24) as usize);
+        file.take(declared + 1).read_to_end(&mut out).map_err(|e| Error::Zip(e.to_string()))?;
+        if out.len() as u64 > declared {
+            return Err(Error::Zip("a part is larger than the file says".into()));
+        }
         Ok(out)
     }
 
