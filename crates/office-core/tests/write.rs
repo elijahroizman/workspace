@@ -323,12 +323,18 @@ fn patched(doc: &Document, kind: Kind, part: &str, edit: impl Fn(String) -> Stri
 
 #[test]
 fn damaged_spans_and_sizes_are_contained() {
-    // A Word cell claiming four billion columns is cut to the grid.
-    let doc =
-        patched(&word(), Kind::Word, "word/document.xml", |t| t.replacen("<w:tcPr>", r#"<w:tcPr><w:gridSpan w:val="4000000000"/>"#, 1))
-            .unwrap();
+    // Word cells claiming four billion columns, in a grid of 10 000, fill no more than Word's
+    // 63 columns a row.
+    let doc = patched(&word(), Kind::Word, "word/document.xml", |t| {
+        let t = t.replace("<w:tcPr>", r#"<w:tcPr><w:gridSpan w:val="4000000000"/>"#);
+        t.replacen("<w:tblGrid>", &format!("<w:tblGrid>{}", r#"<w:gridCol w:w="10"/>"#.repeat(10_000)), 1)
+    })
+    .unwrap();
     let table = body_blocks(&doc).iter().find_map(|b| if let Block::Table(t) = b { Some(t) } else { None }).unwrap();
-    assert!(table.rows[0].cells.len() <= 64, "{}", table.rows[0].cells.len());
+    for row in &table.rows {
+        // 63 slots of spans, then one for each of the row's own cells past them.
+        assert!(row.cells.len() <= 63 + 3, "{}", row.cells.len());
+    }
 
     // A PowerPoint cell spanning no rows or columns spans itself, and converts.
     let doc = patched(&slides(), Kind::Slides, "ppt/slides/slide1.xml", |t| t.replacen("<a:tc>", r#"<a:tc rowSpan="0" gridSpan="0">"#, 1))

@@ -206,6 +206,9 @@ fn read_inline_picture(r: &Element, inline: &Element, rels: &PartRels, doc: &mut
     })
 }
 
+/// The most grid slots spans fill in a table row: Word's limit on columns.
+const MAX_ROW_SLOTS: usize = 63;
+
 fn read_table(tbl: &Element, rels: &PartRels, doc: &mut Document) -> Table {
     let columns: Vec<Emu> = tbl
         .child(ns::W, "tblGrid")
@@ -216,9 +219,6 @@ fn read_table(tbl: &Element, rels: &PartRels, doc: &mut Document) -> Table {
         })
         .unwrap_or_default();
     let style = tbl.path(ns::W, &["tblPr", "tblStyle"]).and_then(val).map(str::to_string);
-    // Word makes at most 63 columns. Each grid slot under a span gets a cell, so a span past
-    // the grid (a damaged file, or a hostile one) is cut to it.
-    let max_span = columns.len().max(63) as u32;
 
     let mut rows: Vec<Row> = Vec::new();
     // Whether each grid slot continues a row span from above (Word's bare `w:vMerge`).
@@ -229,8 +229,12 @@ fn read_table(tbl: &Element, rels: &PartRels, doc: &mut Document) -> Table {
         let mut cont = Vec::new();
         for tc in tr.children_named(ns::W, "tc") {
             let tcpr = tc.child(ns::W, "tcPr");
+            // Each grid slot under a span gets a cell. Word makes at most 63 columns, so spans
+            // fill a row to 63 slots and no further: a damaged (or hostile) file can't claim
+            // billions of slots, or many rows' worth of a huge grid.
+            let room = MAX_ROW_SLOTS.saturating_sub(cells.len()).max(1) as u32;
             let span: u32 =
-                tcpr.and_then(|p| p.child(ns::W, "gridSpan")).and_then(val).and_then(|v| v.parse().ok()).unwrap_or(1).clamp(1, max_span);
+                tcpr.and_then(|p| p.child(ns::W, "gridSpan")).and_then(val).and_then(|v| v.parse().ok()).unwrap_or(1).clamp(1, room);
             // vMerge="restart" starts a row span; a bare vMerge continues one.
             let continued = tcpr.and_then(|p| p.child(ns::W, "vMerge")).is_some_and(|m| val(m) != Some("restart"));
             let fill = tcpr
