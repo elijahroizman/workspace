@@ -51,11 +51,13 @@ fn python_opens(path: &Path, kind: Kind) {
         Kind::Csv => return,
     };
     let module = script.split([' ', ',', ';']).nth(1).unwrap();
-    let have = Command::new("python3").args(["-c", &format!("import {module}")]).status().is_ok_and(|s| s.success());
+    // -P keeps the working directory off the import path; the user's site-packages (where pip
+    // --user installs) stay on it.
+    let have = Command::new("python3").args(["-P", "-c", &format!("import {module}")]).status().is_ok_and(|s| s.success());
     if !have {
         return;
     }
-    let out = Command::new("python3").args(["-I", "-c", script]).arg(path).output().unwrap();
+    let out = Command::new("python3").args(["-P", "-c", script]).arg(path).output().unwrap();
     assert!(out.status.success(), "{module} couldn't open {}: {}", path.display(), String::from_utf8_lossy(&out.stderr));
 }
 
