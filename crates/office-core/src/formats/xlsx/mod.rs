@@ -8,4 +8,4 @@ mod write;
 
 pub use props::{escape, read_color, read_run_props, unescape, INDEXED, THEME_INDEX};
 pub use read::read;
-pub use write::write;
+pub use write::{color as write_color, write};

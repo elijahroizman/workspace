@@ -155,7 +155,7 @@ fn run_props(run: &Run) -> Option<Element> {
 
 /// A SpreadsheetML color: Excel's numbered theme colors and tint where it can say the color
 /// that way, else the value.
-fn color(c: &crate::drawing::Color) -> Element {
+pub fn color(c: &crate::drawing::Color) -> Element {
     use crate::drawing::ColorBase;
     let mut el = Element::new(ns::X, "color");
     let slot = match &c.base {
@@ -306,6 +306,11 @@ pub fn write(doc: &Document) -> Result<Package> {
     Ok(std::mem::take(&mut out.pkg))
 }
 
+/// Whether an element (or anything in it) names another part by relationship id.
+fn names_parts(el: &Element) -> bool {
+    el.attrs.iter().any(|a| a.ns.as_deref().is_some_and(|n| crate::xml::ns::same(n, ns::R))) || el.elements().any(names_parts)
+}
+
 /// Where the rows go in a sheet written as text; see [`splice`].
 const ROWS: &str = "office-core:rows";
 
@@ -322,7 +327,9 @@ fn splice(mut root: Element, content: &str) -> Vec<u8> {
 }
 
 fn write_sheet(sheet: &Sheet, part: &str, strings: &mut Strings, same: bool, out: &mut Out) -> Result<()> {
-    let mut root = origin_as(&sheet.origin, ns::X, "worksheet").filter(|_| same).unwrap_or_else(|| {
+    // Another package's sheet can't bring its drawings and comments (the parts its r:ids name)
+    // along; anything else about it can come.
+    let mut root = origin_as(&sheet.origin, ns::X, "worksheet").filter(|o| same || !names_parts(o)).unwrap_or_else(|| {
         let mut ws = Element::new(ns::X, "worksheet");
         ws.declare(None, ns::X);
         ws.declare(Some("r"), ns::R);
@@ -336,7 +343,7 @@ fn write_sheet(sheet: &Sheet, part: &str, strings: &mut Strings, same: bool, out
 
     let mut rows = String::new();
     for row in &sheet.rows {
-        let mut r = origin_as(&row.origin, ns::X, "row").filter(|_| same).unwrap_or_else(|| Element::new(ns::X, "row"));
+        let mut r = origin_as(&row.origin, ns::X, "row").unwrap_or_else(|| Element::new(ns::X, "row"));
         r.children.retain(|n| !matches!(n, Node::Element(e) if e.is(ns::X, "c")));
         r.set_attr("", "r", (row.index + 1).to_string());
         // `spans` is an optional hint of the row's first and last columns; keep it right.
@@ -350,7 +357,7 @@ fn write_sheet(sheet: &Sheet, part: &str, strings: &mut Strings, same: bool, out
         }
         let others = std::mem::take(&mut r.children);
         for cell in &row.cells {
-            r.push(write_cell(cell, CellRef::new(row.index, cell.col), strings, same));
+            r.push(write_cell(cell, CellRef::new(row.index, cell.col), strings));
         }
         // A row's extensions come after its cells.
         r.children.extend(others);
@@ -388,8 +395,8 @@ fn write_sheet(sheet: &Sheet, part: &str, strings: &mut Strings, same: bool, out
     Ok(())
 }
 
-fn write_cell(cell: &SheetCell, at: CellRef, strings: &mut Strings, same: bool) -> Element {
-    let origin = origin_as(&cell.origin, ns::X, "c").filter(|_| same);
+fn write_cell(cell: &SheetCell, at: CellRef, strings: &mut Strings) -> Element {
+    let origin = origin_as(&cell.origin, ns::X, "c");
     let old_formula = origin.as_ref().and_then(|o| o.child(ns::X, "f").cloned());
     let inline = origin.as_ref().and_then(|o| o.attr("t")) == Some("inlineStr");
     // Strict files' ISO dates, which the model holds as their text.
@@ -398,7 +405,7 @@ fn write_cell(cell: &SheetCell, at: CellRef, strings: &mut Strings, same: bool) 
     let mut c = origin.unwrap_or_else(|| Element::new(ns::X, "c"));
     c.children.retain(|n| !matches!(n, Node::Element(e) if e.is(ns::X, "f") || e.is(ns::X, "v") || e.is(ns::X, "is")));
     c.set_attr("", "r", at.to_string());
-    match cell.style.filter(|_| same) {
+    match cell.style {
         Some(s) => c.set_attr("", "s", s.to_string()),
         None => {
             c.remove_attr("", "s");

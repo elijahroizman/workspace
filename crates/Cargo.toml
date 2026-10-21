@@ -3,7 +3,7 @@
 # See docs/internals/office-compiler.md.
 [workspace]
 resolver = "2"
-members = ["office-core"]
+members = ["office-core", "office-sheets"]
 
 [workspace.package]
 edition = "2021"
@@ -16,3 +16,4 @@ quick-xml = "0.42"
 zip = { version = "4", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+office-core = { path = "office-core" }

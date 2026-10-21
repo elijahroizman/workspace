@@ -43,7 +43,7 @@ crates/
   office-core/           the shared compiler (this PR)
   office-word/           Word-only layer (planned)
   office-slides/         PowerPoint-only layer (planned)
-  office-sheets/         Excel-only layer (planned)
+  office-sheets/         Excel-only layer
 ```
 
 `src-tauri` will depend on `office-core` and the layers by path once the editors start using them. Nothing in the app uses the compiler yet.
@@ -118,7 +118,7 @@ pub trait Layer: Send + Sync {
 
 - **Word** (`office-word`): styles and their inheritance (resolving `pStyle`/`rStyle` into effective formatting), numbering and lists, sections and page setup, headers and footers, footnotes, comments, tracked changes, fields, bookmarks, floating-drawing anchors.
 - **PowerPoint** (`office-slides`): slide masters and layouts, placeholder inheritance, speaker notes, transitions, animations, hidden slides, comments.
-- **Excel** (`office-sheets`): the style sheet (fonts, fills, borders, number formats), dates, formulas (parsing; evaluation later), defined names, merged cells, column widths and row heights, conditional formatting, data validation, charts.
+- **Excel** (`office-sheets`, built): the style sheet (each cell's number format, font, fill, border, alignment and protection, read and added); number formats and dates shown as Excel shows them (sections, conditions, colors, scaling, scientific, fractions, dates, elapsed times; both date systems); formulas parsed, shared formulas expanded, and recalculated with nearly eighty of the common functions (maths, logic, text, lookups, dates, conditional sums); defined names; column widths and row heights. Not yet: conditional formatting, data validation and charts, which stay as they are in the file.
 
 ## Milestones
 
