@@ -68,7 +68,7 @@ impl Emu {
         if suffix.is_empty() {
             // Integers are the common case; keep them exact.
             if let Ok(n) = num.parse::<i64>() {
-                return Some(Emu(n * unit));
+                return n.checked_mul(unit).map(Emu);
             }
         }
         num.parse::<f64>().ok().filter(|n| n.is_finite()).map(|n| Emu((n * per).round() as i64))
@@ -184,6 +184,7 @@ mod tests {
         assert_eq!(Emu::parse("-457200", 1), Some(Emu(-457200)));
         assert_eq!(Emu::parse("12furlongs", 1), None);
         assert_eq!(Emu::parse("", 1), None);
+        assert_eq!(Emu::parse("99999999999999999", Emu::PER_TWIP), None, "too long for an EMU");
     }
 
     #[test]

@@ -35,8 +35,8 @@ pub fn to_kind(doc: &Document, kind: Kind) -> Result<Document> {
             let blocks = slides_to_blocks(slides);
             Body::Workbook { sheets: blocks_to_sheets(&blocks) }
         }
-        (Body::Workbook { sheets }, Kind::Word) => Body::Flow { blocks: sheets_to_blocks(sheets) },
-        (Body::Workbook { sheets }, _) => sheets_to_slides(sheets),
+        (Body::Workbook { sheets }, Kind::Word) => Body::Flow { blocks: sheets_to_blocks(sheets)? },
+        (Body::Workbook { sheets }, _) => sheets_to_slides(sheets)?,
     };
     // A CSV file's dialect only means something to CSV.
     if kind != Kind::Csv {
@@ -75,10 +75,11 @@ fn text_value(text: String) -> Value {
 }
 
 /// A sheet's used range as a table of text, its merged ranges as spans. Columns share `width`.
-pub fn sheet_to_table(sheet: &Sheet, width: Emu) -> Table {
-    let Some(used) = sheet.used_range().or_else(|| sheet.merges.first().copied()) else { return Table::default() };
+pub fn sheet_to_table(sheet: &Sheet, width: Emu) -> Result<Table> {
+    let Some(used) = sheet.used_range().or_else(|| sheet.merges.first().copied()) else { return Ok(Table::default()) };
+    sheet.check_laid_out(used.end)?;
     let (rows, cols) = (used.end.row as usize + 1, used.end.col as usize + 1);
-    let text = sheet.to_text_rows();
+    let text = sheet.to_text_rows()?;
     let mut table = Table::from_text(&(0..rows).map(|r| text.get(r).cloned().unwrap_or_default()).collect::<Vec<_>>(), width);
     for row in &mut table.rows {
         row.cells.resize_with(cols, || Cell::text(""));
@@ -98,7 +99,7 @@ pub fn sheet_to_table(sheet: &Sheet, width: Emu) -> Table {
         owner.col_span = m.cols().min((cols - c0) as u32);
         owner.row_span = m.rows().min((rows - r0) as u32);
     }
-    table
+    Ok(table)
 }
 
 /// Every table as a sheet; with no tables, one sheet with a paragraph per row.
@@ -116,7 +117,7 @@ fn blocks_to_sheets(blocks: &[Block]) -> Vec<Sheet> {
 }
 
 /// Each sheet as a table, after a paragraph with its name when there's more than one.
-fn sheets_to_blocks(sheets: &[Sheet]) -> Vec<Block> {
+fn sheets_to_blocks(sheets: &[Sheet]) -> Result<Vec<Block>> {
     let mut blocks = Vec::new();
     for s in sheets.iter().filter(|s| !s.hidden) {
         if sheets.len() > 1 {
@@ -125,12 +126,12 @@ fn sheets_to_blocks(sheets: &[Sheet]) -> Vec<Block> {
             blocks.push(Block::Paragraph(heading));
         }
         // 6.27 in: an A4 page's text width at Word's default margins.
-        blocks.push(Block::Table(sheet_to_table(s, Emu(5_731_510))));
+        blocks.push(Block::Table(sheet_to_table(s, Emu(5_731_510))?));
     }
     if blocks.is_empty() {
         blocks.push(Block::Paragraph(Paragraph::default()));
     }
-    blocks
+    Ok(blocks)
 }
 
 /// A slide's frames in reading order: top to bottom, then left to right.
@@ -403,31 +404,31 @@ fn flow_to_slides(blocks: &[Block]) -> Body {
 }
 
 /// Each visible sheet as a table, on as many slides as it takes.
-fn sheets_to_slides(sheets: &[Sheet]) -> Body {
+fn sheets_to_slides(sheets: &[Sheet]) -> Result<Body> {
     let size = SlideSize::default();
     let mut deck = Deck::new(size);
     for s in sheets.iter().filter(|s| !s.hidden) {
         deck.new_slide();
-        let table = sheet_to_table(s, deck.area.width);
+        let table = sheet_to_table(s, deck.area.width)?;
         if !table.rows.is_empty() {
             deck.table(table);
         }
     }
-    Body::Slides { size, slides: deck.finish() }
+    Ok(Body::Slides { size, slides: deck.finish() })
 }
 
 /// The document's text: paragraphs on lines, table cells split by tabs, slides and sheets one
 /// after another.
-pub fn plain_text(doc: &Document) -> String {
-    match &doc.body {
+pub fn plain_text(doc: &Document) -> Result<String> {
+    Ok(match &doc.body {
         Body::Flow { blocks } => blocks_text(blocks),
         Body::Slides { slides, .. } => blocks_text(&slides_to_blocks(slides)).replace('\u{c}', ""),
         Body::Workbook { sheets } => sheets
             .iter()
-            .map(|s| s.to_text_rows().into_iter().map(|r| r.join("\t")).collect::<Vec<_>>().join("\n"))
-            .collect::<Vec<_>>()
+            .map(|s| Ok(s.to_text_rows()?.into_iter().map(|r| r.join("\t")).collect::<Vec<_>>().join("\n")))
+            .collect::<Result<Vec<_>>>()?
             .join("\n\n"),
-    }
+    })
 }
 
 #[cfg(test)]
@@ -445,7 +446,7 @@ mod tests {
         let sheet = table_to_sheet(&t, "T");
         assert_eq!(sheet.merges, vec![Range::parse("A1:B2").unwrap()]);
         assert_eq!(sheet.value(CellRef::new(0, 2)), &Value::Number(3.0));
-        let back = sheet_to_table(&sheet, Emu(3000));
+        let back = sheet_to_table(&sheet, Emu(3000)).unwrap();
         assert_eq!((back.rows[0].cells[0].col_span, back.rows[0].cells[0].row_span), (2, 2));
         assert!(back.rows[1].cells[1].covered);
         assert_eq!(back.rows[1].cells[2].plain_text(), "x");
@@ -477,10 +478,10 @@ mod tests {
         let csv = to_kind(&sheets, Kind::Csv).unwrap();
         assert_eq!(crate::formats::csv::write(&csv).unwrap(), b"\xEF\xBB\xBFk,v\r\nn,2\r\n");
         let back = to_kind(&sheets, Kind::Word).unwrap();
-        assert!(plain_text(&back).contains("k\tv\nn\t2"));
+        assert!(plain_text(&back).unwrap().contains("k\tv\nn\t2"));
         let from_slides = to_kind(&slides, Kind::Word).unwrap();
-        assert_eq!(plain_text(&from_slides).replace('\u{c}', ""), "Report\nIntro\nk\tv\nn\t2\n\nPage two");
-        assert!(plain_text(&to_kind(&sheets, Kind::Slides).unwrap()).contains("n\t2"));
+        assert_eq!(plain_text(&from_slides).unwrap().replace('\u{c}', ""), "Report\nIntro\nk\tv\nn\t2\n\nPage two");
+        assert!(plain_text(&to_kind(&sheets, Kind::Slides).unwrap()).unwrap().contains("n\t2"));
     }
 
     #[test]
@@ -508,7 +509,7 @@ mod tests {
             }
         }
         // Every line and every row made it, and later parts of the table start with its header.
-        let text = plain_text(&doc);
+        let text = plain_text(&doc).unwrap();
         assert!((0..40).all(|i| text.contains(&format!("Line {i}\n")) || text.ends_with(&format!("Line {i}"))));
         // (Rows whose second cell a span covers have only the first.)
         assert!((0..30).all(|i| text.lines().any(|l| l == format!("r{i}\tx") || l == format!("r{i}"))));

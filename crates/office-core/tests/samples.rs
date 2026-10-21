@@ -75,7 +75,9 @@ fn text_of(doc: &office_core::Document) -> String {
         Body::Slides { slides, .. } => {
             slides.iter().flat_map(|s| &s.frames).flat_map(|f| f.paragraphs()).map(|p| p.plain_text()).collect::<Vec<_>>().join("\n")
         }
-        Body::Workbook { sheets } => sheets.iter().flat_map(|s| s.to_text_rows()).map(|r| r.join(",")).collect::<Vec<_>>().join("\n"),
+        Body::Workbook { sheets } => {
+            sheets.iter().flat_map(|s| s.to_text_rows().unwrap()).map(|r| r.join(",")).collect::<Vec<_>>().join("\n")
+        }
     }
 }
 

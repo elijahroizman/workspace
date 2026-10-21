@@ -550,7 +550,7 @@ fn call(name: &str, args: &[Expr], book: &mut dyn Book) -> R {
                 return Err("#VALUE!");
             }
             let from = (start as usize - 1).min(s.len());
-            V::Text(s[from..(from + len as usize).min(s.len())].iter().collect())
+            V::Text(s[from..from.saturating_add(len as usize).min(s.len())].iter().collect())
         }
         "FIND" | "SEARCH" => {
             let (needle, hay) = (text(&arg(0, book)?)?, text(&arg(1, book)?)?);
@@ -582,7 +582,14 @@ fn call(name: &str, args: &[Expr], book: &mut dyn Book) -> R {
                 V::Text(s.replace(&old, &new))
             }
         }
-        "REPT" => V::Text(text(&arg(0, book)?)?.repeat(n_arg(1, book)?.max(0.0) as usize)),
+        "REPT" => {
+            let (s, n) = (text(&arg(0, book)?)?, n_arg(1, book)?.max(0.0) as usize);
+            // Excel's limit on a cell's text.
+            if s.chars().count().saturating_mul(n) > 32_767 {
+                return Err("#VALUE!");
+            }
+            V::Text(s.repeat(n))
+        }
         "VALUE" => V::Num(num(&V::Text(text(&arg(0, book)?)?))?),
         "TEXT" => {
             let v = arg(0, book)?;
@@ -808,6 +815,9 @@ mod tests {
         assert_eq!(ev("CONCAT(B1:B2)"), V::Text("applebanana".into()));
         assert_eq!(ev("TEXTJOIN(\", \",TRUE,B1:B3)"), V::Text("apple, banana, cherry".into()));
         assert_eq!(ev("UPPER(LEFT(B2,3))&MID(B3,2,3)"), V::Text("BANher".into()));
+        assert_eq!(ev("MID(B3,2,1E+30)"), V::Text("herry".into()), "a huge length is the rest of the text");
+        assert_eq!(ev("REPT(\"ab\",3)"), V::Text("ababab".into()));
+        assert_eq!(ev("REPT(\"x\",1E+18)"), V::Err("#VALUE!"), "more than a cell can hold");
         assert_eq!(ev("TRIM(\"  a   b \")"), V::Text("a b".into()));
         assert_eq!(ev("PROPER(\"hello wORLD\")"), V::Text("Hello World".into()));
         assert_eq!(ev("FIND(\"an\",B2)"), V::Num(2.0));

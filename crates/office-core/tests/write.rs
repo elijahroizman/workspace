@@ -310,3 +310,36 @@ fn underline_off_stays_off_in_excel() {
     let strings = String::from_utf8(pkg.part("xl/sharedStrings.xml").unwrap().to_vec()).unwrap();
     assert!(strings.contains(r#"<u val="none"/>"#), "{strings}");
 }
+
+/// `part`'s XML text with `edit` applied, read back.
+fn patched(doc: &Document, kind: Kind, part: &str, edit: impl Fn(String) -> String) -> office_core::Result<Document> {
+    let mut pkg = Package::read(&office_core::write(doc, kind).unwrap()).unwrap();
+    let text = String::from_utf8(pkg.part(part).unwrap().to_vec()).unwrap();
+    let changed = edit(text.clone());
+    assert_ne!(changed, text, "the edit should change {part}");
+    pkg.replace(part, changed.into_bytes()).unwrap();
+    office_core::read(&pkg.to_bytes().unwrap(), Some(&format!("x.{}", kind.extension())))
+}
+
+#[test]
+fn damaged_spans_and_sizes_are_contained() {
+    // A Word cell claiming four billion columns is cut to the grid.
+    let doc =
+        patched(&word(), Kind::Word, "word/document.xml", |t| t.replacen("<w:tcPr>", r#"<w:tcPr><w:gridSpan w:val="4000000000"/>"#, 1))
+            .unwrap();
+    let table = body_blocks(&doc).iter().find_map(|b| if let Block::Table(t) = b { Some(t) } else { None }).unwrap();
+    assert!(table.rows[0].cells.len() <= 64, "{}", table.rows[0].cells.len());
+
+    // A PowerPoint cell spanning no rows or columns spans itself, and converts.
+    let doc = patched(&slides(), Kind::Slides, "ppt/slides/slide1.xml", |t| t.replacen("<a:tc>", r#"<a:tc rowSpan="0" gridSpan="0">"#, 1))
+        .unwrap();
+    office_core::convert::to_kind(&doc, Kind::Sheets).unwrap();
+
+    // A sheet with cells at opposite corners isn't laid out as a 17-billion-cell table.
+    let mut doc = Document::new(Kind::Sheets);
+    let Body::Workbook { sheets } = &mut doc.body else { panic!() };
+    sheets[0].set(CellRef::new(0, 0), Value::Text("A1".into()));
+    sheets[0].set(CellRef::new(1_048_575, 16_383), Value::Text("XFD1048576".into()));
+    assert!(office_core::convert::to_kind(&doc, Kind::Word).is_err());
+    assert!(office_core::convert::plain_text(&doc).is_err());
+}

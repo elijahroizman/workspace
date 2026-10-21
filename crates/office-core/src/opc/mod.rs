@@ -68,10 +68,10 @@ impl Package {
             if file.is_dir() {
                 continue;
             }
-            total += file.size();
-            if total > MAX_SIZE {
-                return Err(Error::Zip("the file is too large once decompressed".into()));
-            }
+            total = total
+                .checked_add(file.size())
+                .filter(|t| *t <= MAX_SIZE)
+                .ok_or_else(|| Error::Zip("the file is too large once decompressed".into()))?;
             let name = file.name().trim_start_matches('/').to_string();
             if name.eq_ignore_ascii_case(content_types::PART) {
                 content_types_entry = Some(i);

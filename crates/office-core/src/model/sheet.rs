@@ -8,6 +8,11 @@ use std::hash::{Hash, Hasher};
 
 use super::{Fingerprint, Origin, Run};
 
+/// The most grid slots a sheet is laid out in, as a table or as rows of text. Sheets are
+/// sparse, so two cells far apart (A1 and XFD1048576) make a grid of 17 billion slots; a
+/// sheet bigger than this is refused rather than laid out.
+pub const MAX_LAID_OUT: u64 = 4_000_000;
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Sheet {
@@ -302,9 +307,18 @@ impl Sheet {
         Some(Range { start: CellRef::new(first.index, min_col), end: CellRef::new(last.index, max_col) })
     }
 
+    /// Refuses to lay out a grid from A1 to `end` that's bigger than [`MAX_LAID_OUT`].
+    pub fn check_laid_out(&self, end: CellRef) -> crate::Result<()> {
+        if (end.row as u64 + 1) * (end.col as u64 + 1) > MAX_LAID_OUT {
+            return Err(crate::Error::Invalid(format!("{}: too big to lay out as a table (it reaches {end})", self.name)));
+        }
+        Ok(())
+    }
+
     /// The sheet as rows of text, from A1 to the last used cell, the way a CSV file holds it.
-    pub fn to_text_rows(&self) -> Vec<Vec<String>> {
-        let Some(used) = self.used_range() else { return Vec::new() };
+    pub fn to_text_rows(&self) -> crate::Result<Vec<Vec<String>>> {
+        let Some(used) = self.used_range() else { return Ok(Vec::new()) };
+        self.check_laid_out(used.end)?;
         let mut out = vec![Vec::new(); used.end.row as usize + 1];
         for row in &self.rows {
             let line = &mut out[row.index as usize];
@@ -315,7 +329,7 @@ impl Sheet {
                 line[c.col as usize] = c.value.display();
             }
         }
-        out
+        Ok(out)
     }
 }
 
@@ -350,7 +364,7 @@ mod tests {
         assert_eq!(s.value(CellRef::new(2, 1)), &Value::Number(3.0));
         assert_eq!(s.value(CellRef::new(9, 9)), &Value::Empty);
         assert_eq!(s.used_range().unwrap().to_string(), "A1:D3");
-        assert_eq!(s.to_text_rows(), vec![vec!["", "", "", "x"], vec![], vec!["TRUE", "3"]]);
+        assert_eq!(s.to_text_rows().unwrap(), vec![vec!["", "", "", "x"], vec![], vec!["TRUE", "3"]]);
     }
 
     #[test]

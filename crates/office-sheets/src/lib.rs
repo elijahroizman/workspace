@@ -254,11 +254,30 @@ pub fn recalculate(doc: &mut Document, now: Option<f64>) -> usize {
         done: HashMap::new(),
         working: HashSet::new(),
         current: vec![0],
+        deep: None,
     };
-    let keys: Vec<(usize, u32, u32)> = book.formulas.keys().copied().collect();
-    for &(s, r, c) in &keys {
-        book.current = vec![s];
-        book.value(s, r, c);
+    // Top to bottom, so a chain that runs down the sheet (a running total) is worked out a
+    // cell at a time instead of all at once from its last cell.
+    let mut keys: Vec<(usize, u32, u32)> = book.formulas.keys().copied().collect();
+    keys.sort_unstable();
+    for &key in &keys {
+        // A chain deeper than MAX_DEPTH stops where it gets too deep; that cell is worked out
+        // first, then the chain again, which now finds it done.
+        let mut stack = vec![key];
+        while let Some(&(s, r, c)) = stack.last() {
+            book.current = vec![s];
+            book.value(s, r, c);
+            match book.deep.take() {
+                // A loop that long is a circular reference all the same.
+                Some(d) if stack.contains(&d) => {
+                    book.done.insert(d, V::Num(0.0));
+                }
+                Some(d) => stack.push(d),
+                None => {
+                    stack.pop();
+                }
+            }
+        }
     }
     let results: Vec<((usize, u32, u32), Value)> =
         keys.iter().map(|k| (*k, book.done.get(k).map(V::to_value).unwrap_or(Value::Number(0.0)))).collect();
@@ -283,7 +302,14 @@ struct Workbook<'a> {
     working: HashSet<(usize, u32, u32)>,
     /// The sheet of the formula being worked out, innermost last.
     current: Vec<usize>,
+    /// The cell where a chain of formulas got too deep to follow; nothing worked out on the
+    /// way to it is kept.
+    deep: Option<(usize, u32, u32)>,
 }
+
+/// How many formulas deep one is worked out before [`Workbook::deep`] takes over. Each level
+/// is a few stack frames, and a test thread or a browser has a small stack.
+const MAX_DEPTH: usize = 200;
 
 impl Workbook<'_> {
     fn sheet_index(&self, name: Option<&str>) -> Option<usize> {
@@ -301,14 +327,25 @@ impl Workbook<'_> {
         let Some(expr) = self.formulas.get(&key).cloned() else {
             return V::from_value(self.sheets[s].value(CellRef::new(r, c)));
         };
+        if self.deep.is_some() {
+            return V::Empty;
+        }
         if !self.working.insert(key) {
             // A circular reference.
             return V::Num(0.0);
+        }
+        if self.working.len() > MAX_DEPTH {
+            self.working.remove(&key);
+            self.deep = Some(key);
+            return V::Empty;
         }
         self.current.push(s);
         let v = eval::eval(&expr, self);
         self.current.pop();
         self.working.remove(&key);
+        if self.deep.is_some() {
+            return V::Empty;
+        }
         // A formula's result is a single value; an array formula shows its first.
         let v = match v {
             V::Range(rows) => rows.into_iter().next().and_then(|r| r.into_iter().next()).unwrap_or(V::Empty),

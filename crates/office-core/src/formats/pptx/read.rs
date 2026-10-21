@@ -168,8 +168,12 @@ fn read_table(tbl: &Element, rels: &PartRels) -> Table {
     Table { columns, rows, style, origin: shell(tbl, |c| c.is(ns::A, "tblGrid") || c.is(ns::A, "tr")) }
 }
 
+/// More rows or columns than any table PowerPoint makes.
+const MAX_SPAN: u32 = 1 << 16;
+
 fn read_cell(tc: &Element, rels: &PartRels) -> Cell {
-    let n = |k: &str| tc.attr(k).and_then(|v| v.parse().ok()).unwrap_or(1);
+    // A span is at least the cell itself; a span past any real table is a damaged file.
+    let n = |k: &str| tc.attr(k).and_then(|v| v.parse::<u32>().ok()).unwrap_or(1).clamp(1, MAX_SPAN);
     let flag = |k: &str| tc.attr(k).and_then(parse_bool).unwrap_or(false);
     let body = tc.child(ns::A, "txBody");
     let blocks =

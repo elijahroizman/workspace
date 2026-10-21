@@ -20,7 +20,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
         ["inspect", file] => inspect(file),
-        ["text", file] => read(file).map(|doc| println!("{}", office_core::convert::plain_text(&doc))),
+        ["text", file] => text(file),
         ["convert", from, to] => convert(from, to),
         ["save", file] => save(file, file),
         ["save", file, out] => save(file, out),
@@ -63,6 +63,11 @@ fn write_as(mut doc: office_core::Document, out: &str) -> Result<Vec<u8>> {
         doc.extensions.insert(dialect);
     }
     Ok(office_core::write(&doc, kind)?)
+}
+
+fn text(file: &str) -> Result {
+    println!("{}", office_core::convert::plain_text(&read(file)?)?);
+    Ok(())
 }
 
 fn inspect(file: &str) -> Result {

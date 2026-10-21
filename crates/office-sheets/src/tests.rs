@@ -140,3 +140,22 @@ fn reading_an_unchanged_workbook_with_the_layer_changes_nothing() {
     let again = compiler().write(&compiler().read(&saved, Some("x.xlsx")).unwrap(), Kind::Sheets).unwrap();
     assert_eq!(saved, again);
 }
+
+#[test]
+fn long_chains_of_formulas() {
+    // A running total down column A, a chain running the other way in B (each cell needs the
+    // one below), and a loop through C far longer than the evaluator goes deep at once.
+    let n = 5000;
+    let mut rows = String::new();
+    for r in 1..=n {
+        let a = if r == 1 { "<v>1</v>".to_string() } else { format!("<f>A{}+1</f>", r - 1) };
+        let b = if r == n { "<v>1</v>".to_string() } else { format!("<f>B{}+1</f>", r + 1) };
+        let c = format!("<f>C{}</f>", if r == n { 1 } else { r + 1 });
+        rows.push_str(&format!(r#"<row r="{r}"><c r="A{r}">{a}</c><c r="B{r}">{b}</c><c r="C{r}">{c}</c></row>"#));
+    }
+    let mut doc = workbook_with(cell_xml(&rows));
+    recalculate(&mut doc, None);
+    assert_eq!(value(&doc, 0, &format!("A{n}")), Value::Number(n as f64));
+    assert_eq!(value(&doc, 0, "B1"), Value::Number(n as f64));
+    assert!(matches!(value(&doc, 0, "C1"), Value::Number(_)), "a long circular reference still finishes");
+}
