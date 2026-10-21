@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::props::escape;
 use crate::drawing::Theme;
-use crate::formats::common::{origin_as, put_if_changed, rel_attr, Out, PartCtx};
+use crate::formats::common::{names_parts, origin_as, put_if_changed, rel_attr, Out, PartCtx};
 use crate::model::{format_number, Baseline, Body, CellRef, Document, Kind, Range, Run, Sheet, SheetCell, Value};
 use crate::opc::content_types::types;
 use crate::opc::{rels::kind, Package};
@@ -304,11 +304,6 @@ pub fn write(doc: &Document) -> Result<Package> {
     ctx.finish(&mut out.pkg);
     doc.properties.write(&mut out.pkg)?;
     Ok(std::mem::take(&mut out.pkg))
-}
-
-/// Whether an element (or anything in it) names another part by relationship id.
-fn names_parts(el: &Element) -> bool {
-    el.attrs.iter().any(|a| a.ns.as_deref().is_some_and(|n| crate::xml::ns::same(n, ns::R))) || el.elements().any(names_parts)
 }
 
 /// Where the rows go in a sheet written as text; see [`splice`].

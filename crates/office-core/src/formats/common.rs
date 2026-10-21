@@ -86,6 +86,11 @@ pub fn origin_as(origin: &Origin, ns: &str, local: &str) -> Option<Element> {
     origin.get().filter(|e| e.is(ns, local)).cloned()
 }
 
+/// Whether an element (or anything in it) names another part by relationship id.
+pub fn names_parts(el: &Element) -> bool {
+    el.attrs.iter().any(|a| a.ns.as_deref().is_some_and(|n| crate::xml::ns::same(n, crate::xml::ns::R))) || el.elements().any(names_parts)
+}
+
 /// A package being written, with where each of the document's media went.
 pub struct Out<'a> {
     pub doc: &'a Document,

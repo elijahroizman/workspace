@@ -41,7 +41,7 @@ We read how the engines we ship handle these formats, and kept the ideas, not th
 crates/
   Cargo.toml             workspace (separate from src-tauri, which keeps its own lock file and target/)
   office-core/           the shared compiler (this PR)
-  office-word/           Word-only layer (planned)
+  office-word/           Word-only layer
   office-slides/         PowerPoint-only layer (planned)
   office-sheets/         Excel-only layer
 ```
@@ -116,7 +116,7 @@ pub trait Layer: Send + Sync {
 
 `Compiler::new().with_layer(…)` runs a layer's hooks for the kinds it names. `before_write` works on a copy, so writing never changes the document. A layer reads the parts it owns from `doc.package` and keeps its typed data in `doc.extensions`. It can also turn the core's `Raw` nodes into its own typed data and back again. Planned layers:
 
-- **Word** (`office-word`): styles and their inheritance (resolving `pStyle`/`rStyle` into effective formatting), numbering and lists, sections and page setup, headers and footers, footnotes, comments, tracked changes, fields, bookmarks, floating-drawing anchors.
+- **Word** (`office-word`, built): styles resolved the way Word does (document defaults, the paragraph style's chain, the character style, toggled bold and italic, direct formatting, theme fonts), and Word's built-in styles added when a document uses one it doesn't define; lists and their labels counted through the document, and new bulleted and numbered lists; sections' page size, orientation, margins and columns; headers, footers, footnotes, endnotes and comments read and written as the core's blocks, with comments added and removed; tracked changes listed, accepted and rejected (insertions, deletions, moves, formatting changes, paragraph marks, table rows). Not yet: fields, bookmarks and floating drawings, which stay as raw markup.
 - **PowerPoint** (`office-slides`): slide masters and layouts, placeholder inheritance, speaker notes, transitions, animations, hidden slides, comments.
 - **Excel** (`office-sheets`, built): the style sheet (each cell's number format, font, fill, border, alignment and protection, read and added); number formats and dates shown as Excel shows them (sections, conditions, colors, scaling, scientific, fractions, dates, elapsed times; both date systems); formulas parsed, shared formulas expanded, and recalculated with nearly eighty of the common functions (maths, logic, text, lookups, dates, conditional sums); defined names; column widths and row heights. Not yet: conditional formatting, data validation and charts, which stay as they are in the file.
 

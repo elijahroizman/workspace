@@ -1,7 +1,7 @@
 use super::props::{patch_para_props, patch_run_props, read_run_props, val, PPR};
 use super::read::single_run;
 use crate::drawing::Theme;
-use crate::formats::common::{origin_as, put_if_changed, Out, PartCtx};
+use crate::formats::common::{names_parts, origin_as, put_if_changed, Out, PartCtx};
 use crate::model::{Block, Body, BreakKind, Document, Image, Inline, Kind, Link, Paragraph, Run, Table};
 use crate::opc::content_types::types;
 use crate::opc::{rels::kind, Package};
@@ -30,7 +30,9 @@ pub fn write(doc: &Document) -> Result<Package> {
     let mut out = Out::new(doc, pkg, same, "word/media");
     let main = out.pkg.main_part()?;
     let source = out.pkg.xml(&main)?;
-    let mut root = origin_as(&doc.origin, ns::W, "document").filter(|_| same).unwrap_or_else(|| {
+    // Another package's document can't bring its headers and footers (the parts its r:ids
+    // name) along; anything else about it can come, such as a page setup made in code.
+    let mut root = origin_as(&doc.origin, ns::W, "document").filter(|o| same || !names_parts(o)).unwrap_or_else(|| {
         // The scaffold's document, or the source without its blocks.
         let mut r = source.root.clone();
         if let Some(body) = r.child_mut(ns::W, "body") {
@@ -54,6 +56,27 @@ pub fn write(doc: &Document) -> Result<Package> {
     put_if_changed(&mut out.pkg, &main, XmlDoc::new(root), types::DOCX_MAIN)?;
     doc.properties.write(&mut out.pkg)?;
     Ok(std::mem::take(&mut out.pkg))
+}
+
+/// `blocks` as Word markup for another part of the package than the document (a header, a
+/// footnote, a comment), with their pictures and links related from that part. For the Word
+/// layer, which puts the elements in the part itself.
+pub fn write_blocks(doc: &Document, pkg: &mut Package, part: &str, blocks: &[Block]) -> Result<Vec<Element>> {
+    let same = doc.kind == Kind::Word && doc.package.is_some();
+    let mut out = Out::new(doc, std::mem::take(pkg), same, "word/media");
+    // Picture ids are unique across the document; start past the document's and this part's.
+    let main = out.pkg.main_part()?;
+    let used = [main.as_str(), part].iter().filter_map(|p| out.pkg.xml(p).ok()).map(|d| max_doc_pr(&d.root)).max().unwrap_or(0);
+    let theme = doc.theme.clone().unwrap_or_else(Theme::office);
+    let mut ctx = Ctx { rels: PartCtx::load(&out.pkg, part)?, out: &mut out, theme, next_pic: used.max(1000) + 1 };
+    let mut els = Vec::new();
+    for b in blocks {
+        write_block(b, &mut ctx, &mut els)?;
+    }
+    let Ctx { rels, out, .. } = ctx;
+    rels.finish(&mut out.pkg);
+    *pkg = std::mem::take(&mut out.pkg);
+    Ok(els)
 }
 
 fn max_doc_pr(el: &Element) -> u32 {
@@ -474,6 +497,17 @@ fn scaffold(theme: &Theme) -> Result<Package> {
     pkg.put_xml(main, &XmlDoc::new(root), types::DOCX_MAIN);
     pkg.relate("", kind::OFFICE_DOCUMENT, main)?;
 
+    pkg.put_xml("word/styles.xml", &default_styles(), types::DOCX_STYLES);
+    pkg.relate(main, kind::STYLES, "word/styles.xml")?;
+    pkg.put_xml("word/theme/theme1.xml", &theme.to_xml(), types::THEME);
+    pkg.relate(main, kind::THEME, "word/theme/theme1.xml")?;
+    Ok(pkg)
+}
+
+/// The style sheet a new document gets: Word's defaults (Calibri 11 from the theme, 8 pt after
+/// each paragraph, 1.08 line spacing) and the styles every document has.
+pub fn default_styles() -> XmlDoc {
+    let w = |local: &str, attrs: &[(&str, &str)]| attrs.iter().fold(Element::new(ns::W, local), |el, (k, v)| el.with_attr(ns::W, k, *v));
     let fonts = w(
         "rFonts",
         &[("asciiTheme", "minorHAnsi"), ("hAnsiTheme", "minorHAnsi"), ("eastAsiaTheme", "minorEastAsia"), ("cstheme", "minorBidi")],
@@ -522,9 +556,5 @@ fn scaffold(theme: &Theme) -> Result<Package> {
         .with_child(style("character", "DefaultParagraphFont", "Default Paragraph Font", true))
         .with_child(table_normal)
         .with_child(hyperlink);
-    pkg.put_xml("word/styles.xml", &XmlDoc::new(styles), types::DOCX_STYLES);
-    pkg.relate(main, kind::STYLES, "word/styles.xml")?;
-    pkg.put_xml("word/theme/theme1.xml", &theme.to_xml(), types::THEME);
-    pkg.relate(main, kind::THEME, "word/theme/theme1.xml")?;
-    Ok(pkg)
+    XmlDoc::new(styles)
 }

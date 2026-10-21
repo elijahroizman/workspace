@@ -28,6 +28,26 @@ pub fn read(pkg: Package) -> Result<Document> {
     Ok(doc)
 }
 
+/// The blocks in `container`, an element of `part` holding paragraphs and tables the way
+/// `w:body` does (`w:hdr`, `w:ftr`, a `w:footnote`, a `w:comment`). For the Word layer.
+pub fn read_blocks_in(doc: &mut Document, part: &str, container: &Element) -> Result<Vec<Block>> {
+    let pkg = doc.package.take().ok_or_else(|| crate::Error::MissingPart(part.to_string()))?;
+    let result = PartRels::new(&pkg, part).map(|rels| read_blocks(container, &rels, doc, |e| e.is(ns::W, "pPr") || e.is(ns::W, "tcPr")));
+    doc.package = Some(pkg);
+    result
+}
+
+/// What's in `container` read as a paragraph's content, for markup that wraps runs the way a
+/// paragraph does (`w:ins`, `w:moveTo`, a content control's `w:sdtContent`). For the Word layer.
+pub fn read_inlines_in(doc: &mut Document, part: &str, container: &Element) -> Result<Vec<Inline>> {
+    let pkg = doc.package.take().ok_or_else(|| crate::Error::MissingPart(part.to_string()))?;
+    let mut p = Element::new(ns::W, "p");
+    p.children = container.children.clone();
+    let result = PartRels::new(&pkg, part).map(|rels| read_paragraph(&p, &rels, doc).content);
+    doc.package = Some(pkg);
+    result
+}
+
 /// The block-level children of `w:body`, a table cell, or another container. `skip` says which
 /// children belong to the container itself.
 fn read_blocks(parent: &Element, rels: &PartRels, doc: &mut Document, skip: impl Fn(&Element) -> bool) -> Vec<Block> {
