@@ -23,6 +23,9 @@ fn samples() {
         // Saved unchanged with the layer, nothing changes.
         let saved = compiler.write(&doc, Kind::Word).unwrap();
         assert_eq!(compiler.read(&saved, Some("x.docx")).unwrap().body, doc.body);
-        assert!(office_core::opc::Package::read(&saved).unwrap().part_names().eq(office_core::opc::Package::read(&bytes).unwrap().part_names()), "{name}: no parts added or lost");
+        assert!(
+            office_core::opc::Package::read(&saved).unwrap().part_names().eq(office_core::opc::Package::read(&bytes).unwrap().part_names()),
+            "{name}: no parts added or lost"
+        );
     }
 }

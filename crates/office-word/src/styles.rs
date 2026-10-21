@@ -167,35 +167,12 @@ fn parse_style(el: &Element) -> Option<Style> {
     })
 }
 
-/// Lays `over`'s settings on `base`: each property `over` has replaces `base`'s.
 pub fn over_run(base: &mut RunProps, over: &RunProps) {
-    macro_rules! take {
-        ($($f:ident),*) => { $( if over.$f.is_some() { base.$f = over.$f.clone(); } )* };
-    }
-    take!(
-        font,
-        font_east_asian,
-        font_complex,
-        size,
-        bold,
-        italic,
-        underline,
-        strike,
-        caps,
-        small_caps,
-        color,
-        highlight,
-        baseline,
-        style,
-        lang
-    );
+    base.overlay(over);
 }
 
 pub fn over_para(base: &mut ParaProps, over: &ParaProps) {
-    macro_rules! take {
-        ($($f:ident),*) => { $( if over.$f.is_some() { base.$f = over.$f.clone(); } )* };
-    }
-    take!(style, align, level, indent_start, indent_end, indent_first_line, space_before, space_after, line_spacing, rtl);
+    base.overlay(over);
 }
 
 /// The styles Word has built in, as Word 2016 and later define them, for documents that use

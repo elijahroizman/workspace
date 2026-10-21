@@ -1,6 +1,7 @@
 //! A front end and a back end for each format.
 
-mod common;
+/// Helpers the back ends share, for layers that write parts of their own.
+pub mod common;
 pub mod csv;
 pub mod dml;
 pub mod docx;

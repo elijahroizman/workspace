@@ -3,7 +3,7 @@
 # See docs/internals/office-compiler.md.
 [workspace]
 resolver = "2"
-members = ["office-core", "office-sheets", "office-word"]
+members = ["office-core", "office-sheets", "office-slides", "office-word"]
 
 [workspace.package]
 edition = "2021"

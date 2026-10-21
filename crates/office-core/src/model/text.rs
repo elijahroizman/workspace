@@ -123,6 +123,31 @@ impl RunProps {
     pub fn is_empty(&self) -> bool {
         self == &RunProps::default()
     }
+
+    /// Lays `over` on these: each property `over` has replaces this one's. How styles,
+    /// placeholders and direct formatting stack.
+    pub fn overlay(&mut self, over: &RunProps) {
+        macro_rules! take {
+            ($($f:ident),*) => { $( if over.$f.is_some() { self.$f = over.$f.clone(); } )* };
+        }
+        take!(
+            font,
+            font_east_asian,
+            font_complex,
+            size,
+            bold,
+            italic,
+            underline,
+            strike,
+            caps,
+            small_caps,
+            color,
+            highlight,
+            baseline,
+            style,
+            lang
+        );
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -172,6 +197,14 @@ pub struct ParaProps {
 impl ParaProps {
     pub fn is_empty(&self) -> bool {
         self == &ParaProps::default()
+    }
+
+    /// Lays `over` on these, as [`RunProps::overlay`] does.
+    pub fn overlay(&mut self, over: &ParaProps) {
+        macro_rules! take {
+            ($($f:ident),*) => { $( if over.$f.is_some() { self.$f = over.$f.clone(); } )* };
+        }
+        take!(style, align, level, indent_start, indent_end, indent_first_line, space_before, space_after, line_spacing, rtl);
     }
 }
 

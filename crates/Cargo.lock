@@ -99,6 +99,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "office-slides"
+version = "0.1.0"
+dependencies = [
+ "office-core",
+ "serde",
+]
+
+[[package]]
 name = "office-word"
 version = "0.1.0"
 dependencies = [

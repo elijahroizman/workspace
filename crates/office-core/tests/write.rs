@@ -81,6 +81,7 @@ fn canon(mut doc: Document) -> Body {
         Body::Flow { blocks: b } => blocks(b),
         Body::Slides { slides, .. } => slides.iter_mut().for_each(|s| {
             s.part = None;
+            s.layout = None;
             frames(&mut s.frames)
         }),
         Body::Workbook { sheets } => sheets.iter_mut().for_each(|s| s.part = None),

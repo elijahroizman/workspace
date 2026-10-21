@@ -53,17 +53,31 @@ pub fn write(doc: &Document) -> Result<Package> {
     let mut list = Element::new(ns::P, "sldIdLst");
     let mut layout = first_layout(&out.pkg, &main)?;
     for slide in slides {
+        // The slide's own layout, if it names one this package has.
+        let wanted = slide.layout.clone().filter(|l| same && out.pkg.has(l));
         let part = match slide.part.as_deref().filter(|p| same && out.pkg.has(p)) {
             Some(p) => {
-                // New slides go on the layout of the slide before them.
-                if let Some((_, l)) = out.pkg.related(p, kind::SLIDE_LAYOUT)?.into_iter().next() {
-                    layout = Some(l);
+                let current = out.pkg.related(p, kind::SLIDE_LAYOUT)?.into_iter().next();
+                if let (Some(w), Some((rel, now))) = (&wanted, &current) {
+                    // Moved to another layout: point the slide's relationship at it.
+                    if w != now {
+                        let mut rels = out.pkg.rels(p)?;
+                        if let Some(r) = rels.0.iter_mut().find(|r| r.id == rel.id) {
+                            r.target = crate::opc::names::relative(p, w);
+                        }
+                        out.pkg.put_rels(p, &rels);
+                    }
                 }
+                // New slides go on the layout of the slide before them.
+                layout = wanted.or(current.map(|(_, l)| l)).or(layout);
                 p.to_string()
             }
             None => {
-                let p = out.pkg.unused_name("ppt/slides/slide{}.xml");
-                let layout = layout.clone().ok_or_else(|| Error::MissingPart("a slide layout".into()))?;
+                // A new slide can say what its part is to be called (the PowerPoint layer does,
+                // to keep speaker notes with it), if the name is free.
+                let named = slide.part.clone().filter(|p| !out.pkg.has(p) && p.starts_with("ppt/slides/") && p.ends_with(".xml"));
+                let p = named.unwrap_or_else(|| out.pkg.unused_name("ppt/slides/slide{}.xml"));
+                let layout = wanted.or_else(|| layout.clone()).ok_or_else(|| Error::MissingPart("a slide layout".into()))?;
                 out.pkg.put_xml(&p, &XmlDoc::new(Element::new(ns::P, "sld")), types::PPTX_SLIDE);
                 out.pkg.relate(&p, kind::SLIDE_LAYOUT, &layout)?;
                 p

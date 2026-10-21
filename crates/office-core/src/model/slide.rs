@@ -18,6 +18,10 @@ pub struct Slide {
     /// The part the slide was read from, so saving writes it back there.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub part: Option<String>,
+    /// The layout part the slide is on (`ppt/slideLayouts/slideLayout2.xml`). A new slide
+    /// without one goes on the layout of the slide before it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<String>,
     #[serde(skip)]
     pub origin: Origin,
 }

@@ -1,6 +1,6 @@
 # The office compiler
 
-Status: work in progress. The shared core (`crates/office-core`) reads and writes all four formats. The Word, PowerPoint and Excel layers are planned but not started, and nothing in the app uses the compiler yet.
+Status: work in progress. The shared core (`crates/office-core`) reads and writes all four formats, and the Word, PowerPoint and Excel layers are built on top of it. Nothing in the app uses the compiler yet.
 
 Today each Office format has its own JavaScript engine: docx-editor for Word, pptx-react-viewer and ooxml-ui for PowerPoint, and nothing for Excel. Each one parses the file its own way, keeps its own model of text and colors, and saves by patching the original zip. The office compiler replaces the parsing and saving under all of them with one Rust library that reads and writes Word (.docx), PowerPoint (.pptx), Excel (.xlsx) and CSV.
 
@@ -42,7 +42,7 @@ crates/
   Cargo.toml             workspace (separate from src-tauri, which keeps its own lock file and target/)
   office-core/           the shared compiler (this PR)
   office-word/           Word-only layer
-  office-slides/         PowerPoint-only layer (planned)
+  office-slides/         PowerPoint-only layer
   office-sheets/         Excel-only layer
 ```
 
@@ -114,10 +114,10 @@ pub trait Layer: Send + Sync {
 }
 ```
 
-`Compiler::new().with_layer(…)` runs a layer's hooks for the kinds it names. `before_write` works on a copy, so writing never changes the document. A layer reads the parts it owns from `doc.package` and keeps its typed data in `doc.extensions`. It can also turn the core's `Raw` nodes into its own typed data and back again. Planned layers:
+`Compiler::new().with_layer(…)` runs a layer's hooks for the kinds it names. `before_write` works on a copy, so writing never changes the document. A layer reads the parts it owns from `doc.package` and keeps its typed data in `doc.extensions`. It can also turn the core's `Raw` nodes into its own typed data and back again. The layers:
 
 - **Word** (`office-word`, built): styles resolved the way Word does (document defaults, the paragraph style's chain, the character style, toggled bold and italic, direct formatting, theme fonts), and Word's built-in styles added when a document uses one it doesn't define; lists and their labels counted through the document, and new bulleted and numbered lists; sections' page size, orientation, margins and columns; headers, footers, footnotes, endnotes and comments read and written as the core's blocks, with comments added and removed; tracked changes listed, accepted and rejected (insertions, deletions, moves, formatting changes, paragraph marks, table rows). Not yet: fields, bookmarks and floating drawings, which stay as raw markup.
-- **PowerPoint** (`office-slides`): slide masters and layouts, placeholder inheritance, speaker notes, transitions, animations, hidden slides, comments.
+- **PowerPoint** (`office-slides`, built): slide masters and layouts read, and placeholder frames resolved the way PowerPoint shows them (position from the layout or master, text formatting per outline level from the master's title, body or other style, then the master's and layout's placeholders, then the frame's own list style; theme fonts named); theme colors mapped through the master's color map and the layout's and slide's overrides; slides added on a layout with its placeholders; speaker notes read, changed and added (making the notes master if the deck has none); transitions read (including PowerPoint 2010's, which come as alternatives), set and removed; which frames a slide animates, and removing animations. Not yet: editing animations, and slide comments, which stay as they are in the file.
 - **Excel** (`office-sheets`, built): the style sheet (each cell's number format, font, fill, border, alignment and protection, read and added); number formats and dates shown as Excel shows them (sections, conditions, colors, scaling, scientific, fractions, dates, elapsed times; both date systems); formulas parsed, shared formulas expanded, and recalculated with nearly eighty of the common functions (maths, logic, text, lookups, dates, conditional sums); defined names; column widths and row heights. Not yet: conditional formatting, data validation and charts, which stay as they are in the file.
 
 ## Milestones
@@ -133,7 +133,7 @@ All done for the shared core:
 7. **Back ends.** Writing each format, lossless for untouched content, and fresh packages for new or converted documents.
 8. **Conversion and a command line.** Passes between kinds and `officec`.
 
-After this PR: the three layers, then WebAssembly bindings (the core already builds for `wasm32-unknown-unknown`) and moving the editors onto the compiler one at a time, Excel first since it has no engine today.
+Then the three layers (done in this PR too). Next: WebAssembly bindings (the core already builds for `wasm32-unknown-unknown`) and moving the editors onto the compiler one at a time, Excel first since it has no engine today.
 
 ## Known gaps in the core
 
