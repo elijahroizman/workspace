@@ -4,6 +4,7 @@
 
 import { host, onFontsChanged, preloadFonts } from '../host'
 import { loadEngine } from '../load'
+import { BASE_FONTS } from '../preload'
 import { MediaCache, StyleSheet } from '../paint'
 import type { WordDoc } from '../wasm/office_wasm'
 
@@ -77,8 +78,18 @@ const EMPTY_STATE: WordState = {
 
 let sheets = 0
 
-/** The fonts nearly every document uses, loaded before the first layout. */
-const BASE_FONTS = ['"Carlito"', '"Caladea"', '"Liberation Sans"', '"Liberation Serif"']
+/** Phase timings for opening, logged when localStorage `workspace.engineTiming` is set. */
+function timer() {
+  const on = typeof localStorage !== 'undefined' && localStorage.getItem('workspace.engineTiming')
+  let last = performance.now()
+  return (label: string) => {
+    if (!on) return
+    const now = performance.now()
+    console.info(`[engine] ${label}: ${(now - last).toFixed(1)} ms`)
+    last = now
+  }
+}
+
 
 export class WordEngine {
   readonly doc: WordDoc
@@ -119,13 +130,19 @@ export class WordEngine {
 
   /** Opens a Word file, or a new document for `null`. */
   static async open(bytes: Uint8Array | null): Promise<WordEngine> {
+    const t = timer()
     const engine = await loadEngine()
+    t('engine')
     await preloadFonts(BASE_FONTS)
+    t('fonts')
     const doc = new engine.WordDoc(bytes ?? new Uint8Array(), host)
+    t('read')
     const fonts = (JSON.parse(doc.documentFonts()) as string[]).slice(0, 12).map((f) => `"${f.replace(/"/g, '')}"`)
     if (fonts.length) await preloadFonts(fonts)
+    t('doc fonts')
     const e = new WordEngine(doc)
     e.refresh(true)
+    t('layout')
     return e
   }
 

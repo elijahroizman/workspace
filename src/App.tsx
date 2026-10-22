@@ -36,19 +36,44 @@ export interface EditorProps {
   visible?: boolean
 }
 
-// Each editor (and its heavy engine) loads only when a tab of that type opens,
-// which keeps launch fast. Word, PowerPoint, PDF, Markdown and text live here.
-// Images is built in too, but its viewer is the plugin bundle at /plugins/images/,
-// so that kind falls through to PluginEditor, as optional plugins do (see plugins/api.ts).
-const BUILT_IN_EDITORS: Record<string, React.LazyExoticComponent<ComponentType<EditorProps>>> = {
-  md: lazy(() => import('./editors/markdown/MarkdownEditor')),
-  txt: lazy(() => import('./editors/text/TextEditor')),
-  pdf: lazy(() => import('./editors/pdf/PdfEditor')),
-  docx: lazy(() => import('./editors/docx/DocxEditor')),
-  pptx: lazy(() => import('./editors/pptx/PptxEditor')),
+// Each editor loads only when a tab of that type opens, which keeps launch fast. Word,
+// PowerPoint, PDF, Markdown and text live here. Images is built in too, but its viewer is the
+// plugin bundle at /plugins/images/, so that kind falls through to PluginEditor, as optional
+// plugins do (see plugins/api.ts).
+//
+// The office editors (Word, PowerPoint, Excel) also load while the app sits idle after launch,
+// with the document engine and its fonts, so the first document opens without waiting for them.
+// An editor that has loaded renders directly rather than through Suspense: React holds back a
+// suspended view for up to 300 ms after showing its fallback, which would be most of the time
+// it takes to open a document.
+type EditorModule = { default: ComponentType<EditorProps> }
+const EDITOR_LOADERS: Record<string, () => Promise<EditorModule>> = {
+  md: () => import('./editors/markdown/MarkdownEditor'),
+  txt: () => import('./editors/text/TextEditor'),
+  pdf: () => import('./editors/pdf/PdfEditor'),
+  docx: () => import('./editors/docx/DocxEditor'),
+  pptx: () => import('./editors/pptx/PptxEditor'),
 }
+const loadedEditors: Record<string, ComponentType<EditorProps>> = {}
+const loadEditor = (kind: string) =>
+  EDITOR_LOADERS[kind]().then((m) => {
+    loadedEditors[kind] = m.default
+    return m
+  })
+const BUILT_IN_EDITORS: Record<string, React.LazyExoticComponent<ComponentType<EditorProps>>> = Object.fromEntries(
+  Object.keys(EDITOR_LOADERS).map((kind) => [kind, lazy(() => loadEditor(kind))]),
+)
 const PluginEditor = lazy(() => import('./plugins/PluginEditor'))
-const editorFor = (kind: DocKind) => BUILT_IN_EDITORS[kind] ?? PluginEditor
+const editorFor = (kind: DocKind): ComponentType<EditorProps> => loadedEditors[kind] ?? BUILT_IN_EDITORS[kind] ?? PluginEditor
+
+/** Loads the office editors and their engine in the background, once the app is idle. */
+function preloadOfficeEditors() {
+  const idle = (f: () => void) => (typeof window.requestIdleCallback === 'function' ? window.requestIdleCallback(f, { timeout: 3000 }) : globalThis.setTimeout(f, 1500))
+  idle(() => {
+    for (const kind of ['docx', 'pptx']) void loadEditor(kind).catch(() => {})
+    void import('./engine/preload').then((m) => m.preloadEngine()).catch(() => {})
+  })
+}
 
 const SettingsPanel = lazy(() => import('./components/Settings'))
 const SetupScreen = lazy(() => import('./components/Setup'))
@@ -436,6 +461,8 @@ export default function App() {
   const typewriter = useFocus((s) => s.typewriter)
   const explorer = useFolder((s) => !!s.root && s.visible)
   const started = useRef(false)
+
+  useEffect(preloadOfficeEditors, [])
 
   // Startup: restore last session, then open anything Finder handed us.
   useEffect(() => {
