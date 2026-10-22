@@ -36,6 +36,7 @@ jobs:
       - run: cargo test --workspace --all-features
       # The core works on bytes only, so the browser version can use it too.
       - run: cargo build -p office-core --target wasm32-unknown-unknown
+      - run: cargo build -p office-wasm --target wasm32-unknown-unknown
 
   samples:
     name: Real files, and other apps opening ours
