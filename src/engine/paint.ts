@@ -38,6 +38,7 @@ export interface Painted {
 export class StyleSheet {
   private ascents: number[] = []
   private shifts: number[] = []
+  private sent: PaintStyle[] = []
   private sheet: HTMLStyleElement
   readonly prefix: string
 
@@ -55,6 +56,7 @@ export class StyleSheet {
     if (!styles.length) return
     let css = ''
     for (const s of styles) {
+      this.sent.push(s)
       const id = this.ascents.length
       const [ascent, descent] = host.metrics(s.font)
       this.ascents.push(ascent)
@@ -72,7 +74,15 @@ export class StyleSheet {
   reset() {
     this.ascents = []
     this.shifts = []
+    this.sent = []
     this.sheet.textContent = ''
+  }
+
+  /** Keep style ids stable while replacing fallback font metrics with the loaded font's. */
+  remeasure() {
+    const styles = this.sent
+    this.reset()
+    this.add(styles)
   }
 
   top(style: number, baseline: number) {
@@ -104,18 +114,18 @@ export function itemsHtml(items: PaintItem[], styles: StyleSheet, media: MediaUr
         break
       }
       case 'rect':
-        out += `<div class="rc" style="left:${n(it.x)}px;top:${n(it.y)}px;width:${n(it.w)}px;height:${n(it.h)}px${it.fill ? `;background:${it.fill}` : ''}"></div>`
+        out += `<div class="rc" style="left:${n(it.x)}px;top:${n(it.y)}px;width:${n(it.w)}px;height:${n(it.h)}px${it.fill ? `;background:${esc(it.fill)}` : ''}"></div>`
         break
       case 'line': {
-        const dash = it.dash && it.dash !== 'solid' ? it.dash : 'solid'
+        const dash = it.dash && /^(solid|dashed|dotted|double|groove|ridge|inset|outset|none|hidden)$/.test(it.dash) ? it.dash : 'solid'
         if (Math.abs(it.y1 - it.y2) < 0.01) {
           const x = Math.min(it.x1, it.x2)
-          out += `<div class="ln-h" style="left:${n(x)}px;top:${n(it.y1 - it.w / 2)}px;width:${n(Math.abs(it.x2 - it.x1))}px;border-top:${n(it.w)}px ${dash} ${it.color}"></div>`
+          out += `<div class="ln-h" style="left:${n(x)}px;top:${n(it.y1 - it.w / 2)}px;width:${n(Math.abs(it.x2 - it.x1))}px;border-top:${n(it.w)}px ${dash} ${esc(it.color)}"></div>`
         } else if (Math.abs(it.x1 - it.x2) < 0.01) {
           const y = Math.min(it.y1, it.y2)
-          out += `<div class="ln-v" style="left:${n(it.x1 - it.w / 2)}px;top:${n(y)}px;height:${n(Math.abs(it.y2 - it.y1))}px;border-left:${n(it.w)}px ${dash} ${it.color}"></div>`
+          out += `<div class="ln-v" style="left:${n(it.x1 - it.w / 2)}px;top:${n(y)}px;height:${n(Math.abs(it.y2 - it.y1))}px;border-left:${n(it.w)}px ${dash} ${esc(it.color)}"></div>`
         } else {
-          out += `<svg class="pa"><line x1="${n(it.x1)}" y1="${n(it.y1)}" x2="${n(it.x2)}" y2="${n(it.y2)}" stroke="${it.color}" stroke-width="${n(it.w)}"/></svg>`
+          out += `<svg class="pa"><line x1="${n(it.x1)}" y1="${n(it.y1)}" x2="${n(it.x2)}" y2="${n(it.y2)}" stroke="${esc(it.color)}" stroke-width="${n(it.w)}"/></svg>`
         }
         break
       }
@@ -129,12 +139,12 @@ export function itemsHtml(items: PaintItem[], styles: StyleSheet, media: MediaUr
         const [l, t, r, b] = it.crop ?? [0, 0, 0, 0]
         const iw = it.w / Math.max(0.01, 1 - l - r)
         const ih = it.h / Math.max(0.01, 1 - t - b)
-        out += `<div class="im" style="left:${n(it.x)}px;top:${n(it.y)}px;width:${n(it.w)}px;height:${n(it.h)}px"${id}><img src="${src}" draggable="false" style="left:${n(-l * iw)}px;top:${n(-t * ih)}px;width:${n(iw)}px;height:${n(ih)}px" alt=""></div>`
+        out += `<div class="im" style="left:${n(it.x)}px;top:${n(it.y)}px;width:${n(it.w)}px;height:${n(it.h)}px"${id}><img src="${esc(src)}" draggable="false" style="left:${n(-l * iw)}px;top:${n(-t * ih)}px;width:${n(iw)}px;height:${n(ih)}px" alt=""></div>`
         break
       }
       case 'path': {
         const dash = it.dash === 'dash' || it.dash === 'dashed' ? ' stroke-dasharray="6 4"' : it.dash === 'dot' || it.dash === 'sysDot' || it.dash === 'dotted' ? ' stroke-dasharray="1.5 3"' : ''
-        out += `<svg class="pa" style="left:${n(it.x)}px;top:${n(it.y)}px"><path d="${it.d}" fill="${it.fill ?? 'none'}" stroke="${it.stroke ?? 'none'}"${it.sw ? ` stroke-width="${n(it.sw)}"` : ''}${dash}/></svg>`
+        out += `<svg class="pa" style="left:${n(it.x)}px;top:${n(it.y)}px"><path d="${esc(it.d)}" fill="${esc(it.fill ?? 'none')}" stroke="${esc(it.stroke ?? 'none')}"${it.sw ? ` stroke-width="${n(it.sw)}"` : ''}${dash}/></svg>`
         break
       }
       case 'group': {

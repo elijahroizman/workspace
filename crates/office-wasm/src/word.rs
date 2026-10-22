@@ -261,6 +261,7 @@ impl WordDoc {
     #[wasm_bindgen(js_name = fontsChanged)]
     pub fn fonts_changed(&mut self) {
         self.view.fonts_changed();
+        self.drawn.clear();
     }
 
     #[wasm_bindgen(js_name = styleOptions)]

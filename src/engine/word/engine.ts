@@ -125,6 +125,7 @@ export class WordEngine {
     })
     this.stopFonts = onFontsChanged(() => {
       if (this.disposed) return
+      this.styles.remeasure()
       this.doc.fontsChanged()
       this.refresh(true)
     })

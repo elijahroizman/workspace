@@ -141,6 +141,7 @@ export class SlidesEngine {
     this.theme = JSON.parse(doc.theme())
     this.stopFonts = onFontsChanged(() => {
       if (this.disposed) return
+      this.styles.remeasure()
       this.doc.fontsChanged()
       this.drawn.clear()
       this.refresh()

@@ -49,10 +49,14 @@ You need [Node.js](https://nodejs.org) 20 or newer and [Rust](https://rustup.rs)
 Then, from this folder:
 
 ```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.129 --locked
 npm install
-npm run dev        # the UI in your browser at http://localhost:1420 (no Rust needed)
+npm run dev        # the UI in your browser at http://localhost:1420
 npm run app:dev    # the real app, with hot reload
 ```
+
+Both `npm run dev` and `npm run build` compile the document engine to WebAssembly. The wasm-bindgen CLI version must match `crates/office-wasm/Cargo.toml`.
 
 The browser version uses file pickers and downloads in place of the native file dialogs, so it's enough for most UI work.
 

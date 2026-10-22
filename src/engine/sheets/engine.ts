@@ -125,6 +125,7 @@ export class SheetsEngine {
     this.media = new MediaCache(() => null)
     this.stopFonts = onFontsChanged(() => {
       if (this.disposed) return
+      this.styles.remeasure()
       this.doc.fontsChanged()
       this.refresh()
     })
