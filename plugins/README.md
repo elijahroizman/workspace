@@ -33,7 +33,7 @@ A plugin's files are a separate build (`plugins/<id>/dist`). The catalog's `sour
 | `previewDelay` | `() => number` | Always | The user's seconds-to-wait before a slow preview (a compile) rebuilds; read it each time |
 | `openDocument` | `({ bytes, name }) => void` | Always | Open a document in a new tab (inferred by extension) |
 | `saveFile` | `({ bytes, name }) => Promise<boolean>` | Always | Save bytes to a user-picked file (export) |
-| `createPdfView` | `(element) => PdfView` | Always | Workspace's own PDF viewer in `element`; `show(bytes)` keeps the place and zoom |
+| `createPdfView` | `(element) => PdfView` | Always | Writan's own PDF viewer in `element`; `show(bytes)` keeps the place and zoom |
 | `tex` | `TexService \| undefined` | In the app (not the browser build), when the catalog entry has `services: ['tex']` | The system's TeX: `status()`, `compile(source, { engine })`, `install()` |
 
 ### PluginEditor (returned from mount)
@@ -45,7 +45,7 @@ A plugin's files are a separate build (`plugins/<id>/dist`). The catalog's `sour
 | `setTheme(theme)` | Optional | Apply theme change |
 | `setActive(active)` | Optional | Tab was shown (true) or hidden (false) |
 | `find()` | Optional | Open plugin's own find bar (or return `search` instead) |
-| `search(query, step)` | Optional | Workspace find bar asks for matches; step is 1 (next), -1 (prev), or 0 (new query) |
+| `search(query, step)` | Optional | Writan find bar asks for matches; step is 1 (next), -1 (prev), or 0 (new query) |
 | `zoom(direction)` | Optional | Zoom in, out, or reset |
 | `print()` | Optional | Print the plugin's content |
 | `views` | Optional | Record of view mode labels (e.g., `{ read: 'Diagram', split: 'Source and diagram', write: 'Source' }`) |
@@ -57,7 +57,7 @@ A plugin's files are a separate build (`plugins/<id>/dist`). The catalog's `sour
 The `plugins/shared` folder has reusable helpers:
 
 - `vite.ts`: `pluginConfig(import.meta.url)` is the one-line Vite config every plugin uses
-- `source-preview.ts`: `mountSourcePreview()` gives you a CodeMirror editor on the left and a preview pane on the right, with view switching (read/split/write) and idle delays. Use it for text-to-rendered formats like Markdown and LaTeX. It also exports `sidebarSection` (pass `{ list: true }` for rows made with `sidebarItem`), `sidebarItem`, and `sidebarHint` for styling sidebar content to match Workspace. Show errors in the sidebar, not in a popup over the preview. A plugin that opens a copy of its output in a tab (`openDocument`) can keep it current with `updateDocument`.
+- `source-preview.ts`: `mountSourcePreview()` gives you a CodeMirror editor on the left and a preview pane on the right, with view switching (read/split/write) and idle delays. Use it for text-to-rendered formats like Markdown and LaTeX. It also exports `sidebarSection` (pass `{ list: true }` for rows made with `sidebarItem`), `sidebarItem`, and `sidebarHint` for styling sidebar content to match Writan. Show errors in the sidebar, not in a popup over the preview. A plugin that opens a copy of its output in a tab (`openDocument`) can keep it current with `updateDocument`.
 
 ## Making a plugin
 

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Compatibility entry point for restarts from the updater shipped before Writan.
+exec /usr/bin/writan "$@"

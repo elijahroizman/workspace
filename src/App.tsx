@@ -92,7 +92,7 @@ class EditorBoundary extends Component<{ name: string; children: ReactNode }, { 
     if (!this.state.error) return this.props.children
     return (
       <CenterState title={`Couldn’t open “${this.props.name}”`}>
-        <p className="muted">The file may be damaged or use features Workspace can’t read yet.</p>
+        <p className="muted">The file may be damaged or use features Writan can’t read yet.</p>
         <code className="faint mono" style={{ fontSize: 12, userSelect: 'text' }}>
           {this.state.error.message}
         </code>

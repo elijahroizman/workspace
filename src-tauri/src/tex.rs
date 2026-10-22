@@ -313,7 +313,7 @@ pub fn tex_forget<R: Runtime>(app: AppHandle<R>, key: String) {
 
 fn download_to(url: &str, to: &Path, mut progress: impl FnMut(u64, u64)) -> Result<(), String> {
     let failed = |_| "Couldn't download TeX. Check your connection and try again.".to_string();
-    let mut response = crate::files::download_agent().get(url).header("User-Agent", "Workspace").call().map_err(failed)?;
+    let mut response = crate::files::download_agent().get(url).header("User-Agent", "Writan").call().map_err(failed)?;
     let total = response
         .headers()
         .get(header::CONTENT_LENGTH)
@@ -344,7 +344,7 @@ fn download_to(url: &str, to: &Path, mut progress: impl FnMut(u64, u64)) -> Resu
     Ok(())
 }
 
-/// The MiKTeX installer Workspace offers, and its SHA-256 from miktex.org/download. MiKTeX
+/// The MiKTeX installer Writan offers, and its SHA-256 from miktex.org/download. MiKTeX
 /// doesn't code-sign it, so the checksum is what vouches for it. CTAN keeps old versions, so
 /// this keeps working until an app update moves it on.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -369,7 +369,7 @@ fn sha256_hex(path: &Path) -> Result<String, String> {
 
 /// Runs a program to completion with its output captured; the error is the tail of what it said.
 /// A program still running after `limit` is stopped, so a package manager waiting on something
-/// can't leave Workspace waiting forever.
+/// can't leave Writan waiting forever.
 fn run_captured(mut cmd: Command, what: &str, limit: Duration) -> Result<String, String> {
     let mut child = cmd
         .stdin(Stdio::null())
@@ -428,7 +428,7 @@ fn run_captured(mut cmd: Command, what: &str, limit: Duration) -> Result<String,
     Err(format!("{what} failed{code}: {}", if tail.is_empty() { "no details" } else { tail.as_str() }))
 }
 
-/// How long installing or removing TeX may take before Workspace gives up on it.
+/// How long installing or removing TeX may take before Writan gives up on it.
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(45 * 60);
 
 /// Whether a program answers `--version` (winget is an app alias, so it's found by running it).
@@ -451,7 +451,7 @@ mod mac {
     pub fn brew_command(brew: &Path, dir: &Path) -> Result<Command, String> {
         use std::os::unix::fs::PermissionsExt;
         let askpass = dir.join("askpass.sh");
-        let script = "#!/bin/sh\nexec /usr/bin/osascript -e 'text returned of (display dialog \"Workspace needs your password to change TeX.\" default answer \"\" with hidden answer with title \"Workspace\")'\n";
+        let script = "#!/bin/sh\nexec /usr/bin/osascript -e 'text returned of (display dialog \"Writan needs your password to change TeX.\" default answer \"\" with hidden answer with title \"Writan\")'\n";
         fs::write(&askpass, script).map_err(|e| e.to_string())?;
         fs::set_permissions(&askpass, fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
         let mut cmd = command(brew);
@@ -595,7 +595,7 @@ fn apt_packages(variant: &str) -> &'static str {
 pub(crate) fn pkexec(line: &str, what: &str) -> Result<(), String> {
     let mut cmd = Command::new("pkexec");
     cmd.args(["/bin/sh", "-c", line]);
-    let output = cmd.stdin(Stdio::null()).output().map_err(|_| format!("Workspace needs pkexec (polkit) to ask for your password. {what} needs doing in a terminal instead."))?;
+    let output = cmd.stdin(Stdio::null()).output().map_err(|_| format!("Writan needs pkexec (polkit) to ask for your password. {what} needs doing in a terminal instead."))?;
     match output.status.code() {
         Some(0) => Ok(()),
         // 126 is polkit's "the password dialog was dismissed"; 127 is an error.
@@ -612,7 +612,7 @@ pub(crate) fn pkexec(line: &str, what: &str) -> Result<(), String> {
 #[cfg(target_os = "linux")]
 fn install(app: &AppHandle<impl Runtime>, variant: &str, _dir: &Path) -> Result<(), String> {
     if !Path::new("/usr/bin/apt-get").is_file() {
-        return Err("Workspace installs TeX with apt, which this system doesn't have. Install TeX Live with your package manager.".into());
+        return Err("Writan installs TeX with apt, which this system doesn't have. Install TeX Live with your package manager.".into());
     }
     let _ = app.emit("tex-progress", Progress { stage: "install", received: 0, total: 0 });
     let line = format!("export DEBIAN_FRONTEND=noninteractive; apt-get update && apt-get install -y {}", apt_packages(variant));
@@ -640,10 +640,10 @@ pub async fn tex_install<R: Runtime>(app: AppHandle<R>, variant: String) -> Resu
     .map_err(|e| e.to_string())?
 }
 
-// ── Uninstalling: only what Workspace knows how to take away cleanly.
+// ── Uninstalling: only what Writan knows how to take away cleanly.
 
 /// How TeX would be removed from this computer ("Homebrew", "winget", "apt", "MacTeX's installer"),
-/// or none if it isn't there or wasn't put there by something Workspace can undo.
+/// or none if it isn't there or wasn't put there by something Writan can undo.
 fn uninstall_method() -> Option<&'static str> {
     if !status().installed {
         return None;
@@ -696,7 +696,7 @@ fn uninstall(app: &AppHandle<impl Runtime>, dir: &Path) -> Result<(), String> {
         Some("MacTeX’s installer") => {
             let _ = dir;
             // Just the year in use (and the links and apps MacTeX adds); other years and texmf-local stay.
-            let (year_dir, year) = mac::texlive_year_dir().ok_or("Workspace couldn't tell which TeX Live folder MacTeX installed.")?;
+            let (year_dir, year) = mac::texlive_year_dir().ok_or("Writan couldn't tell which TeX Live folder MacTeX installed.")?;
             let year_dir = year_dir.to_string_lossy().replace('\'', "'\\''");
             mac::admin(&format!("/bin/rm -rf '{year_dir}' /Library/TeX /Applications/TeX; for p in $(/usr/sbin/pkgutil --pkgs | /usr/bin/grep '^org.tug.mactex.*{year}'); do /usr/sbin/pkgutil --forget $p; done"))
                 .map_err(|e| if e == "Cancelled." { "Removing TeX was cancelled.".into() } else { format!("Removing TeX failed: {e}") })
@@ -716,7 +716,7 @@ fn uninstall(app: &AppHandle<impl Runtime>, dir: &Path) -> Result<(), String> {
         }
         _ => {
             let _ = dir;
-            Err("Workspace can't remove this TeX. Use the program that installed it.".into())
+            Err("Writan can't remove this TeX. Use the program that installed it.".into())
         }
     }
 }

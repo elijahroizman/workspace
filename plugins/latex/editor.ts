@@ -1,4 +1,4 @@
-// The LaTeX editor: source on the left, the compiled PDF on the right (drawn by Workspace's own
+// The LaTeX editor: source on the left, the compiled PDF on the right (drawn by Writan's own
 // PDF viewer), and the outline, problems and PDF actions in the sidebar. It compiles with the
 // system's TeX (context.tex) a few seconds after typing stops (Settings › Plugins sets how many).
 
@@ -101,7 +101,7 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
     },
   })
 
-  // ── Preview: Workspace's PDF viewer, and a line over it when there's no PDF to show.
+  // ── Preview: Writan's PDF viewer, and a line over it when there's no PDF to show.
 
   const pdfHost = el('div', 'tex-pdf')
   kit.preview.appendChild(pdfHost)
@@ -129,7 +129,7 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
       return
     }
     if (!tex) {
-      setEmpty('Workspace compiles LaTeX in the app on your Mac or PC. This browser version can edit the source but not make the PDF.')
+      setEmpty('Writan compiles LaTeX in the app on your Mac or PC. This browser version can edit the source but not make the PDF.')
       return
     }
     compiling = true
@@ -137,7 +137,7 @@ export function mountEditor(element: HTMLElement, context: PluginEditorContext):
     failures = []
     updateStatus()
     try {
-      // TeX may have been installed since (from Settings, or outside Workspace).
+      // TeX may have been installed since (from Settings, or outside Writan).
       if (force || !texStatus?.installed) texStatus = await tex.status()
       if (!texStatus.installed) {
         setEmpty(pdf ? null : 'LaTeX needs TeX to make the PDF. Install it from the sidebar.')

@@ -15,7 +15,7 @@ type Step = 'welcome' | 'palette' | 'word' | 'slides' | 'pdf' | 'extras' | 'spli
 
 /**
  * The first-launch screen (and Settings › General › Show the tour again): a short tour of what
- * Workspace does, the optional extensions, and on a Mac or Windows which file types it should open.
+ * Writan does, the optional extensions, and on a Mac or Windows which file types it should open.
  * Every step can be skipped.
  */
 export default function SetupScreen() {
@@ -50,9 +50,9 @@ export default function SetupScreen() {
           <div className="welcome-hero">
             <Logo size={64} />
             <h1 id="welcome-title">One more thing in Windows Settings</h1>
-            <p className="muted">In the Settings window that opened, choose Workspace for each file type. Everything else is ready.</p>
+            <p className="muted">In the Settings window that opened, choose Writan for each file type. Everything else is ready.</p>
             <Button variant="primary" autoFocus onClick={finish}>
-              Start using Workspace
+              Start using Writan
             </Button>
           </div>
         ) : (
@@ -71,7 +71,7 @@ export default function SetupScreen() {
                       Next <ArrowRight size={14} />
                     </>
                   ) : (
-                    'Start using Workspace'
+                    'Start using Writan'
                   )}
                 </Button>
               </span>
@@ -87,8 +87,8 @@ function Welcome({ onTour, onSkip }: { onTour: () => void; onSkip: () => void })
   const builtIn = PLUGINS.filter(isBuiltIn).flatMap((p) => p.kinds)
   return (
     <div className="welcome-hero">
-      <Logo size={88} label="Workspace" />
-      <h1 id="welcome-title">Welcome to Workspace</h1>
+      <Logo size={88} label="Writan" />
+      <h1 id="welcome-title">Welcome to Writan</h1>
       <p className="muted">A small, fast app for the documents most people actually open.</p>
       <div className="welcome-kinds">
         {builtIn.map((k) => (
@@ -204,7 +204,7 @@ const TOUR: Record<'palette' | 'word' | 'slides' | 'pdf' | 'extras' | 'split', T
   extras: {
     eyebrow: 'Fonts and extensions',
     title: 'Add only what you need',
-    body: 'Workspace stays small. Extra fonts for Word and PowerPoint download when you turn them on, and extensions add file types. Both live in Settings › Plugins.',
+    body: 'Writan stays small. Extra fonts for Word and PowerPoint download when you turn them on, and extensions add file types. Both live in Settings › Plugins.',
     keys: null,
     art: <ExtrasArt />,
     extra: <ExtensionsList />,
@@ -272,11 +272,11 @@ function DefaultsStep({ onBack, onDone }: { onBack: () => void; onDone: (windows
     <>
       <div className="welcome-defaults">
         <span className="tour-eyebrow">Last step</span>
-        <h1 id="welcome-title">Open files with Workspace?</h1>
+        <h1 id="welcome-title">Open files with Writan?</h1>
         <p className="muted">
           {isMac
-            ? 'Tick the file types Workspace should open when you double-click them in Finder.'
-            : 'Tick the file types Workspace should open when you double-click them. Windows asks you to confirm in its Settings.'}
+            ? 'Tick the file types Writan should open when you double-click them in Finder.'
+            : 'Tick the file types Writan should open when you double-click them. Windows asks you to confirm in its Settings.'}
         </p>
         <div className="setup-defaults">
           {kinds.map((k) => (
@@ -293,7 +293,7 @@ function DefaultsStep({ onBack, onDone }: { onBack: () => void; onDone: (windows
                     {k.label}
                     <span className="faint"> {k.extensions.map((e) => `.${e}`).join(' ')}</span>
                   </span>
-                  {already[k.id] && <span className="faint">Already opens in Workspace</span>}
+                  {already[k.id] && <span className="faint">Already opens in Writan</span>}
                 </>
               }
             />
@@ -310,7 +310,7 @@ function DefaultsStep({ onBack, onDone }: { onBack: () => void; onDone: (windows
             <ArrowLeft size={14} />
           </Button>
           <Button variant="primary" disabled={busy} onClick={() => void apply()}>
-            {wanted.length ? 'Set as default' : 'Start using Workspace'}
+            {wanted.length ? 'Set as default' : 'Start using Writan'}
           </Button>
         </span>
       </footer>

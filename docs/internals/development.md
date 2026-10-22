@@ -57,8 +57,8 @@ src-tauri/
   src/tex.rs              finds, runs, installs and removes the system's TeX
   src/fonts.rs            downloads the optional fonts (Michelangelus, Ubuntu, JetBrains Mono…)
   src/update.rs           the latest release's notes, Mac relaunch, apt updates on Linux
-  windows/hooks.nsh       closes Workspace before a Windows install or uninstall
-  src/defaults.rs         makes Workspace the default app for its file types
+  windows/hooks.nsh       closes Writan before a Windows install or uninstall
+  src/defaults.rs         makes Writan the default app for its file types
   src/files.rs            raw-bytes file reading and atomic saving
   src/menu.rs             the native menu bar
   linux/                  the .deb's install scripts and APT signing key
@@ -75,3 +75,9 @@ cp /tmp/icons/{32x32.png,128x128.png,128x128@2x.png,icon.icns,icon.ico,icon.png}
 ```
 
 `public/favicon.svg` is the same mark, full bleed for small sizes, used by the browser version.
+
+## Windows installer hooks
+
+On Linux with `makensis` installed, run `python3 scripts/check-windows-hooks.py`. This compiles the installer and uninstaller hooks against NSIS's real Restart Manager, LogicLib and FileFunc includes. The harness substitutes Tauri's `CheckIfAppIsRunning` macro, which otherwise needs its Windows plugin DLL. It checks the hook code, not a complete installer or a running Windows upgrade.
+
+Release outputs are `Writan.app`, `Writan_<version>_aarch64.dmg` and `Writan_<version>_x64-setup.exe`. Linux retains `Workspace_<version>_amd64.deb` and `Workspace-<version>-1.x86_64.rpm` so existing package-managed installs upgrade normally. The launcher and `/usr/bin/writan` use the new name. See [the rename upgrade paths](releasing.md#rename-to-writan-0100).

@@ -25,7 +25,7 @@ function heading(phase: UpdatePhase, version: string | null): string {
   if (phase === 'error' && !version) return "Couldn't check for updates"
   if (phase === 'checking' && !version) return 'Checking for updates'
   if (phase === 'current' && updatesInstallable) return "You're up to date"
-  return version ? `Workspace ${version}` : 'Updates'
+  return version ? `Writan ${version}` : 'Updates'
 }
 
 function detail(phase: UpdatePhase, error: string | null, publishedAt: string | null, version: string | null, linux: LinuxPackage | null): string {
@@ -34,14 +34,14 @@ function detail(phase: UpdatePhase, error: string | null, publishedAt: string | 
   if (phase === 'error') return error ?? "Couldn't check for updates."
   if (phase === 'checking') return 'Looking at the latest GitHub release'
   if (phase === 'downloading') return 'Downloading the update'
-  if (phase === 'installing') return isMac ? 'Workspace will quit and reopen' : isLinux ? `Installing with ${manager}, then Workspace reopens` : 'The installer will restart Workspace'
+  if (phase === 'installing') return isMac ? 'Writan will quit and reopen' : isLinux ? `Installing with ${manager}, then Writan reopens` : 'The installer will restart Writan'
   if (phase === 'ready' && error) return error
   if (phase === 'ready' && isLinux) return `Installs with ${manager} after asking for your password`
   if (phase === 'ready') return date ? `Ready to install · ${date}` : 'Ready to install'
   if (isLinux && version && newer(version, __APP_VERSION__)) {
     return linux?.format
-      ? `Workspace ${version} is out. Install the new .${linux.format} from GitHub, and later versions come through ${manager}.`
-      : `Workspace ${version} is out. Download it from GitHub.`
+      ? `Writan ${version} is out. Install the new .${linux.format} from GitHub, and later versions come through ${manager}.`
+      : `Writan ${version} is out. Download it from GitHub.`
   }
   if (!updatesInstallable) return date ? `Latest GitHub release · ${date}` : 'Latest GitHub release'
   return date ? `This is the newest release · ${date}` : 'This is the newest release'
@@ -146,7 +146,7 @@ export function UpdateButton() {
         className={`update-btn ${phase === 'ready' ? 'ready' : ''}`}
         aria-haspopup="dialog"
         aria-expanded={open}
-        title={phase === 'ready' && version ? `Workspace ${version} is ready to install` : 'Check for updates'}
+        title={phase === 'ready' && version ? `Writan ${version} is ready to install` : 'Check for updates'}
         onClick={() => toggleUpdatePanel()}
       >
         {busy ? <Spinner size={13} /> : <Rocket size={13} />}

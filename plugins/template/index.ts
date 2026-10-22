@@ -12,7 +12,7 @@ export const apiVersion: PluginModule['apiVersion'] = 1
 const ZOOMS = [0.75, 0.9, 1, 1.25, 1.5, 2]
 
 export const mount: PluginModule['mount'] = (element, context): PluginEditor => {
-  // The preview's own look; Workspace's variables (--fg, --line…) work because plugins render
+  // The preview's own look; Writan's variables (--fg, --line…) work because plugins render
   // in its page. Add styles once per page, not once per tab.
   if (!document.querySelector('style[data-workspace-plugin="template"]')) {
     const style = document.createElement('style')
@@ -49,7 +49,7 @@ export const mount: PluginModule['mount'] = (element, context): PluginEditor => 
   kit.preview.appendChild(page)
 
   // The sidebar exists when the catalog entry's kind has `panels.left: true`. Build sections
-  // once and update their contents; Workspace keeps the element while the sidebar is hidden.
+  // once and update their contents; Writan keeps the element while the sidebar is hidden.
   const words = document.createElement('div')
   if (context.sidebar) {
     sidebarSection(context.sidebar, 'Document').appendChild(words)
@@ -61,9 +61,9 @@ export const mount: PluginModule['mount'] = (element, context): PluginEditor => 
   }
 
   return {
-    // What Save writes. Workspace calls it; the plugin never writes files itself.
+    // What Save writes. Writan calls it; the plugin never writes files itself.
     getBytes: async () => encode(kit.text()),
-    // With `views`, Workspace shows its read / split / write switch (⌘E cycles) and calls setView.
+    // With `views`, Writan shows its read / split / write switch (⌘E cycles) and calls setView.
     views: { read: 'Preview', split: 'Source and preview', write: 'Source' },
     setView: (view) => kit.setView(view),
     find: () => kit.find(),

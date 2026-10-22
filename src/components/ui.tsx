@@ -57,7 +57,7 @@ export function Wordmark({ size = 32, variant }: { size?: number; variant?: Logo
   return (
     <span className="wordmark" style={{ '--wordmark-size': `${size}px` } as CSSProperties}>
       <Logo size={size} variant={variant} />
-      <span className="wordmark-name">Workspace</span>
+      <span className="wordmark-name">Writan</span>
     </span>
   )
 }

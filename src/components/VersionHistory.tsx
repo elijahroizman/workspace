@@ -21,12 +21,12 @@ export function showVersionHistory(tabId = useWorkspace.getState().activeId) {
   const tab = useWorkspace.getState().tabs.find((t) => t.id === tabId)
   if (!tab) return
   if (!tab.path) {
-    void platform.showError('Save this document first. Workspace keeps a version each time you save a file.', 'No versions yet')
+    void platform.showError('Save this document first. Writan keeps a version each time you save a file.', 'No versions yet')
     return
   }
   if (!useSettings.getState().history) {
     void platform
-      .confirmDialog('Version history is off, so Workspace isn’t keeping copies when you save. Turn it on?', { okLabel: 'Turn On', kind: 'info' })
+      .confirmDialog('Version history is off, so Writan isn’t keeping copies when you save. Turn it on?', { okLabel: 'Turn On', kind: 'info' })
       .then((ok) => {
         if (!ok) return
         useSettings.getState().setHistory(true)
@@ -169,7 +169,7 @@ function compareTexts(before: string[], after: string[]): Comparison {
   return { rows, added: count('add'), removed: count('del'), changed: count('change') }
 }
 
-const versionTitle = (v: FileVersion) => v.label || (v.source === 'original' ? 'Before Workspace saved it' : 'Saved')
+const versionTitle = (v: FileVersion) => v.label || (v.source === 'original' ? 'Before Writan saved it' : 'Saved')
 
 export function VersionHistory() {
   const tabId = useVersionHistory((s) => s.tabId)
@@ -381,7 +381,7 @@ export function VersionHistory() {
           <div className="vh-canvas">
             {versions?.length === 0 ? (
               <div className="vh-center">
-                <EmptyState>No versions yet. Each time you save (or autosave), Workspace keeps a copy here.</EmptyState>
+                <EmptyState>No versions yet. Each time you save (or autosave), Writan keeps a copy here.</EmptyState>
               </div>
             ) : version ? (
               <DiffView diff={diff} compare={compare} kind={tab.kind} unit={unit} />

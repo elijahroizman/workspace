@@ -1,5 +1,5 @@
 #!/bin/sh
-# Removing Workspace also removes the dnf repository its install added. rpm runs this with 0
+# Removing Writan also removes the dnf repository its install added. rpm runs this with 0
 # when the package is erased, and with 1 after an upgrade, which keeps the file.
 set -e
 

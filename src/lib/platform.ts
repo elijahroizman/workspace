@@ -121,7 +121,7 @@ export interface FileVersion {
   time: number
   size: number
   label?: string
-  /** 'save', or 'original': the file as it was before Workspace first saved over it. */
+  /** 'save', or 'original': the file as it was before Writan first saved over it. */
   source: string
 }
 

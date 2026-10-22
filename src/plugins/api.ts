@@ -1,4 +1,4 @@
-// The contract between Workspace and an optional plugin's editor. A plugin's index.js is an ES
+// The contract between Writan and an optional plugin's editor. A plugin's index.js is an ES
 // module exporting `apiVersion` and `mount`. It brings its own UI framework and renders into
 // the element it is given, so the app and its plugins don't have to share React versions.
 // Keep this file free of imports: plugins compile against it too.
@@ -17,15 +17,15 @@ export interface PluginEditorContext {
   /** The tab's title. */
   title: string
   theme: Theme
-  /** Call after every change the user makes; Workspace marks the tab unsaved and autosaves. */
+  /** Call after every change the user makes; Writan marks the tab unsaved and autosaves. */
   onChange(): void
   /** Open a link in the default browser. */
   openExternal(url: string): void
   /** Print this content (an image or a page of HTML) with the system print dialog. */
   print(content: Node): Promise<void>
   /**
-   * An element in Workspace's left sidebar to render into (a table of contents, say). Only for
-   * kinds whose catalog entry has `panels.left`; Workspace shows and hides it with ⌘\.
+   * An element in Writan's left sidebar to render into (a table of contents, say). Only for
+   * kinds whose catalog entry has `panels.left`; Writan shows and hides it with ⌘\.
    */
   sidebar?: HTMLElement
   /** For editors with search(): the matches changed without a new query (more content loaded). */
@@ -47,7 +47,7 @@ export interface PluginEditorContext {
   updateDocument?(document: { bytes: Uint8Array; name: string }): boolean
   /** Save bytes to a file the user picks (an export). Resolves false if they cancel. */
   saveFile?(file: { bytes: Uint8Array; name: string }): Promise<boolean>
-  /** A read-only view of a PDF in `element`, drawn by Workspace's own PDF engine. */
+  /** A read-only view of a PDF in `element`, drawn by Writan's own PDF engine. */
   createPdfView?(element: HTMLElement): PdfView
   /** The system's TeX, for plugins whose catalog entry lists the `tex` service. */
   tex?: TexService
@@ -84,7 +84,7 @@ export interface TexService {
    * file's folder (a new document has none). A compile asked for while one runs waits its turn.
    */
   compile(source: string, options: { engine: string }): Promise<TexResult>
-  /** Offers to install TeX (Workspace's own dialog). Resolves with the status afterwards. */
+  /** Offers to install TeX (Writan's own dialog). Resolves with the status afterwards. */
   install(): Promise<TexStatus>
 }
 
@@ -104,7 +104,7 @@ export interface PluginEditor {
   setActive?(active: boolean): void
   find?(): void
   /**
-   * Instead of find(): Workspace shows its own find bar and asks for matches. `step` moves the
+   * Instead of find(): Writan shows its own find bar and asks for matches. `step` moves the
    * selection to the next (1) or previous (-1) match; 0 is a new query. An empty query clears.
    */
   search?(query: string, step: 1 | -1 | 0): SearchResult
@@ -112,7 +112,7 @@ export interface PluginEditor {
   print?(): Promise<void>
   /**
    * For source-and-preview editors: what each view shows, as the switch's tooltips put it
-   * (`{ read: 'Diagram', split: 'Source and diagram', write: 'Source' }`). With this, Workspace
+   * (`{ read: 'Diagram', split: 'Source and diagram', write: 'Source' }`). With this, Writan
    * shows the same view switch as Markdown and its shortcuts (⌘E cycles) call setView.
    */
   views?: Record<ViewMode, string>

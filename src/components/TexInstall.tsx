@@ -37,7 +37,7 @@ export function TexInstall() {
       <div className="tex-install" role="dialog" aria-modal="true" aria-labelledby="tex-install-title">
         <h2 id="tex-install-title">Install TeX for LaTeX documents?</h2>
         <p className="muted">
-          Workspace compiles LaTeX with the TeX on your computer, and it doesn’t have one yet. You can install it now, or later from Settings › Plugins.
+          Writan compiles LaTeX with the TeX on your computer, and it doesn’t have one yet. You can install it now, or later from Settings › Plugins.
         </p>
         {INSTALL_CHOICES.length === 0 && <p className="muted">Install TeX Live with your system’s package manager, then reopen the document.</p>}
         {!installing && (
@@ -72,7 +72,7 @@ export function TexInstall() {
   )
 }
 
-/** Asked when LaTeX is turned off and Workspace could also take TeX off the computer. */
+/** Asked when LaTeX is turned off and Writan could also take TeX off the computer. */
 export function TexRemove() {
   const removal = useTex((s) => s.removal)
   const { answerTurnOff } = useTex.getState()
@@ -95,7 +95,7 @@ export function TexRemove() {
       <div className="tex-install" role="dialog" aria-modal="true" aria-labelledby="tex-remove-title">
         <h2 id="tex-remove-title">Turn off LaTeX?</h2>
         <p className="muted">
-          LaTeX files stop opening in Workspace. The TeX on this computer isn’t part of Workspace, so it stays
+          LaTeX files stop opening in Writan. The TeX on this computer isn’t part of Writan, so it stays
           {removal.method ? ' unless you remove it too.' : '.'}
         </p>
         {removal.checking && (

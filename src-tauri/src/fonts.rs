@@ -1,9 +1,9 @@
-//! Fonts Workspace offers to download instead of shipping, so the app stays small and each
+//! Fonts Writan offers to download instead of shipping, so the app stays small and each
 //! font arrives only for people who want it. Michelangelus is free from Microsoft, but its license
 //! lets people install it on their own devices without letting anyone pass it on, so each copy of
-//! Workspace downloads it from Microsoft's Download Center. The others are open-source (SIL Open
+//! Writan downloads it from Microsoft's Download Center. The others are open-source (SIL Open
 //! Font License, Ubuntu Font Licence) and come from Google Fonts' repository, pinned to one
-//! commit, or their maker's release. Every file is checked against the hash Workspace was tested
+//! commit, or their maker's release. Every file is checked against the hash Writan was tested
 //! with and kept in the app's data folder.
 
 use std::fs;
@@ -142,7 +142,7 @@ pub fn installed_fonts<R: Runtime>(app: AppHandle<R>) -> Vec<&'static str> {
 
 fn download(font: &ExtraFont, url: &str) -> Result<Vec<u8>, String> {
     let failed = |_| format!("Couldn't download the font from {}. Check your connection and try again.", font.maker);
-    let mut response = crate::files::download_agent().get(url).header("User-Agent", "Workspace").call().map_err(failed)?;
+    let mut response = crate::files::download_agent().get(url).header("User-Agent", "Writan").call().map_err(failed)?;
     let mut bytes = Vec::new();
     response
         .body_mut()
@@ -163,7 +163,7 @@ fn fetch(font: &ExtraFont) -> Result<Vec<(&'static str, Vec<u8>)>, String> {
 }
 
 fn unzip(font: &ExtraFont, archive: &[u8]) -> Result<Vec<(&'static str, Vec<u8>)>, String> {
-    let mut zip = zip::ZipArchive::new(Cursor::new(archive)).map_err(|_| format!("{}'s download wasn't the font archive Workspace expected.", font.maker))?;
+    let mut zip = zip::ZipArchive::new(Cursor::new(archive)).map_err(|_| format!("{}'s download wasn't the font archive Writan expected.", font.maker))?;
     let mut found = Vec::new();
     for (name, _) in font.files {
         // Files can sit in a folder inside the archive; match on the file name alone.
@@ -182,7 +182,7 @@ fn install(dir: &PathBuf, font: &ExtraFont, found: Vec<(&str, Vec<u8>)>) -> Resu
     for (name, hash) in font.files {
         let bytes = found.iter().find(|(n, _)| n == name).map(|(_, b)| b).ok_or_else(|| format!("{name} is missing from {}'s download.", font.maker))?;
         if sha256_hex(bytes) != *hash {
-            return Err(format!("{} has changed this font since this version of Workspace. Update Workspace and try again.", font.maker));
+            return Err(format!("{} has changed this font since this version of Writan. Update Writan and try again.", font.maker));
         }
     }
     let staging = dir.with_extension("installing");
@@ -195,7 +195,7 @@ fn install(dir: &PathBuf, font: &ExtraFont, found: Vec<(&str, Vec<u8>)>) -> Resu
     fs::rename(&staging, dir).map_err(|e| format!("Couldn't save the font: {e}"))
 }
 
-/// Downloads a font from its maker and keeps it for Workspace's editors.
+/// Downloads a font from its maker and keeps it for Writan's editors.
 #[tauri::command]
 pub async fn install_font<R: Runtime>(app: AppHandle<R>, id: String) -> Result<(), String> {
     let font = font(&id)?;

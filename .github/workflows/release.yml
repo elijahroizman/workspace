@@ -133,7 +133,7 @@ jobs:
           APPLE_API_ISSUER: ${{ matrix.os == 'macos-latest' && secrets.APPLE_API_ISSUER || '' }}
         with:
           tagName: ${{ env.PUBLISH == 'true' && 'v__VERSION__' || '' }}
-          releaseName: ${{ env.PUBLISH == 'true' && 'Workspace v__VERSION__' || '' }}
+          releaseName: ${{ env.PUBLISH == 'true' && 'Writan v__VERSION__' || '' }}
           releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false
@@ -174,7 +174,7 @@ jobs:
             -o APT::FTPArchive::Release::Suite=stable \
             -o APT::FTPArchive::Release::Codename=stable \
             -o APT::FTPArchive::Release::Architectures=amd64 \
-            -o APT::FTPArchive::Release::Description="Workspace (github.com/${GITHUB_REPOSITORY})" \
+            -o APT::FTPArchive::Release::Description="Writan (github.com/${GITHUB_REPOSITORY})" \
             release . > "$RUNNER_TEMP/Release"
           mv "$RUNNER_TEMP/Release" Release
           export GNUPGHOME="$(mktemp -d)"
@@ -185,7 +185,7 @@ jobs:
           rm -rf "$GNUPGHOME"
           if ! gh release view apt -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release create apt -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "APT repository" \
-              --notes "Workspace's APT repository for Debian and Ubuntu. The .deb adds it for you; nothing here needs downloading by hand."
+              --notes "Writan's APT repository for Debian and Ubuntu. The .deb adds it for you; nothing here needs downloading by hand."
           fi
           gh release upload apt -R "$GITHUB_REPOSITORY" "$deb" --clobber
           gh release upload apt -R "$GITHUB_REPOSITORY" Packages Packages.gz --clobber
@@ -231,7 +231,7 @@ jobs:
           for tag in rpm/packages rpm/repodata; do
             if ! gh release view "$tag" -R "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
               gh release create "$tag" -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "dnf repository (${tag#rpm/})" \
-                --notes "Part of Workspace's dnf repository for Fedora. The .rpm adds it for you; nothing here needs downloading by hand."
+                --notes "Part of Writan's dnf repository for Fedora. The .rpm adds it for you; nothing here needs downloading by hand."
             fi
           done
           gh release upload rpm/packages -R "$GITHUB_REPOSITORY" "packages/$rpm" --clobber
@@ -251,7 +251,7 @@ jobs:
       - name: Check the Mac app is signed and notarized
         if: matrix.os == 'macos-latest'
         run: |
-          app=src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Workspace.app
+          app=src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Writan.app
           set -euo pipefail
           codesign --verify --deep --strict --verbose=2 "$app"
           codesign -dv "$app" 2>&1 | grep -E '^(Authority|TeamIdentifier|Runtime)'

@@ -1,4 +1,4 @@
-//! Version history: a copy of a file each time Workspace saves it, kept in the app's data folder.
+//! Version history: a copy of a file each time Writan saves it, kept in the app's data folder.
 //!
 //! Git-style storage. Each distinct version's bytes are stored once, named by their SHA-256
 //! (`history/objects/ab/cdef…`), so saving an unchanged file or two files with the same content
@@ -35,7 +35,7 @@ pub struct Version {
     pub size: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
-    /// "save", or "original" for the file as it was before Workspace first saved over it.
+    /// "save", or "original" for the file as it was before Writan first saved over it.
     pub source: String,
 }
 
@@ -170,7 +170,7 @@ fn replace_versions(root: &Path, mut log: Log, versions: Vec<Version>) -> std::i
     Ok(())
 }
 
-/// The file on disk as it is before Workspace saves over it for the first time, so the version
+/// The file on disk as it is before Writan saves over it for the first time, so the version
 /// you opened can always come back.
 pub fn remember_original(root: &Path, file: &Path) {
     let key = file.to_string_lossy();

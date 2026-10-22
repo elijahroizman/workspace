@@ -1,4 +1,4 @@
-// Fonts Workspace can add on request (src-tauri/src/fonts.rs), so the app stays small and each
+// Fonts Writan can add on request (src-tauri/src/fonts.rs), so the app stays small and each
 // font arrives only for people who want it. Michelangelus is Microsoft's free typeface drawn from
 // Michelangelo's handwriting; its license forbids passing it on, so it comes from Microsoft. The
 // others are open-source and come from Google Fonts or their maker. Once one is there, Word

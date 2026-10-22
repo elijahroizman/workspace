@@ -469,7 +469,7 @@ function insertPdf(at: number, bytes: ArrayBuffer) {
   const srcDoc = mod.FPDF_LoadMemDocument(filePtr, src.length, '')
   try {
     if (!srcDoc) {
-      throw new Error(mod.FPDF_GetLastError() === 4 ? 'That PDF is password protected, so its pages can’t be inserted.' : 'That file isn’t a PDF Workspace can read.')
+      throw new Error(mod.FPDF_GetLastError() === 4 ? 'That PDF is password protected, so its pages can’t be inserted.' : 'That file isn’t a PDF Writan can read.')
     }
     const count = mod.FPDF_GetPageCount(srcDoc)
     if (!mod.FPDF_ImportPagesByIndex(ctx().docPtr, srcDoc, 0, 0, at)) throw new Error('Couldn’t insert the pages')

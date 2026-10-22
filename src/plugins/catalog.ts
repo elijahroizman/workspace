@@ -1,10 +1,10 @@
-// Every plugin Workspace knows about.
+// Every plugin Writan knows about.
 // Built-in plugins ship with the app and are always on. Word, PowerPoint, PDF, Markdown and text
 // have their editors in src/editors. Images is built in too, but its viewer is a plugin bundle
 // (`"bundled": true` in plugins/images/plugin.json): the app build copies it to /plugins/images/
 // and PluginEditor loads it from there.
 // Optional plugins are off until turned on in Settings or the setup screen. A `download` plugin
-// is fetched as a signed archive from the Workspace GitHub release (see src-tauri/src/plugins.rs
+// is fetched as a signed archive from the Writan GitHub release (see src-tauri/src/plugins.rs
 // and plugins/README.md). LaTeX is the only one.
 
 import type { ComponentType } from 'react'
@@ -39,7 +39,7 @@ export interface PluginInfo {
   /** The engines' licenses, as SPDX ids (the full texts are in Settings › General › Licenses). */
   license: string
   homepage: string
-  /** What the plugin's editor gets from Workspace beyond the basics (see context.tex in api.ts). */
+  /** What the plugin's editor gets from Writan beyond the basics (see context.tex in api.ts). */
   services?: 'tex'[]
   /** Built in: always on. Otherwise how its files arrive. */
   source:
@@ -57,7 +57,7 @@ export const PLUGINS: PluginInfo[] = [
   {
     id: 'office',
     name: 'Office',
-    description: 'Word documents, PowerPoint presentations, Excel workbooks and CSV files, on Workspace’s own engine.',
+    description: 'Word documents, PowerPoint presentations, Excel workbooks and CSV files, on Writan’s own engine.',
     homepage: 'https://github.com/elijahroizman/workspace',
     license: 'OFL-1.1',
     source: { type: 'builtin' },
@@ -201,7 +201,7 @@ export const PLUGINS: PluginInfo[] = [
   {
     id: 'latex',
     name: 'LaTeX',
-    description: 'Write LaTeX and watch the PDF update as you go. Compiles with the TeX on your computer (MacTeX, MiKTeX or TeX Live), which Workspace can install.',
+    description: 'Write LaTeX and watch the PDF update as you go. Compiles with the TeX on your computer (MacTeX, MiKTeX or TeX Live), which Writan can install.',
     homepage: 'https://www.latex-project.org',
     license: 'MIT',
     services: ['tex'],

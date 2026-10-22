@@ -1,6 +1,6 @@
 # Contributing
 
-Most changes to Workspace are written by AI models. These rules say who can push and how changes get reviewed.
+Most changes to Writan are written by AI models. These rules say who can push and how changes get reviewed.
 
 ## Who can push to `main`
 

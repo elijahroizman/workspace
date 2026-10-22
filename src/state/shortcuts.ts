@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { isMac, isTauri, isWindows } from '../lib/platform'
 
 /**
- * Every keyboard shortcut Workspace knows about, and the user's changes to them.
+ * Every keyboard shortcut Writan knows about, and the user's changes to them.
  *
  * Keys are written the Mac way, modifiers in Apple's order (⌃⌥⇧⌘) then the key: "⇧⌘N".
  * On Windows ⌘ means Ctrl and ⌥ means Alt, and `shortcut()` in lib/platform shows them so.
@@ -18,9 +18,9 @@ export interface ShortcutDef {
   scope: Scope
   /** Default keys; '' for none. */
   keys: string
-  /** The editor engine already answers the default keys; Workspace steps in only once they change. */
+  /** The editor engine already answers the default keys; Writan steps in only once they change. */
   builtIn?: boolean
-  /** A built-in shortcut whose engine keys aren't its default: Workspace answers `keys`, and the engine must not see these. */
+  /** A built-in shortcut whose engine keys aren't its default: Writan answers `keys`, and the engine must not see these. */
   engineKeys?: string
   /** Shown for reference but can't be changed (the system or the engine owns it). */
   fixed?: boolean
@@ -47,7 +47,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'tab-number', label: 'Go to tab 1–9', group: 'Files and tabs', scope: 'app', keys: '⌘1–9', fixed: true },
   { id: 'settings', label: 'Settings', group: 'Files and tabs', scope: 'app', keys: '⌘,' },
   { id: 'install-cli', label: 'Install the workspace command in PATH', group: 'Files and tabs', scope: 'app', keys: '', platform: 'mac' },
-  { id: 'quit', label: 'Quit Workspace', group: 'Files and tabs', scope: 'app', keys: '⌘Q', platform: 'mac' },
+  { id: 'quit', label: 'Quit Writan', group: 'Files and tabs', scope: 'app', keys: '⌘Q', platform: 'mac' },
 
   // ── View
   { id: 'command-palette', label: 'Command palette', group: 'View', scope: 'app', keys: '⌘K' },

@@ -25,7 +25,7 @@ function loadModule(kind: string): Promise<PluginModule> {
     module = installSettled(plugin.id)
       .then(() => import(/* @vite-ignore */ `${pluginBaseUrl(plugin)}index.js`))
       .then((m: PluginModule) => {
-      if (m.apiVersion !== PLUGIN_API_VERSION) throw new Error(`This version of the ${plugin.name} plugin doesn't fit this version of Workspace.`)
+      if (m.apiVersion !== PLUGIN_API_VERSION) throw new Error(`This version of the ${plugin.name} plugin doesn't fit this version of Writan.`)
       return m
     })
     // A failed load (not downloaded yet, offline) can be tried again.
@@ -35,7 +35,7 @@ function loadModule(kind: string): Promise<PluginModule> {
   return module
 }
 
-/** Puts the plugin's sidebar element into Workspace's sidebar while that is open. */
+/** Puts the plugin's sidebar element into Writan's sidebar while that is open. */
 function SidebarSlot({ element }: { element: HTMLElement }) {
   const slot = useRef<HTMLDivElement>(null)
   useEffect(() => {

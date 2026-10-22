@@ -13,7 +13,7 @@ const RELEASE_URL = 'https://api.github.com/repos/elijahroizman/workspace/releas
 
 export type UpdatePhase = 'idle' | 'checking' | 'downloading' | 'ready' | 'installing' | 'current' | 'error'
 
-/** How a Linux copy was installed, and whether Workspace's APT or dnf repository can update it. */
+/** How a Linux copy was installed, and whether Writan's APT or dnf repository can update it. */
 export interface LinuxPackage {
   format: 'deb' | 'rpm' | null
   repo: boolean
@@ -57,7 +57,7 @@ let downloaded: Update | null = null
 let checking = false
 
 /**
- * Release builds on a Mac or Windows can download and install. On Linux the .deb adds Workspace's
+ * Release builds on a Mac or Windows can download and install. On Linux the .deb adds Writan's
  * APT repository and the .rpm its dnf repository, and those install new versions (see `linuxPackage`). Dev and the browser can still
  * read the notes.
  */
@@ -106,7 +106,7 @@ async function fetchRelease(): Promise<ReleaseNotes> {
   const version = /^v\d/.test(tag) ? tag.slice(1) : tag
   return {
     version,
-    name: data.name?.trim() || `Workspace ${version}`,
+    name: data.name?.trim() || `Writan ${version}`,
     notes: data.body ?? '',
     url: data.html_url ?? RELEASE_URL,
     publishedAt: data.published_at ?? null,
@@ -236,7 +236,7 @@ export async function installUpdate({ restart }: { restart: boolean }): Promise<
     if (!installed) void update.close()
     useUpdate.setState({
       phase: 'error',
-      error: installed ? 'The update is installed. Quit and reopen Workspace to use it.' : "The update couldn't be installed.",
+      error: installed ? 'The update is installed. Quit and reopen Writan to use it.' : "The update couldn't be installed.",
     })
   }
 }

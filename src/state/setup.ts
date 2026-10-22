@@ -1,4 +1,4 @@
-// The setup screen shows once, the first time Workspace runs after being installed. An update
+// The setup screen shows once, the first time Writan runs after being installed. An update
 // doesn't show it: a copy that has run before already has saved state.
 
 import { create } from 'zustand'
