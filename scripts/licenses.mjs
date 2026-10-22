@@ -144,12 +144,23 @@ function cratePackages() {
     })
 }
 
+/** Fonts shipped directly with the Rust engine's renderer. */
+function bundledFonts() {
+  const fonts = join(root, 'src', 'engine', 'fonts')
+  return [
+    ['Carlito', 'OFL-Carlito.txt', 'https://github.com/googlefonts/carlito'],
+    ['Caladea', 'OFL-Caladea.txt', 'https://github.com/huertatipografica/Caladea'],
+    ['Liberation Sans, Serif and Mono', 'LICENSE-Liberation.txt', 'https://github.com/liberationfonts/liberation-fonts'],
+  ].map(([name, file, homepage]) => ({ group: 'App', name, version: 'bundled', license: 'OFL-1.1', homepage, files: [{ file, text: textId(readFileSync(join(fonts, file), 'utf8').trim()) }] }))
+}
+
 const byName = (a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version)
 const packages = [
   // libheif-js decodes HEIC in the Images viewer, which ships inside the app.
   ...npmPackages([...Object.keys(pkg.dependencies), 'libheif-js'], 'App').sort(byName),
   ...Object.entries(PLUGIN_PACKAGES).flatMap(([plugin, names]) => npmPackages(names, `${plugin} plugin`).sort(byName)),
   ...cratePackages().sort(byName),
+  ...bundledFonts(),
 ]
 writeFileSync(join(root, 'public', 'licenses.json'), JSON.stringify({ packages, texts: Object.fromEntries(texts) }))
 console.log(`licenses: ${packages.length} packages, ${texts.size} license texts`)
