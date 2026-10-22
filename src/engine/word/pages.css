@@ -26,13 +26,15 @@
   transform-origin: 0 0;
 }
 
-.docx-page-content,
-.docx-page-overlay {
+.docx-page-content {
   position: absolute;
   inset: 0;
 }
 
-.docx-page-overlay {
+/* Caret, selection and marks, over all the pages. */
+.docx-overlay {
+  position: absolute;
+  inset: 0;
   pointer-events: none;
 }
 
@@ -238,7 +240,7 @@
 }
 
 @media print {
-  .docx-page-overlay,
+  .docx-overlay,
   .wp-input,
   .wp-image-frame {
     display: none;

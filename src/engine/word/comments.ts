@@ -35,6 +35,8 @@ export interface HighlightOptions {
 
 export interface CommentEditor {
   save(): Promise<Uint8Array>
+  /** Whether the document has comments at all. */
+  hasComments(): boolean
   query(q: { type: 'paragraphs' }): ParagraphInfo[]
   query(q: { type: 'selection' }): { from: { paraId: string }; to: { paraId: string } } | null
   query(q: { type: 'selectedText' }): string
@@ -67,6 +69,7 @@ export function commentEditor(engine: WordEngine): CommentEditor {
   }
   const editor: CommentEditor = {
     save: async () => engine.save(),
+    hasComments: () => engine.doc.hasComments(),
     query: ((q: { type: string }) => {
       if (q.type === 'paragraphs') return paragraphs()
       const sel = JSON.parse(engine.doc.selection()) as { anchor: [number[], number]; focus: [number[], number]; body: boolean }

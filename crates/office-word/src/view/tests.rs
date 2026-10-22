@@ -232,3 +232,67 @@ fn copy_and_paste_keep_formatting() {
     let Block::Paragraph(p) = &v.blocks(StoryId::Body)[1] else { panic!() };
     assert_eq!(p.runs().last().unwrap().props.bold, Some(true));
 }
+
+/// Laying out only what changed must give the same pages as laying out everything.
+#[test]
+fn incremental_layout_matches_full_layout() {
+    let mut host = FixedMeasurer::default();
+    let lines: Vec<String> = (0..120).map(|i| format!("Paragraph {i} with some words to wrap across the line when it gets long enough")).collect();
+    let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+    let mut v = WordView::open(&doc_bytes(&refs)).unwrap();
+    v.layout(&mut host);
+    // A fixed sequence of edits of every kind: typing, Enter, deleting across paragraphs,
+    // a table, a page break, a list, undo and redo.
+    let mut seed = 7u64;
+    let mut rand = |n: u64| {
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        (seed >> 33) % n.max(1)
+    };
+    for step in 0..60 {
+        let n = v.blocks(StoryId::Body).len() as u64;
+        let b = rand(n) as u32;
+        let len = match &v.blocks(StoryId::Body)[b as usize] {
+            Block::Paragraph(p) => office_engine::text::len(p),
+            _ => 0,
+        };
+        let at = Pos::new(Path::top(b), rand(len as u64 + 1) as u32);
+        if !matches!(v.blocks(StoryId::Body)[b as usize], Block::Paragraph(_)) {
+            continue;
+        }
+        v.set_selection(Selection::caret(at.clone()));
+        match rand(9) {
+            0 | 1 | 2 => v.insert_text("typed text "),
+            3 => v.enter(),
+            4 => v.backspace(false),
+            5 => {
+                let to = Pos::new(Path::top((b + 2).min(n as u32 - 1)), 0);
+                if matches!(v.blocks(StoryId::Body)[to.path.block() as usize], Block::Paragraph(_)) {
+                    v.set_selection(Selection { anchor: at, focus: to });
+                    v.backspace(false);
+                }
+            }
+            6 => v.page_break(),
+            7 => {
+                v.undo();
+            }
+            _ => {
+                v.redo();
+            }
+        }
+        if step == 20 {
+            v.insert_table(2, 2);
+        }
+        if step == 30 {
+            v.list(Some(crate::ListKind::Numbers));
+        }
+        v.layout(&mut host);
+        let mut fresh = WordView::from_document(v.doc.clone());
+        fresh.layout(&mut host);
+        assert_eq!(v.page_count(), fresh.page_count(), "page count after step {step}");
+        for page in 0..v.page_count() {
+            let a = serde_json::to_string(&v.paint(&mut host, page).items).unwrap();
+            let b = serde_json::to_string(&fresh.paint(&mut host, page).items).unwrap();
+            assert!(a == b, "page {page} differs after step {step}");
+        }
+    }
+}

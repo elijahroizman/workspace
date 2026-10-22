@@ -62,15 +62,19 @@ pub struct CellLook {
 
 /// What a layer tells the flow about its blocks.
 pub trait Resolver {
-    /// How the paragraph at `path` looks, laid out at `width`.
-    fn para(&mut self, ctx: &mut Ctx, path: &Path, p: &Paragraph, width: f64) -> (ParaSpec, Keep);
+    /// How the paragraph at `path` looks, laid out at `width`. Shared, so a layer can keep and
+    /// hand back the same spec while the paragraph doesn't change.
+    fn para(&mut self, ctx: &mut Ctx, path: &Path, p: &Paragraph, width: f64) -> (Arc<ParaSpec>, Keep);
     /// How the table at `path` looks in a column `width` wide.
     fn table(&mut self, path: &Path, t: &Table, width: f64) -> TableLook;
 }
 
-/// Laid-out paragraphs, by what decided their layout.
+/// Laid-out paragraphs: by spec (a layer hands back the same shared spec while a paragraph
+/// doesn't change, so most lookups are a pointer), and by what decided their layout (for a spec
+/// made again, or two paragraphs alike).
 #[derive(Default)]
 pub struct Cache {
+    by_spec: HashMap<(usize, u64), (Arc<ParaSpec>, Arc<ParaLayout>, u32)>,
     paras: HashMap<u64, (Arc<ParaLayout>, u32)>,
     generation: u32,
 }
@@ -86,23 +90,39 @@ impl Cache {
         if self.generation % 8 == 0 {
             let keep = self.generation.saturating_sub(8);
             self.paras.retain(|_, (_, g)| *g >= keep);
+            self.by_spec.retain(|_, (_, _, g)| *g >= keep);
         }
     }
 
     /// Forgets everything (fonts changed: every measurement may be different now).
     pub fn clear(&mut self) {
         self.paras.clear();
+        self.by_spec.clear();
     }
 
-    pub fn layout(&mut self, ctx: &mut Ctx, spec: &ParaSpec, width: f64) -> Arc<ParaLayout> {
-        let key = spec.key(width);
+    pub fn layout(&mut self, ctx: &mut Ctx, spec: &Arc<ParaSpec>, width: f64) -> Arc<ParaLayout> {
         let generation = self.generation;
-        if let Some((l, g)) = self.paras.get_mut(&key) {
-            *g = generation;
-            return l.clone();
+        // The entry holds the spec, so its address can't be reused by another while it's here.
+        let ptr = (Arc::as_ptr(spec) as usize, width.to_bits());
+        if let Some((s, l, g)) = self.by_spec.get_mut(&ptr) {
+            if Arc::ptr_eq(s, spec) {
+                *g = generation;
+                return l.clone();
+            }
         }
-        let l = Arc::new(para::layout(ctx, spec, width));
-        self.paras.insert(key, (l.clone(), generation));
+        let key = spec.key(width);
+        let l = match self.paras.get_mut(&key) {
+            Some((l, g)) => {
+                *g = generation;
+                l.clone()
+            }
+            None => {
+                let l = Arc::new(para::layout(ctx, spec, width));
+                self.paras.insert(key, (l.clone(), generation));
+                l
+            }
+        };
+        self.by_spec.insert(ptr, (spec.clone(), l.clone(), generation));
         l
     }
 }
@@ -178,37 +198,86 @@ pub fn layout(ctx: &mut Ctx, cache: &mut Cache, resolver: &mut dyn Resolver, blo
 /// Lays out `blocks`, the story's blocks from index `first` on (a Word section's share of the body).
 pub fn layout_from(ctx: &mut Ctx, cache: &mut Cache, resolver: &mut dyn Resolver, blocks: &[Block], container: &[u32], first: u32, width: f64) -> FlowLayout {
     let mut out = Vec::with_capacity(blocks.len());
+    for (i, block) in blocks.iter().enumerate() {
+        let mut path = container.to_vec();
+        path.push(first + i as u32);
+        out.push(layout_block(ctx, cache, resolver, block, Path(path), width));
+    }
+    let height = restack(&mut out);
+    FlowLayout { blocks: out, height }
+}
+
+/// Lays out one block at `path`, at the top of the flow (see [`restack`] for placing it).
+pub fn layout_block(ctx: &mut Ctx, cache: &mut Cache, resolver: &mut dyn Resolver, block: &Block, path: Path, width: f64) -> BlockBox {
+    match block {
+        Block::Paragraph(p) => {
+            let (spec, keep) = resolver.para(ctx, &path, p, width);
+            let layout = cache.layout(ctx, &spec, width);
+            BlockBox::Para(ParaBox { path, spec, layout, keep, y: 0.0 })
+        }
+        Block::Table(t) => {
+            let look = resolver.table(&path, t, width);
+            BlockBox::Table(table(ctx, cache, resolver, t, &look, &path, 0.0))
+        }
+        Block::Raw { .. } => BlockBox::Empty { path },
+    }
+}
+
+/// Places laid-out blocks one under another (Word adds the space after one paragraph and the
+/// space before the next) and answers the flow's height.
+pub fn restack(blocks: &mut [BlockBox]) -> f64 {
     let mut y = 0.0;
     let mut prev_after = 0.0;
-    for (i, block) in blocks.iter().enumerate() {
-        let i = i + first as usize;
-        let mut path = container.to_vec();
-        path.push(i as u32);
-        let path = Path(path);
-        match block {
-            Block::Paragraph(p) => {
-                let (spec, keep) = resolver.para(ctx, &path, p, width);
-                let layout = cache.layout(ctx, &spec, width);
-                // Word adds the space after one paragraph and before the next.
-                y += prev_after + spec.space_before;
-                prev_after = spec.space_after;
-                let top = y;
-                y += layout.height;
-                out.push(BlockBox::Para(ParaBox { path, spec: Arc::new(spec), layout, keep, y: top }));
+    for b in blocks {
+        match b {
+            BlockBox::Para(p) => {
+                y += prev_after + p.spec.space_before;
+                prev_after = p.spec.space_after;
+                p.y = y;
+                y += p.layout.height;
             }
-            Block::Table(t) => {
+            BlockBox::Table(t) => {
                 y += prev_after;
                 prev_after = 0.0;
-                let look = resolver.table(&path, t, width);
-                let tb = table(ctx, cache, resolver, t, &look, &path, y);
-                y += tb.height;
-                out.push(BlockBox::Table(tb));
+                t.y = y;
+                y += t.height;
             }
-            Block::Raw { .. } => out.push(BlockBox::Empty { path }),
+            BlockBox::Empty { .. } => {}
         }
     }
-    y += prev_after;
-    FlowLayout { blocks: out, height: y }
+    y + prev_after
+}
+
+impl BlockBox {
+    pub fn path(&self) -> &Path {
+        match self {
+            BlockBox::Para(p) => &p.path,
+            BlockBox::Table(t) => &t.path,
+            BlockBox::Empty { path } => path,
+        }
+    }
+
+    /// Moves the block `delta` places in its story: the first number of its path, and of every
+    /// path inside it, changes by `delta`.
+    pub fn shift(&mut self, delta: i64) {
+        fn shift_path(p: &mut Path, delta: i64) {
+            if let Some(first) = p.0.first_mut() {
+                *first = (*first as i64 + delta).max(0) as u32;
+            }
+        }
+        match self {
+            BlockBox::Para(p) => shift_path(&mut p.path, delta),
+            BlockBox::Empty { path } => shift_path(path, delta),
+            BlockBox::Table(t) => {
+                shift_path(&mut t.path, delta);
+                for cell in &mut t.cells {
+                    for b in &mut cell.content.blocks {
+                        b.shift(delta);
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn table(ctx: &mut Ctx, cache: &mut Cache, resolver: &mut dyn Resolver, t: &Table, look: &TableLook, path: &Path, y: f64) -> TableBox {
@@ -350,10 +419,10 @@ mod tests {
 
     struct Plain(StyleId);
     impl Resolver for Plain {
-        fn para(&mut self, _: &mut Ctx, _: &Path, p: &Paragraph, _: f64) -> (ParaSpec, Keep) {
+        fn para(&mut self, _: &mut Ctx, _: &Path, p: &Paragraph, _: f64) -> (Arc<ParaSpec>, Keep) {
             let mut spec = ParaSpec::plain(&p.plain_text(), self.0);
             spec.space_after = 5.0;
-            (spec, Keep::default())
+            (Arc::new(spec), Keep::default())
         }
         fn table(&mut self, _: &Path, t: &Table, _: f64) -> TableLook {
             TableLook {

@@ -109,11 +109,15 @@ fn story_height(view: &mut WordView, host: &mut dyn Measurer, story: Option<usiz
     let blocks = word(&view.doc).and_then(|wd| wd.headers.get(i)).map(|s| s.blocks.clone()).unwrap_or_default();
     let labels = Default::default();
     let mut ctx = office_engine::para::Ctx { host, measure: &mut view.measure, styles: &mut view.styles };
-    let mut r = super::resolve::WordResolver { doc: &view.doc, extras: &view.extras, story: &blocks, labels: &labels, fields: Some(super::resolve::PageFields { page: 1, pages: 1 }) };
+    let mut r = super::resolve::WordResolver { doc: &view.doc, extras: &view.extras, story: &blocks, labels: &labels, fields: Some(super::resolve::PageFields { page: 1, pages: 1 }), specs: &mut view.specs };
     office_engine::flow::layout(&mut ctx, &mut view.cache, &mut r, &blocks, &[], w).height
 }
 
 pub(super) fn paginate(view: &mut WordView, host: &mut dyn Measurer) -> Vec<Page> {
+    let mut heights: std::collections::HashMap<(Option<usize>, u64), f64> = Default::default();
+    let mut story_height = |view: &mut WordView, host: &mut dyn Measurer, story: Option<usize>, w: f64| -> f64 {
+        *heights.entry((story, w.to_bits())).or_insert_with(|| story_height(view, host, story, w))
+    };
     let mut pages: Vec<Page> = Vec::new();
     let mut inherited: [Vec<(String, usize)>; 2] = [Vec::new(), Vec::new()];
     for si in 0..view.sections.len() {
@@ -142,20 +146,12 @@ pub(super) fn paginate(view: &mut WordView, host: &mut dyn Measurer) -> Vec<Page
             find("default")
         };
         let text_w = emu_px(section.text_width()).max(24.0);
-        let flow = view.sections[si].flow.clone();
-        let units = units(&flow);
+        let units = units(&view.sections[si].flow);
+        let flow_height = view.sections[si].flow.height;
         let mut page_top = units.first().map(|u| u.top).unwrap_or(0.0);
         let mut first_unit = 0;
         let mut i = 0;
         let mut index_in_section = 0;
-        let make_page = |view: &mut WordView, host: &mut dyn Measurer, top: f64, bottom: f64, n: usize, pages: &mut Vec<Page>| {
-            let number = pages.len() as u32 + 1;
-            let header = pick(&stories[0], n == 0, number % 2 == 0);
-            let footer = pick(&stories[1], n == 0, number % 2 == 0);
-            let hh = story_height(view, host, header, text_w);
-            let body_y = emu_px(section.margin_top).max(if hh > 0.0 { emu_px(section.header) + hh } else { 0.0 });
-            pages.push(Page { section: si, number, width: w, height: h, top, bottom, body_x: emu_px(section.margin_left), body_y, header, footer });
-        };
         // The body's height on a page of this section (headers and footers measured on the
         // first page; they're the same height on nearly every page).
         let first_header = pick(&stories[0], true, false);
@@ -165,6 +161,14 @@ pub(super) fn paginate(view: &mut WordView, host: &mut dyn Measurer) -> Vec<Page
         let top_margin = emu_px(section.margin_top).max(if hh > 0.0 { emu_px(section.header) + hh } else { 0.0 });
         let bottom_margin = emu_px(section.margin_bottom).max(if fh > 0.0 { emu_px(section.footer) + fh } else { 0.0 });
         let avail = (h - top_margin - bottom_margin).max(24.0);
+        let mut make_page = |view: &mut WordView, host: &mut dyn Measurer, top: f64, bottom: f64, n: usize, pages: &mut Vec<Page>| {
+            let number = pages.len() as u32 + 1;
+            let header = pick(&stories[0], n == 0, number % 2 == 0);
+            let footer = pick(&stories[1], n == 0, number % 2 == 0);
+            let hh = story_height(view, host, header, text_w);
+            let body_y = emu_px(section.margin_top).max(if hh > 0.0 { emu_px(section.header) + hh } else { 0.0 });
+            pages.push(Page { section: si, number, width: w, height: h, top, bottom, body_x: emu_px(section.margin_left), body_y, header, footer });
+        };
         while i < units.len() {
             let u = &units[i];
             let starts_page = i == first_unit;
@@ -193,8 +197,8 @@ pub(super) fn paginate(view: &mut WordView, host: &mut dyn Measurer) -> Vec<Page
             }
             i += 1;
         }
-        if index_in_section == 0 || page_top < flow.height - 0.01 || units.last().is_some_and(|u| u.break_after) {
-            make_page(view, host, page_top, flow.height.max(page_top), index_in_section, &mut pages);
+        if index_in_section == 0 || page_top < flow_height - 0.01 || units.last().is_some_and(|u| u.break_after) {
+            make_page(view, host, page_top, flow_height.max(page_top), index_in_section, &mut pages);
         }
     }
     if pages.is_empty() {

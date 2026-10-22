@@ -126,8 +126,8 @@ impl WordView {
     /// The selection for a picture under a point, if there is one.
     fn image_at(&mut self, host: &mut dyn Measurer, page: usize, x: f64, y: f64) -> Option<Selection> {
         let at = self.hit(host, page, x, y)?;
-        let blocks = self.blocks(self.story).to_vec();
-        let p = pos::para(&blocks, &at.path)?;
+        let p = pos::para(self.blocks(self.story), &at.path)?.clone();
+        let p = &p;
         let (pb, dx, dy) = self.find_box(host, &at.path)?;
         let (_, py0) = self.box_page_origin(&at.path, dy + pb.y);
         let fx = x - self.page_body_x(page) - dx;
@@ -201,28 +201,27 @@ impl WordView {
 
     /// Moves the caret, or the selection's focus with `extend`.
     pub fn move_caret(&mut self, host: &mut dyn Measurer, m: Move, extend: bool) {
-        let blocks = self.blocks(self.story).to_vec();
         let focus = self.sel.focus.clone();
         let collapse = !extend && !self.sel.is_collapsed();
         let goal = self.goal_x;
         let target = match m {
             Move::Left if collapse => self.sel.start().clone(),
             Move::Right if collapse => self.sel.end().clone(),
-            Move::Left => step_char(&blocks, &focus, false),
-            Move::Right => step_char(&blocks, &focus, true),
+            Move::Left => step_char(self.blocks(self.story), &focus, false),
+            Move::Right => step_char(self.blocks(self.story), &focus, true),
             Move::WordLeft | Move::WordRight => {
                 let forward = m == Move::WordRight;
-                let p = pos::para(&blocks, &focus.path).cloned().unwrap_or_default();
-                let flat = text::flat(&p);
+                let blocks = self.blocks(self.story);
+                let flat = pos::para(blocks, &focus.path).map(text::flat).unwrap_or_default();
                 let at_edge = if forward { focus.offset as usize >= flat.text.len() } else { focus.offset == 0 };
                 if at_edge {
-                    step_char(&blocks, &focus, forward)
+                    step_char(blocks, &focus, forward)
                 } else {
                     Pos::new(focus.path.clone(), para::word_move(&flat.text, focus.offset, forward))
                 }
             }
             Move::Up | Move::Down => {
-                let Some(t) = self.vertical(host, &blocks, &focus, m == Move::Down, goal) else { return };
+                let Some(t) = self.vertical(host, &focus, m == Move::Down, goal) else { return };
                 let keep_goal = self.goal_x;
                 self.apply_move(t, extend);
                 self.goal_x = keep_goal;
@@ -244,8 +243,8 @@ impl WordView {
                 };
                 Pos::new(focus.path.clone(), off)
             }
-            Move::DocStart => pos::story_start(&blocks).unwrap_or(focus.clone()),
-            Move::DocEnd => pos::story_end(&blocks).unwrap_or(focus.clone()),
+            Move::DocStart => pos::story_start(self.blocks(self.story)).unwrap_or(focus.clone()),
+            Move::DocEnd => pos::story_end(self.blocks(self.story)).unwrap_or(focus.clone()),
             Move::PageUp | Move::PageDown => {
                 let ov = self.overlay(host);
                 let Some((page, x, y, _)) = ov.caret else { return };
@@ -269,7 +268,7 @@ impl WordView {
     }
 
     /// The position a line up or down from `at`, aiming at the same x.
-    fn vertical(&mut self, host: &mut dyn Measurer, blocks: &[Block], at: &Pos, down: bool, goal: Option<f64>) -> Option<Pos> {
+    fn vertical(&mut self, host: &mut dyn Measurer, at: &Pos, down: bool, goal: Option<f64>) -> Option<Pos> {
         let (pb, dx, _) = self.find_box(host, &at.path)?;
         let mut ctx = Ctx { host, measure: &mut self.measure, styles: &mut self.styles };
         let (cx, li) = pb.layout.caret(&mut ctx, &pb.spec, at.offset, false);
@@ -280,9 +279,10 @@ impl WordView {
             let off = pb.layout.offset_at(&mut ctx, &pb.spec, next_line, x - dx);
             return Some(Pos::new(at.path.clone(), off));
         }
+        let blocks = self.blocks(self.story);
         let other = if down { pos::next_para(blocks, &at.path) } else { pos::prev_para(blocks, &at.path) };
         let Some(other) = other else {
-            return Some(if down { pos::story_end(blocks)? } else { pos::story_start(blocks)? });
+            return if down { pos::story_end(blocks) } else { pos::story_start(blocks) };
         };
         let (ob, odx, _) = self.find_box(host, &other)?;
         let line = if down { 0 } else { ob.layout.lines.len() - 1 };
@@ -299,6 +299,12 @@ impl WordView {
             self.sel = sel;
         }
         let story = self.story;
+        if story == StoryId::Body {
+            for s in &splices {
+                self.dirty.note(s, false);
+            }
+            self.unrecorded = false;
+        }
         let steps = splices.into_iter().map(|s| WStep::Text(story, s)).collect();
         self.history.record(steps, before, (self.story, self.sel.clone()), kind);
         self.stale = true;
@@ -313,7 +319,9 @@ impl WordView {
         let Some(e) = self.history.undo() else { return false };
         for step in e.steps.iter().rev() {
             self.undo_step(step);
+            self.note_step(step, true);
         }
+        self.unrecorded = false;
         self.story = e.before.0;
         self.sel = self.clamp(e.before.1);
         self.stale = true;
@@ -324,7 +332,9 @@ impl WordView {
         let Some(e) = self.history.redo() else { return false };
         for step in &e.steps {
             self.redo_step(step);
+            self.note_step(step, false);
         }
+        self.unrecorded = false;
         self.story = e.after.0;
         self.sel = self.clamp(e.after.1);
         self.stale = true;
@@ -345,8 +355,18 @@ impl WordView {
         }
     }
 
+    /// Notes what an undone or redone step changed in the body.
+    fn note_step(&mut self, step: &WStep, undo: bool) {
+        match step {
+            WStep::Text(StoryId::Body, s) => self.dirty.note(s, undo),
+            WStep::Text(..) => {}
+            WStep::Origin { .. } => self.dirty = super::Dirty::Full,
+        }
+    }
+
     fn set_origin(&mut self, block: Option<u32>, origin: Origin) {
         self.stale = true;
+        self.dirty = super::Dirty::Full;
         match block {
             None => self.doc.origin = origin,
             Some(i) => {
@@ -409,48 +429,64 @@ impl WordView {
     }
 
     fn delete_dir(&mut self, forward: bool, word: bool) {
-        let blocks = self.blocks(self.story).to_vec();
         let sel = self.sel.clone();
-        if sel.is_collapsed() {
-            let at = sel.focus.clone();
-            let Some(p) = pos::para(&blocks, &at.path) else { return };
-            let flat = text::flat(p);
-            let len = flat.text.len() as u32;
-            // Backspace at the start of a list item takes it out of the list first, as Word does.
-            if !forward && at.offset == 0 && crate::list_of(&self.doc, p).is_some_and(|(n, _)| n != "0") && self.story == StoryId::Body {
-                self.list(None);
-                return;
-            }
-            let other = if forward && at.offset >= len {
-                pos::next_para(&blocks, &at.path).filter(|n| n.container() == at.path.container() && n.block() == at.path.block() + 1).map(|n| Pos::new(n, 0))
-            } else if !forward && at.offset == 0 {
-                pos::prev_para(&blocks, &at.path)
-                    .filter(|n| n.container() == at.path.container() && n.block() + 1 == at.path.block())
-                    .map(|n| {
-                        let l = pos::para(&blocks, &n).map(text::len).unwrap_or(0);
-                        Pos::new(n, l)
-                    })
-            } else {
-                let off = match (forward, word) {
-                    (true, true) => para::word_move(&flat.text, at.offset, true),
-                    (false, true) => para::word_move(&flat.text, at.offset, false),
-                    (true, false) => para::next_boundary(&flat.text, at.offset),
-                    (false, false) => para::prev_boundary(&flat.text, at.offset),
-                };
-                Some(Pos::new(at.path.clone(), off))
-            };
-            let Some(other) = other else { return };
-            if other == at {
-                return;
-            }
-            let range = Selection { anchor: at, focus: other };
-            let root = self.blocks_mut(self.story);
-            let e = edit::delete(root, &range);
-            self.apply_edit(e, if word { None } else { Some("deleting") });
-        } else {
+        if !sel.is_collapsed() {
             let root = self.blocks_mut(self.story);
             let e = edit::delete(root, &sel);
             self.apply_edit(e, None);
+            return;
+        }
+        let at = sel.focus.clone();
+        // What to delete, worked out from the story before changing it.
+        enum Plan {
+            Unlist,
+            Range(Pos),
+            Nothing,
+        }
+        let plan = {
+            let blocks = self.blocks(self.story);
+            match pos::para(blocks, &at.path) {
+                None => Plan::Nothing,
+                Some(p) => {
+                    let flat = text::flat(p);
+                    let len = flat.text.len() as u32;
+                    if !forward && at.offset == 0 && self.story == StoryId::Body && crate::list_of(&self.doc, p).is_some_and(|(n, _)| n != "0") {
+                        // Backspace at the start of a list item takes it out of the list first, as Word does.
+                        Plan::Unlist
+                    } else if forward && at.offset >= len {
+                        match pos::next_para(blocks, &at.path).filter(|n| n.container() == at.path.container() && n.block() == at.path.block() + 1) {
+                            Some(n) => Plan::Range(Pos::new(n, 0)),
+                            None => Plan::Nothing,
+                        }
+                    } else if !forward && at.offset == 0 {
+                        match pos::prev_para(blocks, &at.path).filter(|n| n.container() == at.path.container() && n.block() + 1 == at.path.block()) {
+                            Some(n) => {
+                                let l = pos::para(blocks, &n).map(text::len).unwrap_or(0);
+                                Plan::Range(Pos::new(n, l))
+                            }
+                            None => Plan::Nothing,
+                        }
+                    } else {
+                        let off = match (forward, word) {
+                            (true, true) => para::word_move(&flat.text, at.offset, true),
+                            (false, true) => para::word_move(&flat.text, at.offset, false),
+                            (true, false) => para::next_boundary(&flat.text, at.offset),
+                            (false, false) => para::prev_boundary(&flat.text, at.offset),
+                        };
+                        Plan::Range(Pos::new(at.path.clone(), off))
+                    }
+                }
+            }
+        };
+        match plan {
+            Plan::Unlist => self.list(None),
+            Plan::Range(other) if other != at => {
+                let range = Selection { anchor: at, focus: other };
+                let root = self.blocks_mut(self.story);
+                let e = edit::delete(root, &range);
+                self.apply_edit(e, if word { None } else { Some("deleting") });
+            }
+            _ => {}
         }
     }
 
@@ -718,12 +754,11 @@ impl WordView {
         self.begin_group();
         for path in paths {
             let Some(index) = body_index(&blocks, &path) else { continue };
-            let before = blocks_flat(&self.doc);
-            let level = pos::para(&blocks, &path).and_then(|p| p.props.level).unwrap_or(0);
+            let Some(before) = pos::para(self.blocks(StoryId::Body), &path).cloned() else { continue };
+            let level = before.props.level.unwrap_or(0);
             crate::set_list(&mut self.doc, index, num.as_deref().map(|n| (n, level)));
-            let after = blocks_flat(&self.doc);
-            if let (Some(b), Some(a)) = (before.get(index), after.get(index)) {
-                let s = Splice { container: path.container().to_vec(), index: path.block(), removed: vec![Block::Paragraph((*b).clone())], inserted: vec![Block::Paragraph((*a).clone())] };
+            if let Some(after) = pos::para(self.blocks(StoryId::Body), &path).cloned() {
+                let s = Splice { container: path.container().to_vec(), index: path.block(), removed: vec![Block::Paragraph(before)], inserted: vec![Block::Paragraph(after)] };
                 self.record(vec![s], None, None);
             }
         }
@@ -757,6 +792,7 @@ impl WordView {
                     }
                 }
             }
+            self.dirty = super::Dirty::Full;
             self.stale = true;
         } else {
             let step = Emu::from_inches(0.5).0;
@@ -1318,6 +1354,7 @@ impl WordView {
         }
         let before = (self.story, self.sel.clone());
         self.history.record(steps, before.clone(), before, None);
+        self.dirty = super::Dirty::Full;
         self.stale = true;
     }
 
@@ -1456,6 +1493,7 @@ impl WordView {
         let story = crate::Story { kind, part, blocks: vec![Block::Paragraph(Paragraph::default())] };
         w.read.0.push(story.clone());
         w.headers.push(story);
+        self.dirty = super::Dirty::Full;
         self.stale = true;
         Some(w.headers.len() - 1)
     }
@@ -1516,10 +1554,6 @@ fn body_index(blocks: &[Block], path: &Path) -> Option<usize> {
         at = pos::next_para(blocks, &p);
     }
     None
-}
-
-fn blocks_flat(doc: &office_core::model::Document) -> Vec<Paragraph> {
-    crate::paragraphs(doc).into_iter().cloned().collect()
 }
 
 fn find_mut<'a>(el: &'a mut Element, ns_: &str, local: &str) -> Option<&'a mut Element> {

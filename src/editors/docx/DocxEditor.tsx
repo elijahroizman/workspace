@@ -59,7 +59,7 @@ import {
   useHyperlinkPopup,
   usePageSetup,
   useParagraphStyle,
-  useWordState,
+  useWordSelector,
   useZoom,
 } from '../../engine/word/react'
 import { usePinchZoom } from '../../lib/pinch'
@@ -317,7 +317,7 @@ function runSlot(editor: WordEngine | null, slot: Parameters<typeof slotCommand>
 
 /** Whether text is selected, kept current as the selection moves. */
 function useHasSelectedText() {
-  return !!useWordState()?.hasSelection
+  return useWordSelector((e) => e.state.hasSelection, false)
 }
 
 /** Edit the header or footer on the page in view, creating it if the page has none. */
@@ -993,7 +993,7 @@ async function printPages(editor: WordEngine | null) {
   style.textContent = `@page { size: ${sizes[0][0]}px ${sizes[0][1]}px; margin: 0; }`
   root.appendChild(style)
   for (let i = 0; i < sizes.length; i++) {
-    const p = editor.paint(i)
+    const p = editor.paint(i, true)!
     const wrap = document.createElement('div')
     wrap.className = 'print-page docx-print-page'
     const page = document.createElement('div')

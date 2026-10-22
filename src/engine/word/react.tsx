@@ -367,20 +367,47 @@ export function useDocxEditor(): WordEngine | null {
 }
 
 const NO_SUB = () => () => {}
-const ZERO = () => 0
 
-/** The engine's state, kept current. */
-export function useWordState(): WordState | null {
+/** Equal, or objects whose own values are all equal (one level deep). */
+function shallowEqual(a: unknown, b: unknown) {
+  if (Object.is(a, b)) return true
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false
+  const ka = Object.keys(a)
+  if (ka.length !== Object.keys(b).length) return false
+  return ka.every((k) => Object.is((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
+}
+
+/**
+ * Part of the engine's state, kept current: the component re-renders only when what `pick`
+ * returns changes (compared one level deep), not on every keystroke.
+ */
+export function useWordSelector<T>(pick: (engine: WordEngine) => T, fallback: T): T {
   const { engine } = useCtx()
-  useSyncExternalStore(engine?.subscribe ?? NO_SUB, engine?.getTick ?? ZERO)
-  return engine?.state ?? null
+  const last = useRef<{ tick: number; engine: WordEngine | null; value: T } | null>(null)
+  const pickRef = useRef(pick)
+  pickRef.current = pick
+  const snapshot = () => {
+    if (!engine) return fallback
+    const prev = last.current
+    if (prev && prev.engine === engine && prev.tick === engine.tick) return prev.value
+    const value = pickRef.current(engine)
+    if (prev && prev.engine === engine && shallowEqual(prev.value, value)) {
+      last.current = { tick: engine.tick, engine, value: prev.value }
+      return prev.value
+    }
+    last.current = { tick: engine.tick, engine, value }
+    return value
+  }
+  return useSyncExternalStore(engine?.subscribe ?? NO_SUB, snapshot)
+}
+
+/** The engine's whole state, re-rendering on every change. */
+export function useWordState(): WordState | null {
+  return useWordSelector((e) => ({ ...e.state, tick: e.tick }), null)
 }
 
 export function useEditorState<T>(pick: (s: { page: WordState['page'] | null; selection: number; image: WordState['image']; table: WordState['table'] }) => T): T {
-  const { engine } = useCtx()
-  const tick = useSyncExternalStore(engine?.subscribe ?? NO_SUB, engine?.getTick ?? ZERO)
-  const s = engine?.state
-  return pick({ page: s?.page ?? null, selection: tick, image: s?.image ?? null, table: s?.table ?? null })
+  return useWordSelector((e) => pick({ page: e.state.page, selection: e.tick, image: e.state.image, table: e.state.table }), pick({ page: null, selection: 0, image: null, table: null }))
 }
 
 /** Runs `f` after each change to the document (not caret moves). */
@@ -508,7 +535,10 @@ export function slotCommand(engine: WordEngine | null, slot: Slot) {
 
 export function useEditorCommand(slot: Slot) {
   const engine = useDocxEditor()
-  useWordState()
+  useWordSelector((e) => {
+    const c = slotCommand(e, slot)
+    return `${c.isActive}|${c.isEnabled}`
+  }, '')
   return slotCommand(engine, slot)
 }
 
@@ -525,7 +555,7 @@ export function useEditorValueCommand(slot: 'font.size' | 'list.lineSpacing'): V
 export function useEditorValueCommand(slot: 'text.color' | 'text.highlight'): ValueCommand<string>
 export function useEditorValueCommand(slot: 'font.size' | 'text.color' | 'text.highlight' | 'list.lineSpacing'): ValueCommand<number> | ValueCommand<string> {
   const engine = useDocxEditor()
-  const s = useWordState()
+  const s = useWordSelector((e) => ({ size: e.state.size, lineSpacing: e.state.lineSpacing, color: e.state.color, highlight: e.state.highlight }), null)
   const isEnabled = !!s
   switch (slot) {
     case 'font.size':
@@ -541,9 +571,9 @@ export function useEditorValueCommand(slot: 'font.size' | 'text.color' | 'text.h
 
 export function useParagraphStyle() {
   const engine = useDocxEditor()
-  const s = useWordState()
+  const style = useWordSelector((e) => e.state.style, null)
   const options = useMemo(() => (engine ? (JSON.parse(engine.doc.styleOptions()) as { styleId: string; name: string }[]) : []), [engine])
-  return { value: s?.style ?? null, options, isEnabled: !!s, setValue: (id: string) => engine?.run({ cmd: 'style', id }) }
+  return { value: style, options, isEnabled: !!engine, setValue: (id: string) => engine?.run({ cmd: 'style', id }) }
 }
 
 /** Fonts every Mac and Windows computer has, or the app brings an equivalent of. */
@@ -551,17 +581,18 @@ const COMMON_FONTS = ['Calibri', 'Cambria', 'Arial', 'Times New Roman', 'Courier
 
 export function useFontFamily(extras: string[] = []) {
   const engine = useDocxEditor()
-  const s = useWordState()
+  const font = useWordSelector((e) => e.state.font, null)
   const options = useMemo(() => {
     const doc = engine ? (JSON.parse(engine.doc.documentFonts()) as string[]) : []
     return [...new Set([...COMMON_FONTS, ...doc, ...extras])]
   }, [engine, extras])
-  return { value: s?.font ?? null, options, isEnabled: !!s, setValue: (family: string) => engine?.run({ cmd: 'font', family }) }
+  return { value: font, options, isEnabled: !!engine, setValue: (family: string) => engine?.run({ cmd: 'font', family }) }
 }
 
 export function useHeaderFooterState() {
-  const s = useWordState()
-  return s ? { editing: s.headerFooter } : null
+  const editing = useWordSelector((e) => e.state.headerFooter, null)
+  const engine = useDocxEditor()
+  return engine ? { editing } : null
 }
 
 export interface PageSetup {
@@ -573,8 +604,9 @@ export interface PageSetup {
 
 export function usePageSetup() {
   const engine = useDocxEditor()
-  const s = useWordState()
-  const pageSetup = engine && s ? (JSON.parse(engine.doc.pageSetup()) as PageSetup) : null
+  // Page setup only changes with the document (or the caret moving to another section).
+  const pageSetup = useWordSelector((e) => e.doc.pageSetup(), null)
+  const s = useWordSelector((e) => ({ headerFooter: e.state.headerFooter }), null)
   const apply = (p: { pageWidthTwips?: number; pageHeightTwips?: number; orientation?: 'portrait' | 'landscape'; marginTopTwips?: number; marginBottomTwips?: number; marginLeftTwips?: number; marginRightTwips?: number; scope?: string }) =>
     engine?.run({
       cmd: 'pageSetup',
@@ -586,7 +618,7 @@ export function usePageSetup() {
       left: p.marginLeftTwips ?? null,
       right: p.marginRightTwips ?? null,
     })
-  return { pageSetup, apply, isEnabled: !!s && !s.headerFooter }
+  return { pageSetup: pageSetup ? (JSON.parse(pageSetup) as PageSetup) : null, apply, isEnabled: !!s && !s.headerFooter }
 }
 
 export function useDocumentOutline() {
@@ -605,16 +637,15 @@ export function useDocumentOutline() {
   })
   useEffect(() => () => window.clearTimeout(timer.current), [])
   // The heading the caret is under.
-  const s = useWordState()
-  const selectedBlockId = useMemo(() => {
-    if (!engine || !s || !items.length) return null
-    const sel = JSON.parse(engine.doc.selection()) as { focus: [number[], number]; body: boolean }
+  const selectedBlockId = useWordSelector((e) => {
+    if (!items.length) return null
+    const sel = JSON.parse(e.doc.selection()) as { focus: [number[], number]; body: boolean }
     if (!sel.body) return null
     const top = sel.focus[0][0]
     let best: string | null = null
     for (const it of items) if (Number(it.heading.blockId.split('.')[0]) <= top) best = it.heading.blockId
     return best
-  }, [engine, s, items])
+  }, null)
   return {
     items,
     isEmpty: !items.length,

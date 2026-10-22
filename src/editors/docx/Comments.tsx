@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Button, Hint, IconButton, Section, TextField } from '../../components/ui'
 import { withKeys } from '../../state/shortcuts'
 import type { Anchor, Note, Thread } from './commentXml'
-import { hasComments, initialsOf, nearest, newParaId, readComments, writeComments } from './commentXml'
+import { initialsOf, nearest, newParaId, readComments, writeComments } from './commentXml'
 
 type Paragraphs = readonly { paraId?: string; text: string }[]
 
@@ -94,7 +94,7 @@ export class CommentStore {
     this.draft = null
     this.touched = false
     this.loading = (async () => {
-      if (!original || !(await hasComments(original).catch(() => false))) return
+      if (!original || !editor.hasComments()) return
       // Read them from the engine's own save, whose paragraph ids are the ones it uses.
       const loaded = await readComments(new Uint8Array(await editor.save()))
       // Keep anything posted while the file's comments were still being read.

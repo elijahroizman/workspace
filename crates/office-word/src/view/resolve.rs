@@ -2,6 +2,8 @@
 //! engine lays out.
 
 use std::collections::HashMap;
+use std::hash::Hash;
+use std::sync::Arc;
 
 use office_core::drawing::{Color, Rgb, Rgba, Theme};
 use office_core::formats::docx::val;
@@ -55,6 +57,34 @@ pub struct WordResolver<'a> {
     /// List labels by paragraph path, for this story.
     pub labels: &'a HashMap<Path, String>,
     pub fields: Option<PageFields>,
+    /// Specs worked out before, by what they were worked out from (see [`spec_key`]).
+    pub specs: &'a mut SpecCache,
+}
+
+/// Paragraph specs by [`WordResolver::spec_key`], and table looks by what decides them, each
+/// with the pass that last used it.
+#[derive(Default)]
+pub struct SpecCache {
+    map: HashMap<u64, (Arc<ParaSpec>, Keep, u32)>,
+    tables: HashMap<u64, (TableLook, u32)>,
+    pass: u32,
+}
+
+impl SpecCache {
+    /// Starts a layout pass; specs no pass has used for a while are dropped.
+    pub fn next_pass(&mut self) {
+        self.pass += 1;
+        if self.pass % 16 == 0 {
+            let keep = self.pass.saturating_sub(16);
+            self.map.retain(|_, (_, _, p)| *p >= keep);
+            self.tables.retain(|_, (_, p)| *p >= keep);
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.map.clear();
+        self.tables.clear();
+    }
 }
 
 /// Word's font when nothing names one.
@@ -281,9 +311,67 @@ fn page_field(instr: &str, fields: Option<PageFields>) -> Option<String> {
     }
 }
 
+impl WordResolver<'_> {
+    /// Everything a paragraph's spec depends on: its content and properties, where it is (list
+    /// labels, table-style parts and neighbors' styles depend on that), and the page numbers its
+    /// fields show.
+    fn spec_key(&self, path: &Path, p: &Paragraph) -> u64 {
+        let mut h = super::fingerprint::Fnv::default();
+        super::fingerprint::paragraph(&mut h, p);
+        path.0.hash(&mut h);
+        self.labels.get(path).hash(&mut h);
+        for delta in [-1, 1] {
+            self.sibling(path, delta).map(|q| (&q.props.style, q.origin.id())).hash(&mut h);
+        }
+        self.fields.map(|f| (f.page, f.pages)).hash(&mut h);
+        if let Some((table_path, _, _)) = path.cell() {
+            if let Some(Block::Table(t)) = blocks_at(self.story, table_path.container()).and_then(|b| b.get(table_path.block() as usize)) {
+                (t.rows.len(), t.columns.len(), &t.style, t.origin.id()).hash(&mut h);
+            }
+        }
+        std::hash::Hasher::finish(&h)
+    }
+}
+
 impl Resolver for WordResolver<'_> {
-    fn para(&mut self, ctx: &mut Ctx, path: &Path, p: &Paragraph, width: f64) -> (ParaSpec, Keep) {
+    fn para(&mut self, ctx: &mut Ctx, path: &Path, p: &Paragraph, width: f64) -> (Arc<ParaSpec>, Keep) {
         let _ = width;
+        let key = self.spec_key(path, p);
+        let pass = self.specs.pass;
+        if let Some((spec, keep, used)) = self.specs.map.get_mut(&key) {
+            *used = pass;
+            return (spec.clone(), *keep);
+        }
+        let (spec, keep) = self.build_spec(ctx, path, p);
+        let spec = Arc::new(spec);
+        self.specs.map.insert(key, (spec.clone(), keep, pass));
+        (spec, keep)
+    }
+
+    fn table(&mut self, path: &Path, t: &Table, width: f64) -> TableLook {
+        // A table looks the same while its shape, style, markup and cells' markup and fills do.
+        let mut h = super::fingerprint::Fnv::default();
+        (t.origin.id(), &t.style, t.columns.iter().map(|c| c.0).collect::<Vec<_>>(), width.to_bits()).hash(&mut h);
+        for row in &t.rows {
+            (row.origin.id(), row.height.map(|e| e.0), row.cells.len()).hash(&mut h);
+            for c in &row.cells {
+                (c.origin.id(), c.col_span, c.row_span, c.covered, c.fill.as_ref().map(|f| format!("{f:?}"))).hash(&mut h);
+            }
+        }
+        let key = std::hash::Hasher::finish(&h);
+        let pass = self.specs.pass;
+        if let Some((look, used)) = self.specs.tables.get_mut(&key) {
+            *used = pass;
+            return look.clone();
+        }
+        let look = self.table_look(path, t, width);
+        self.specs.tables.insert(key, (look.clone(), pass));
+        look
+    }
+}
+
+impl WordResolver<'_> {
+    fn build_spec(&mut self, ctx: &mut Ctx, path: &Path, p: &Paragraph) -> (ParaSpec, Keep) {
         let resolved = match word(self.doc) {
             Some(w) => w.styles.resolve_para(&p.props),
             None => p.props.clone(),
@@ -460,7 +548,7 @@ impl Resolver for WordResolver<'_> {
         (spec, keep)
     }
 
-    fn table(&mut self, path: &Path, t: &Table, width: f64) -> TableLook {
+    fn table_look(&mut self, path: &Path, t: &Table, width: f64) -> TableLook {
         let _ = path;
         let style = self.table_style(t);
         let ncols = t.columns.len().max(t.rows.iter().map(|r| r.cells.len()).max().unwrap_or(0)).max(1);

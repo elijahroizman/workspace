@@ -173,14 +173,20 @@ export class WordEngine {
       this.revision = force ? Math.max(revision, before + 1) : revision
     }
     this.overlay = JSON.parse(this.doc.overlay())
-    this.state = JSON.parse(this.doc.state())
+    const state = JSON.parse(this.doc.state()) as WordState & { pages: number }
+    // The page the caret (or selected picture) is on.
+    const page = this.overlay.caret?.[0] ?? this.overlay.image?.[0] ?? this.overlay.rects[0]?.[0] ?? this.state.page.current - 1
+    state.page = { current: Math.min(page, state.pages - 1) + 1, total: state.pages }
+    this.state = state
     this.tick++
     for (const f of this.listeners) f()
   }
 
-  /** Draws a page: its items as HTML, with new paint styles added to the style sheet. */
-  paint(page: number) {
-    const p = JSON.parse(this.doc.paint(page))
+  /** Draws a page: its items, with new paint styles added to the style sheet. `null` when it's
+   * drawn the same as last time (unless `force`, for a page the view dropped). */
+  paint(page: number, force = true) {
+    const p = JSON.parse(this.doc.paint(page, force))
+    if (!p) return null
     this.styles.add(p.styles)
     return p as { width: number; height: number; items: import('../paint').PaintItem[] }
   }

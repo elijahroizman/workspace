@@ -14,6 +14,8 @@ pub struct WordDoc {
     host: Host,
     /// The last find's matches, for stepping and replacing.
     matches: Vec<(Path, u32, u32)>,
+    /// A hash of each page as last drawn, so a page that didn't change isn't sent again.
+    drawn: std::collections::HashMap<usize, u64>,
 }
 
 /// A command from the editor.
@@ -74,6 +76,15 @@ enum Cmd {
     SetMarks { set: String, marks: Vec<(String, Vec<u32>, u32, u32)> },
 }
 
+fn fnv(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in bytes {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100_0000_01b3);
+    }
+    h
+}
+
 /// A UTF-16 offset into a paragraph's text as a byte offset into its flat text.
 fn byte_offset(text: &str, units: u32) -> u32 {
     let mut n = 0;
@@ -97,7 +108,7 @@ impl WordDoc {
     #[wasm_bindgen(constructor)]
     pub fn new(bytes: &[u8], host: Host) -> Result<WordDoc, JsError> {
         let view = if bytes.is_empty() { WordView::blank() } else { WordView::open(bytes).map_err(err)? };
-        Ok(WordDoc { view, host, matches: Vec::new() })
+        Ok(WordDoc { view, host, matches: Vec::new(), drawn: Default::default() })
     }
 
     /// Lays the document out and returns every page's size: `[[w, h], …]`.
@@ -108,12 +119,19 @@ impl WordDoc {
     }
 
     /// Draws a page: `{ width, height, items, styles }`, where `styles` are paint styles the
-    /// app hasn't been sent before (numbered on from the last ones sent).
-    pub fn paint(&mut self, page: usize) -> String {
+    /// app hasn't been sent before (numbered on from the last ones sent). Answers `null` when the
+    /// page is drawn the same as last time, unless `force` (the app dropped what it drew).
+    pub fn paint(&mut self, page: usize, force: bool) -> String {
         let mut m = JsMeasurer(&self.host);
         let p = self.view.paint(&mut m, page);
-        let styles = self.view.new_styles();
-        json(&serde_json::json!({ "width": p.width, "height": p.height, "items": p.items, "styles": styles }))
+        let items = json(&p.items);
+        let hash = fnv(items.as_bytes()) ^ (p.width.to_bits().rotate_left(7)) ^ p.height.to_bits();
+        if !force && self.drawn.get(&page) == Some(&hash) {
+            return "null".into();
+        }
+        self.drawn.insert(page, hash);
+        let styles = json(&self.view.new_styles());
+        format!("{{\"width\":{},\"height\":{},\"items\":{items},\"styles\":{styles}}}", p.width, p.height)
     }
 
     /// Send every paint style again with the next page drawn.
@@ -130,10 +148,8 @@ impl WordDoc {
 
     /// The toolbar and inspector state.
     pub fn state(&mut self) -> String {
-        let mut m = JsMeasurer(&self.host);
-        let page = self.view.caret_page(&mut m);
         let mut s = serde_json::to_value(self.view.state()).unwrap_or_default();
-        s["page"] = serde_json::json!({ "current": page + 1, "total": self.view.page_count() });
+        s["pages"] = serde_json::json!(self.view.page_count());
         json(&s)
     }
 
@@ -218,6 +234,12 @@ impl WordDoc {
     #[wasm_bindgen(js_name = insertImage)]
     pub fn insert_image(&mut self, bytes: Vec<u8>, content_type: &str, width: f64, height: f64) {
         self.view.insert_image(bytes, content_type, width, height);
+    }
+
+    /// Whether the document has comments.
+    #[wasm_bindgen(js_name = hasComments)]
+    pub fn has_comments(&self) -> bool {
+        office_word::word(&self.view.doc).is_some_and(|w| !w.comments.is_empty())
     }
 
     pub fn dirty(&self) -> bool {

@@ -2,7 +2,7 @@
 // only while they're near the screen, with the caret and selection over them and a hidden text
 // field taking the keyboard (and the input method's composition, which shows at the caret).
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { isMac, openExternal, shortcut } from '../../lib/platform'
 import { itemsHtml } from '../paint'
 import type { WordEngine } from './engine'
@@ -31,6 +31,9 @@ export function Pages({ engine, zoom, scroller }: Props) {
   const [, setTick] = useState(0)
   const composing = useRef(false)
   const scrollAfter = useRef(false)
+  /** The viewport's scroll position and height, read on scroll and resize (never right after a
+   * DOM change, which would make the browser lay out every page at once). */
+  const view = useRef({ top: 0, height: 0 })
 
   const sizes = engine.sizes
   const tops: number[] = []
@@ -43,14 +46,16 @@ export function Pages({ engine, zoom, scroller }: Props) {
   }
   const height = y + 48
   const width = maxW * zoom + SIDE * 2
+  const pageLeft = (i: number) => Math.max(SIDE, (width - sizes[i][0] * zoom) / 2)
 
   // Draw the pages near the screen; drop far ones.
   const draw = () => {
-    const sc = scroller()
     const mount = mountRef.current
-    if (!sc || !mount) return
-    const top = sc.scrollTop - mount.offsetTop
-    const bottom = top + sc.clientHeight
+    if (!mount) return
+    const { top: scrollTop, height: viewHeight } = view.current
+    const top = scrollTop
+    const bottom = top + (viewHeight || 1200)
+    const sc = { clientHeight: viewHeight || 1200 }
     let first = -1
     let last = -1
     for (let i = 0; i < sizes.length; i++) {
@@ -64,9 +69,11 @@ export function Pages({ engine, zoom, scroller }: Props) {
     if (first < 0) return
     for (let i = first; i <= last; i++) {
       const el = pageEls.current.get(i)?.querySelector<HTMLElement>('.docx-page-content')
-      if (!el || painted.current.get(i) === engine.revision) continue
-      const p = engine.paint(i)
-      el.innerHTML = itemsHtml(p.items, engine.styles, engine.media.url)
+      const was = painted.current.get(i)
+      if (!el || was === engine.revision) continue
+      // A page already on screen is only sent again when its drawing changed.
+      const p = engine.paint(i, was === undefined || !el.firstChild)
+      if (p) el.innerHTML = itemsHtml(p.items, engine.styles, engine.media.url)
       painted.current.set(i, engine.revision)
     }
     for (const [i] of painted.current) {
@@ -108,7 +115,12 @@ export function Pages({ engine, zoom, scroller }: Props) {
     const sc = scroller()
     if (!sc) return
     let frame = 0
+    const measure = () => {
+      view.current = { top: sc.scrollTop, height: sc.clientHeight }
+    }
+    measure()
     const onScroll = () => {
+      measure()
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(draw)
     }
@@ -144,13 +156,11 @@ export function Pages({ engine, zoom, scroller }: Props) {
   /** The text field sits at the caret, so an input method's window opens there. */
   const placeInput = () => {
     const input = inputRef.current
-    const mount = mountRef.current
-    if (!input || !mount) return
+    if (!input) return
     const c = engine.overlay.caret
-    if (!c) return
+    if (!c || !sizes[c[0]]) return
     const [page, x, cy, h] = c
-    const left = (mount.clientWidth - (sizes[page]?.[0] ?? 0) * zoom) / 2
-    input.style.left = `${left + x * zoom}px`
+    input.style.left = `${pageLeft(page) + x * zoom}px`
     input.style.top = `${(tops[page] ?? 0) + cy * zoom}px`
     input.style.height = `${h * zoom}px`
     input.style.fontSize = `${Math.max(10, h * zoom * 0.75)}px`
@@ -159,19 +169,21 @@ export function Pages({ engine, zoom, scroller }: Props) {
   /** Scrolls the caret into view. */
   const revealCaret = () => {
     const sc = scroller()
-    const mount = mountRef.current
     const c = engine.overlay.caret ?? (engine.overlay.image ? [engine.overlay.image[0], engine.overlay.image[1], engine.overlay.image[2], engine.overlay.image[4]] : null)
-    if (!sc || !mount || !c) return
+    if (!sc || !c) return
     const [page, , cy, h] = c
-    const top = mount.offsetTop + (tops[page] ?? 0) + cy * zoom
+    const top = (tops[page] ?? 0) + cy * zoom
     const bottom = top + h * zoom
+    const { top: scrollTop, height } = view.current
     const typewriter = !!document.querySelector('.app[data-typewriter]')
+    // Only scroll when the caret is out of view: setting the scroll position lays the page out.
     if (typewriter) {
-      sc.scrollTop = top - sc.clientHeight / 2
+      const want = top - height / 2
+      if (Math.abs(want - scrollTop) > 2) sc.scrollTop = want
       return
     }
-    if (top < sc.scrollTop + 24) sc.scrollTop = top - 48
-    else if (bottom > sc.scrollTop + sc.clientHeight - 72) sc.scrollTop = bottom - sc.clientHeight + 96
+    if (top < scrollTop + 24) sc.scrollTop = top - 48
+    else if (bottom > scrollTop + height - 72) sc.scrollTop = bottom - height + 96
   }
 
   const run = (cmd: Record<string, unknown> & { cmd: string }, reveal = true) => {
@@ -397,58 +409,34 @@ export function Pages({ engine, zoom, scroller }: Props) {
     run({ cmd: 'paste', text: e.clipboardData.getData('text/plain'), json })
   }
 
-  // ── Overlay: caret, selection, picture frame
+  // ── Overlay: caret, selection, marks and the picture frame, in one layer over the pages.
   const overlay = engine.overlay
-  const pageLeft = (i: number) => Math.max(SIDE, (width - sizes[i][0] * zoom) / 2)
+  const place = (page: number, x: number, y: number, w: number, h: number) =>
+    sizes[page] ? { left: pageLeft(page) + x * zoom, top: tops[page] + y * zoom, width: w * zoom, height: h * zoom } : { display: 'none' }
 
   return (
     <div className="docx-content-mount" ref={mountRef} style={{ height, minWidth: width }} onMouseDown={onMouseDown} onMouseOver={onMouseOver}>
       <div className="docx-pages">
         {sizes.map(([w, h], i) => (
-          <div
-            key={i}
-            className="docx-page"
-            data-page-index={i}
-            ref={(el) => {
-              if (el) pageEls.current.set(i, el)
-              else pageEls.current.delete(i)
-            }}
-            style={{ top: tops[i], width: w * zoom, height: h * zoom, left: '50%', marginLeft: -(w * zoom) / 2 }}
-          >
-            <div className="docx-page-scale" style={{ width: w, height: h, transform: `scale(${zoom})` }}>
-              <div className="docx-page-content" />
-              <div className="docx-page-overlay">
-                {overlay.marks
-                  ?.filter((m) => m[0] === i)
-                  .map((m, k) => {
-                    const style = engine.markStyles[m[5]]
-                    if (!style) return null
-                    const active = style.activeId !== undefined && style.activeId === m[6]
-                    return <div key={`m${k}`} className="wp-mark" style={{ left: m[1], top: m[2], width: m[3], height: m[4], background: active ? (style.activeColor ?? style.color) : style.color }} />
-                  })}
-                {overlay.rects
-                  .filter((r) => r[0] === i)
-                  .map((r, k) => (
-                    <div key={k} className="wp-sel" style={{ left: r[1], top: r[2], width: r[3], height: r[4] }} />
-                  ))}
-                {overlay.caret && overlay.caret[0] === i && !engine.state.hasSelection && (
-                  <div key={`c${engine.tick}`} className="wp-caret" style={{ left: overlay.caret[1], top: overlay.caret[2], height: overlay.caret[3] }} />
-                )}
-              </div>
-            </div>
-          </div>
+          <PageFrame key={i} index={i} width={w} height={h} top={tops[i]} zoom={zoom} els={pageEls.current} />
         ))}
       </div>
+      <div className="docx-overlay">
+        {overlay.marks?.map((m, k) => {
+          const style = engine.markStyles[m[5]]
+          if (!style) return null
+          const active = style.activeId !== undefined && style.activeId === m[6]
+          return <div key={`m${k}`} className="wp-mark" style={{ ...place(m[0], m[1], m[2], m[3], m[4]), background: active ? (style.activeColor ?? style.color) : style.color }} />
+        })}
+        {overlay.rects.map((r, k) => (
+          <div key={k} className="wp-sel" style={place(r[0], r[1], r[2], r[3], r[4])} />
+        ))}
+        {overlay.caret && !engine.state.hasSelection && !overlay.image && (
+          <div key={`c${engine.tick}`} className="wp-caret" style={{ ...place(overlay.caret[0], overlay.caret[1], overlay.caret[2], 0, overlay.caret[3]), width: undefined }} />
+        )}
+      </div>
       {overlay.image && sizes[overlay.image[0]] && (
-        <div
-          className="wp-image-frame"
-          style={{
-            left: pageLeft(overlay.image[0]) + overlay.image[1] * zoom,
-            top: tops[overlay.image[0]] + overlay.image[2] * zoom,
-            width: overlay.image[3] * zoom,
-            height: overlay.image[4] * zoom,
-          }}
-        >
+        <div className="wp-image-frame" style={place(overlay.image[0], overlay.image[1], overlay.image[2], overlay.image[3], overlay.image[4])}>
           {['nw', 'ne', 'sw', 'se'].map((c) => (
             <div key={c} className={`wp-handle ${c}`} data-corner={c} />
           ))}
@@ -475,6 +463,26 @@ export function Pages({ engine, zoom, scroller }: Props) {
     </div>
   )
 }
+
+/** One page's frame. Its drawing goes in by hand (see `draw`), so it only re-renders when the
+ * page moves or changes size. */
+const PageFrame = memo(function PageFrame({ index, width, height, top, zoom, els }: { index: number; width: number; height: number; top: number; zoom: number; els: Map<number, HTMLDivElement> }) {
+  return (
+    <div
+      className="docx-page"
+      data-page-index={index}
+      ref={(el) => {
+        if (el) els.set(index, el)
+        else els.delete(index)
+      }}
+      style={{ top, width: width * zoom, height: height * zoom, left: '50%', marginLeft: -(width * zoom) / 2 }}
+    >
+      <div className="docx-page-scale" style={{ width, height, transform: `scale(${zoom})` }}>
+        <div className="docx-page-content" />
+      </div>
+    </div>
+  )
+})
 
 /** Reads a picture file and puts it in at the caret. */
 export async function insertImageFile(engine: WordEngine, file: File) {
