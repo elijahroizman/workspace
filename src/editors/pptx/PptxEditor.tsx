@@ -1,4 +1,3 @@
-import './setup'
 import {
   ArrowDown,
   ArrowUp,
@@ -23,125 +22,86 @@ import {
   Undo2,
   Ungroup,
 } from 'lucide-react'
-import i18n from 'i18next'
-import { canCropElement, createBlankSlide, cropUpdateFromRects, imageRectFromCrop, readCropInsets } from 'ooxml-ui/pptx'
-import type { SlideTemplateId } from 'pptx-react-viewer'
-import { SlideCanvas, useViewerBuildingBlocks } from 'pptx-react-viewer'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { EditorProps } from '../../App'
 import type { Rect } from '../../components/CropOverlay'
-import { CropOverlay, rectOf } from '../../components/CropOverlay'
+import { CropOverlay } from '../../components/CropOverlay'
 import { FindBar, Workbench, formatZoom } from '../../components/Workbench'
 import type { MenuEntry } from '../../components/ui'
 import { CenterState, IconButton, PopoverMenu } from '../../components/ui'
+import type { Element } from '../../engine/slides/engine'
+import { SlidesEngine } from '../../engine/slides/engine'
+import { SlideCanvas, SLIDES_CLIPBOARD, toggleText } from '../../engine/slides/SlideCanvas'
+import { SlideImage } from '../../engine/slides/SlideImage'
 import { usePinchZoom } from '../../lib/pinch'
 import * as platform from '../../lib/platform'
 import { keysFor, withKeys } from '../../state/shortcuts'
 import { registerEditor, useWorkspace } from '../../state/workspace'
 import type { Restack } from './arrange'
-import { canRestack, mapPicked, pickedText, restack, styleText, withElements } from './arrange'
-import { replaceInElement } from './replace'
-import { blankPresentation } from './blank'
-import { Inspector, tableLooks } from './Inspector'
+import { Inspector } from './Inspector'
 import { NotesPane } from './Notes'
 import { PresentMode } from './PresentMode'
 import type { PickMode } from './SlideStrip'
-import { SlidePreview, SlideStrip } from './SlideStrip'
-import { newTable } from './table'
-import type { Deck, Element, Handle, Slide, Toolbar } from './types'
+import { SlideStrip } from './SlideStrip'
+import { NEW_SLIDE_TEMPLATES, templateLabel } from './templates'
+import type { Deck } from './types'
 import { parseVideoLink, videoPoster } from './video'
 import './pptx.css'
 
-/** Starter slides offered by New Slide; each comes with placeholder text in the deck's theme colors. */
-const NEW_SLIDE_TEMPLATES: SlideTemplateId[] = ['titleAndContent', 'title', 'sectionHeader', 'twoContent', 'comparison', 'titleOnly', 'quote', 'closing', 'blank']
-
 export default function PptxEditor({ tab, active }: EditorProps) {
-  const [content, setContent] = useState<Uint8Array | null>(tab.bytes)
+  const [engine, setEngine] = useState<SlidesEngine | null>(null)
+  const [error, setError] = useState<string | null>(null)
   useEffect(() => {
-    if (!tab.bytes) void blankPresentation().then(setContent)
+    let live = true
+    let opened: SlidesEngine | null = null
+    SlidesEngine.open(tab.bytes)
+      .then((e) => {
+        if (!live) return e.dispose()
+        opened = e
+        if (import.meta.env.DEV || import.meta.env.VITE_TEST_HOOKS) Object.assign(window, { __slides: e })
+        setEngine(e)
+      })
+      .catch((e) => setError(String(e?.message ?? e)))
+    return () => {
+      live = false
+      opened?.dispose()
+    }
   }, [tab.bytes])
-  if (!content) return <CenterState spinner />
-  return <DeckEditor tab={tab} active={active} content={content} />
+  if (error) {
+    return (
+      <CenterState title="Couldn’t open this presentation">
+        <p className="muted">{error}</p>
+      </CenterState>
+    )
+  }
+  if (!engine) return <CenterState spinner />
+  return <DeckEditor tab={tab} active={active} engine={engine} />
 }
 
-function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Array }) {
-  const handle = useRef<Handle>(null)
-  const { toolbarProps: tb, canvasProps: cv, loading, error } = useViewerBuildingBlocks({
-    content,
-    // The engine listens for shortcuts on the whole window; a deck in a background tab must
-    // not react to ⌘Z or Delete pressed elsewhere, so it drops to view mode while hidden.
-    canEdit: active,
-    handle,
-    fileName: tab.title,
-    autosaveEnabled: false,
-    fitPadding: 40,
-    maxFitScale: null,
-  })
-  const tbRef = useRef<Toolbar>(tb)
-  tbRef.current = tb
-  const cvRef = useRef(cv)
-  cvRef.current = cv
-  // The engine keeps the deck internally and exposes it through the handle, which updates
-  // after each commit; read it in an effect so the sidebar follows every edit.
-  const [slides, setSlides] = useState<readonly Slide[]>([])
-  useEffect(() => {
-    const next = handle.current?.getSlides()
-    if (next && next !== slides) setSlides(next)
-  })
-  const activeIndex = Math.max(0, cv.activeSlide ? slides.findIndex((s) => s.id === cv.activeSlide!.id) : 0)
+function DeckEditor({ tab, active, engine }: EditorProps & { engine: SlidesEngine }) {
+  useSyncExternalStore(engine.subscribe, engine.getTick)
+  const slides = engine.slides
+  const st = engine.state
+  const activeIndex = st.active
   const markDirty = useWorkspace((s) => s.markDirty)
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null)
   const [presenting, setPresenting] = useState<number | null>(null)
   const [findOpen, setFindOpen] = useState<false | 'find' | 'replace'>(false)
   const [matches, setMatches] = useState<{ slide: number; id: string }[]>([])
   const [matchIndex, setMatchIndex] = useState(0)
+  const [scale, setScale] = useState(1)
+  const scaleRef = useRef(scale)
+  scaleRef.current = scale
   const stageRef = useRef<HTMLDivElement>(null)
+  const viewportRef = useRef<HTMLDivElement | null>(null)
+  const wrapperRef = useRef<HTMLDivElement | null>(null)
+  const pixelScale = useRef(1)
+  /** Frames copied here, for the menu's Paste. */
+  const copied = useRef<string | null>(null)
 
-  // ── Unsaved changes: the slide list is replaced on every edit, never on navigation.
-  const savedSlides = useRef<readonly Slide[] | null>(null)
-  useEffect(() => {
-    if (loading || !slides.length) return
-    if (savedSlides.current === null) savedSlides.current = slides
-    markDirty(tab.id, slides !== savedSlides.current)
-  }, [slides, loading, markDirty, tab.id])
-
-  // ── Layout/master artwork for thumbnails. The engine exposes it for the slide on screen,
-  // so remember it per layout as slides are shown, and walk each layout once after loading.
-  const templates = useRef(new Map<string, Element[]>())
-  const [templateVersion, setTemplateVersion] = useState(0)
-  useEffect(() => {
-    const s = cv.activeSlide
-    if (!s) return
-    const key = s.layoutPath ?? ''
-    if (templates.current.get(key) !== cv.templateElements) {
-      templates.current.set(key, cv.templateElements)
-      setTemplateVersion((v) => v + 1)
-    }
-  }, [cv.activeSlide, cv.templateElements])
-
-  const primed = useRef(false)
-  useEffect(() => {
-    if (loading || primed.current || !slides.length) return
-    primed.current = true
-    const firstOfLayout = new Map<string, number>()
-    slides.forEach((s, i) => !firstOfLayout.has(s.layoutPath ?? '') && firstOfLayout.set(s.layoutPath ?? '', i))
-    const queue = [...firstOfLayout.values()].filter((i) => i !== 0)
-    if (!queue.length) return
-    void (async () => {
-      for (const i of queue) {
-        handle.current?.setActiveSlideIndex(i)
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
-      }
-      handle.current?.setActiveSlideIndex(0)
-    })()
-  }, [loading, slides])
-
-  const templateFor = useCallback(
-    (s: Slide) => (s.showMasterShapes === false ? [] : (templates.current.get(s.layoutPath ?? '') ?? [])),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [templateVersion],
-  )
+  // ── Unsaved changes follow the engine's history.
+  useEffect(() => markDirty(tab.id, st.dirty), [st.dirty, markDirty, tab.id])
 
   // ── Slides picked in the sidebar, by id so they survive moves. The active slide is always picked.
   const [picked, setPicked] = useState<string[]>([])
@@ -151,6 +111,7 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
     const out = slides.flatMap((s, i) => (ids.has(s.id) ? [i] : []))
     return out.includes(activeIndex) ? out : [activeIndex]
   }, [picked, slides, activeIndex])
+  const go = (index: number) => engine.run({ cmd: 'setActive', index })
   const pickSlide = (index: number, mode: PickMode) => {
     const id = slides[index]?.id
     if (!id) return
@@ -163,80 +124,83 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
       setPicked(rest.map((i) => slides[i].id))
       pickAnchor.current = rest[0]
       // Put down the active slide, and the nearest picked one takes over.
-      if (index === activeIndex) handle.current?.setActiveSlideIndex(rest.reduce((best, i) => (Math.abs(i - index) < Math.abs(best - index) ? i : best)))
+      if (index === activeIndex) go(rest.reduce((best, i) => (Math.abs(i - index) < Math.abs(best - index) ? i : best)))
       return
     } else {
       setPicked(mode === 'toggle' ? [...selectedSlides.map((i) => slides[i].id), id] : [id])
       pickAnchor.current = index
     }
-    handle.current?.setActiveSlideIndex(index)
+    go(index)
   }
   const deleteSlides = (indexes: readonly number[]) => {
-    const h = handle.current
-    if (!h || !indexes.length) return
+    if (!indexes.length) return
     setPicked([])
-    // A deck keeps at least one slide: deleting them all leaves a blank one, in one undo step.
-    if (indexes.length >= slides.length) {
-      h.editSlides(() => [createBlankSlide(1)])
-      h.setActiveSlideIndex(0)
-      return
-    }
-    h.deleteSlides([...indexes])
+    engine.run({ cmd: 'deleteSlides', indexes: [...indexes] })
   }
 
-  const selectedIds = useMemo(() => [...cv.selectedElementIdSet], [cv.selectedElementIdSet])
+  const elements = engine.elements
+  const selectedIds = st.frames
+  const selectedElement = selectedIds.length === 1 ? (elements.find((e) => e.id === selectedIds[0]) ?? null) : null
 
   // ── Cropping the selected picture, on the slide.
   const [crop, setCrop] = useState<{ el: Element; src: string; frame: Rect; image: Rect } | null>(null)
-  const croppable = (el: Element | null, picked: number) => !!el && picked === 1 && canCropElement(el) && !el.rotation && !el.flipHorizontal && !el.flipVertical
+  const croppable = (el: Element | null, count: number) => !!el && count === 1 && el.type === 'image' && !el.rotation && !el.flipHorizontal && !el.flipVertical
   const startCrop = () => {
-    const el = tbRef.current.selectedElement
-    const node = el && stageRef.current?.querySelector(`[data-element-id="${CSS.escape(el.id)}"]`)
-    const src = node?.querySelector('img')?.src
-    if (!el || !node || !src || !croppable(el, deckRef.current.selectedIds.length)) return
-    const frame = rectOf(node.getBoundingClientRect())
-    setCrop({ el, src, frame, image: imageRectFromCrop(frame, readCropInsets(el)) })
+    const el = selectedElement
+    const slide = wrapperRef.current?.getBoundingClientRect()
+    if (!el || !slide || !el.media || !croppable(el, selectedIds.length)) return
+    const src = engine.media.url(el.media)
+    if (!src) return
+    const k = pixelScale.current
+    const frame = { x: slide.left + el.x * k, y: slide.top + el.y * k, width: el.width * k, height: el.height * k }
+    const [l, t, r, b] = el.crop ?? [0, 0, 0, 0]
+    const iw = frame.width / Math.max(0.01, 1 - l - r)
+    const ih = frame.height / Math.max(0.01, 1 - t - b)
+    setCrop({ el, src, frame, image: { x: frame.x - l * iw, y: frame.y - t * ih, width: iw, height: ih } })
   }
   const endCrop = (frame?: Rect, image?: Rect) => {
     setCrop(null)
     if (!crop || !frame || !image) return
     const { el, frame: start } = crop
     // From screen pixels to the slide's.
-    const scale = start.width / el.width
-    const onSlide = (r: Rect) => ({ x: el.x + (r.x - start.x) / scale, y: el.y + (r.y - start.y) / scale, width: r.width / scale, height: r.height / scale })
-    const update = cropUpdateFromRects(onSlide(frame), onSlide(image))
-    const before: Record<string, number> = { x: el.x, y: el.y, width: el.width, height: el.height, ...readCropInsets(el) }
-    if (Object.entries(update).every(([key, value]) => Math.abs(value - before[key]) < (key.startsWith('crop') ? 1e-4 : 0.01))) return
-    handle.current?.updateElement(el.id, update as Partial<Element>)
+    const k = start.width / el.width
+    const shares = [(frame.x - image.x) / image.width, (frame.y - image.y) / image.height, (image.x + image.width - frame.x - frame.width) / image.width, (image.y + image.height - frame.y - frame.height) / image.height]
+    const before = el.crop ?? [0, 0, 0, 0]
+    if (shares.every((v, i) => Math.abs(v - before[i]) < 1e-4)) return
+    engine.run({
+      cmd: 'crop',
+      id: Number(el.id),
+      left: shares[0],
+      top: shares[1],
+      right: shares[2],
+      bottom: shares[3],
+      x: el.x + (frame.x - start.x) / k,
+      y: el.y + (frame.y - start.y) / k,
+      w: frame.width / k,
+      h: frame.height / k,
+    })
   }
-  const deck: Deck = { handle, tb, cv, slides, activeIndex, templateFor, tbRef, selectedSlides, selectedIds }
+  const deck: Deck = { engine, slides, activeIndex, elements, selectedSlides, selectedIds, selectedElement }
   const deckRef = useRef(deck)
   deckRef.current = deck
 
-  // Spellcheck while typing in text boxes.
-  useEffect(() => {
-    if (!loading && !tb.spellCheckEnabled) tb.onSetSpellCheckEnabled(true)
-  }, [loading, tb])
-
-  // Trackpad pinch / ⌘-scroll zoom with a live preview, committed when the gesture ends. The
-  // preview scales the wrapper around the slide: the slide itself carries the engine's own scale.
+  // Trackpad pinch / ⌘-scroll zoom with a live preview, committed when the gesture ends.
   usePinchZoom(stageRef, {
-    getZoom: () => tbRef.current.scale,
-    setZoom: (z) => handle.current?.setZoom(z),
-    commit: (z, anchor) => zoomAround(() => handle.current?.setZoom(z), anchor),
-    target: () => cvRef.current.zoom.editWrapperRef.current,
+    getZoom: () => scaleRef.current,
+    setZoom: (z) => setScale(z),
+    commit: (z, anchor) => zoomAround(() => setScale(z), anchor),
+    target: () => wrapperRef.current,
     min: 0.25,
     max: 4,
   })
 
   /**
    * Zoom while keeping one point of the slide where it is on screen: the pointer for a pinch,
-   * the middle of the view for buttons and keys. The engine alone leaves the scroll position as
-   * it was, which drifts toward the slide's top-left corner.
+   * the middle of the view for buttons and keys.
    */
   const zoomAround = (apply: () => void, at?: { x: number; y: number }) => {
-    const viewport = cvRef.current.zoom.canvasViewportRef.current
-    const wrapper = cvRef.current.zoom.editWrapperRef.current
+    const viewport = viewportRef.current
+    const wrapper = wrapperRef.current
     if (!viewport || !wrapper) return apply()
     const view = viewport.getBoundingClientRect()
     const before = wrapper.getBoundingClientRect()
@@ -244,7 +208,6 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
     const fx = (point.x - before.left) / before.width
     const fy = (point.y - before.top) / before.height
     apply()
-    // Wait for the engine to lay the slide out at the new size.
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
         const after = wrapper.getBoundingClientRect()
@@ -254,35 +217,23 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
     )
   }
   const zoomStep = (dir: 'in' | 'out' | 'fit' | 'reset') => {
-    if (dir === 'fit' || dir === 'reset') return tbRef.current.onZoomToFit()
-    const scale = tbRef.current.scale
-    const next = dir === 'in' ? ZOOM_STEPS.find((z) => z > scale + 0.001) : [...ZOOM_STEPS].reverse().find((z) => z < scale - 0.001)
-    if (next) zoomAround(() => handle.current?.setZoom(next))
+    if (dir === 'fit' || dir === 'reset') return setScale(1)
+    const s = scaleRef.current
+    const next = dir === 'in' ? ZOOM_STEPS.find((z) => z > s + 0.001) : [...ZOOM_STEPS].reverse().find((z) => z < s - 0.001)
+    if (next) zoomAround(() => setScale(next))
   }
 
   // ── Inserting things
   const addImages = async (files: readonly File[]) => {
-    const ids: string[] = []
     for (const file of files) {
-      const canvasSize = cvRef.current.canvasSize
-      const { dataUrl, width, height } = await loadImage(file, canvasSize)
-      const size = fitInside(width, height, canvasSize.width * 0.6, canvasSize.height * 0.6)
-      const id = handle.current?.addElement({
-        id: crypto.randomUUID(),
-        type: 'image',
-        imageData: dataUrl,
-        x: Math.round((canvasSize.width - size.width) / 2),
-        y: Math.round((canvasSize.height - size.height) / 2),
-        ...size,
-      } as unknown as Element)
-      if (id) ids.push(id)
+      const { bytes, type, width, height } = await loadImage(file, engine)
+      engine.doc.insertImage(bytes, type, width, height, file.name)
+      engine.refresh()
     }
-    if (ids.length > 1) requestAnimationFrame(() => handle.current?.selectElements(ids))
   }
   const insertImage = async () => addImages(await platform.pickImages({ multiple: true }))
 
-  // Pasting an image: the engine only catches it while its canvas has keyboard focus, and
-  // keeps the full-size picture. Take any image paste aimed at the deck, sized for the slide.
+  // Pasting an image anywhere in the deck (not in a text field) puts it on the slide.
   const addImagesRef = useRef(addImages)
   addImagesRef.current = addImages
   useEffect(() => {
@@ -301,22 +252,11 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
 
   // ── Arranging objects
   const arrange = (how: Restack) => {
-    const { activeIndex: index, selectedIds: ids } = deckRef.current
-    if (ids.length) handle.current?.editSlides(withElements(index, (els) => restack(els, new Set(ids), how)))
+    if (deckRef.current.selectedIds.length) engine.run({ cmd: 'restack', how })
   }
-  const canArrange = (how: Restack) => {
-    const elements = slides[activeIndex]?.elements
-    return !!elements && selectedIds.length > 0 && canRestack(elements, new Set(selectedIds), how)
-  }
+  const canArrange = (how: Restack) => st.restack.includes(how)
 
-  const arrangeRef = useRef(arrange)
-  arrangeRef.current = arrange
-
-  const insertTable = (rows: number, cols: number) => {
-    const table = newTable(rows, cols, cv.canvasSize, tableLooks(deck)[0], tb.themeFonts?.body)
-    const id = handle.current?.addElement({ ...table, id: crypto.randomUUID() } as Element)
-    if (id) requestAnimationFrame(() => handle.current?.selectElements([id]))
-  }
+  const insertTable = (rows: number, cols: number) => engine.run({ cmd: 'insertTable', rows, cols })
 
   const insertVideo = async (raw: string) => {
     const link = parseVideoLink(raw)
@@ -325,38 +265,25 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
       return false
     }
     const poster = await videoPoster(link)
-    const width = Math.round(cv.canvasSize.width * 0.6)
-    const height = Math.round((width * 9) / 16)
-    handle.current?.addElement({
-      id: crypto.randomUUID(),
-      type: 'image',
-      name: `Video: ${link.url}`,
-      imageData: poster,
-      x: Math.round((cv.canvasSize.width - width) / 2),
-      y: Math.round((cv.canvasSize.height - height) / 2),
-      width,
-      height,
-      actionClick: { action: '', url: link.url, tooltip: 'Play video' },
-    } as unknown as Element)
+    const blob = await (await fetch(poster)).blob()
+    const bytes = new Uint8Array(await blob.arrayBuffer())
+    const id = engine.doc.insertImage(bytes, blob.type || 'image/png', 1280, 720, `Video: ${link.url}`)
+    engine.refresh()
+    engine.run({ cmd: 'link', id: Number(id), url: link.url })
     return true
   }
 
   const newSlideMenu = (anchor: { x: number; y: number }) => {
-    const insertTemplate = tb.onInsertSlideFromTemplate
-    const items: MenuEntry[] = insertTemplate
-      ? NEW_SLIDE_TEMPLATES.map((id) => ({ label: i18n.t(`pptx.slideTemplates.${id}.name`), onSelect: () => insertTemplate(id) }))
-      : [{ label: 'Blank slide', onSelect: () => handle.current?.addSlide(activeIndex) }]
+    const after = deckRef.current.activeIndex
+    const items: MenuEntry[] = NEW_SLIDE_TEMPLATES.map((id) => ({ label: templateLabel(id), onSelect: () => engine.run({ cmd: 'addTemplate', after, template: id }) }))
     // A deck made in PowerPoint brings its own layouts; one generated by a script has a single unnamed one.
-    if (tb.layoutOptions.length > 1) {
-      tb.layoutOptions.forEach((l, i) =>
-        items.push({ label: l.name, separatorBefore: i === 0, onSelect: () => tb.onInsertSlideFromLayout(l.path, l.name) }),
-      )
+    if (engine.layouts.length > 1) {
+      engine.layouts.forEach((l, i) => items.push({ label: l.name, separatorBefore: i === 0, onSelect: () => engine.run({ cmd: 'addSlide', after, layout: l.path }) }))
     }
     setMenu({ ...anchor, items })
   }
 
   const slideMenu = (index: number, x: number, y: number) => {
-    const h = handle.current
     const group = selectedSlides.includes(index) && selectedSlides.length > 1 ? selectedSlides : null
     if (group) {
       const allHidden = group.every((i) => slides[i]?.hidden)
@@ -364,8 +291,8 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
         x,
         y,
         items: [
-          { label: `Duplicate ${group.length} slides`, icon: <Copy size={14} />, onSelect: () => h?.duplicateSlides(group) },
-          { label: allHidden ? 'Show in slideshow' : 'Hide in slideshow', icon: <EyeOff size={14} />, onSelect: () => h?.toggleHideSlides(group.filter((i) => !!slides[i]?.hidden === allHidden)) },
+          { label: `Duplicate ${group.length} slides`, icon: <Copy size={14} />, onSelect: () => engine.run({ cmd: 'duplicateSlides', indexes: group }) },
+          { label: allHidden ? 'Show in slideshow' : 'Hide in slideshow', icon: <EyeOff size={14} />, onSelect: () => engine.run({ cmd: 'toggleHidden', indexes: group }) },
           { label: `Delete ${group.length} slides`, icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: () => deleteSlides(group) },
         ],
       })
@@ -380,136 +307,87 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
           icon: <Plus size={14} />,
           onSelect: () => {
             // New slides go after the current one.
-            h?.setActiveSlideIndex(index)
+            go(index)
             newSlideMenu({ x, y })
           },
         },
-        { label: 'Duplicate slide', icon: <Copy size={14} />, onSelect: () => h?.duplicateSlides([index]) },
-        { label: slides[index]?.hidden ? 'Show in slideshow' : 'Hide in slideshow', icon: <EyeOff size={14} />, onSelect: () => h?.toggleHideSlides([index]) },
-        ...(index > 0 ? [{ label: 'Move up', icon: <ArrowUp size={14} />, onSelect: () => h?.moveSlide(index, index - 1) }] : []),
-        ...(index < slides.length - 1 ? [{ label: 'Move down', icon: <ArrowDown size={14} />, onSelect: () => h?.moveSlide(index, index + 1) }] : []),
+        { label: 'Duplicate slide', icon: <Copy size={14} />, onSelect: () => engine.run({ cmd: 'duplicateSlides', indexes: [index] }) },
+        { label: slides[index]?.hidden ? 'Show in slideshow' : 'Hide in slideshow', icon: <EyeOff size={14} />, onSelect: () => engine.run({ cmd: 'toggleHidden', indexes: [index] }) },
+        ...(index > 0 ? [{ label: 'Move up', icon: <ArrowUp size={14} />, onSelect: () => engine.run({ cmd: 'moveSlide', from: index, to: index - 1 }) }] : []),
+        ...(index < slides.length - 1 ? [{ label: 'Move down', icon: <ArrowDown size={14} />, onSelect: () => engine.run({ cmd: 'moveSlide', from: index, to: index + 1 }) }] : []),
         { label: 'Delete slide', icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: () => deleteSlides([index]) },
       ],
     })
   }
 
-  // ── Right-click on the slide: the engine selects what was clicked; the menu is ours.
+  // ── Right-click on the slide: the canvas picks what was clicked; the menu is ours.
   const objectMenu = (x: number, y: number) => {
-    requestAnimationFrame(() => {
-      const t = tbRef.current
-      const { selectedIds: ids } = deckRef.current
-      const items: MenuEntry[] = []
-      if (ids.length) {
-        items.push(
-          { label: 'Cut', icon: <Scissors size={14} />, shortcut: '⌘X', onSelect: t.onCut },
-          { label: 'Copy', icon: <Copy size={14} />, shortcut: '⌘C', onSelect: t.onCopy },
-        )
-      }
-      if (t.clipboardPayload) items.push({ label: 'Paste', icon: <ClipboardPaste size={14} />, shortcut: '⌘V', onSelect: t.onPaste })
-      if (!ids.length) {
-        if (items.length) setMenu({ x, y, items })
-        return
-      }
-      items.push({ label: 'Duplicate', icon: <Copy size={14} />, shortcut: keysFor('pptx.duplicate'), onSelect: t.onDuplicate })
-      if (croppable(t.selectedElement, ids.length)) items.push({ label: 'Crop', icon: <Crop size={14} />, onSelect: startCrop })
-      if (ids.length > 1) items.push({ label: 'Group', icon: <Group size={14} />, shortcut: keysFor('pptx.group'), separatorBefore: true, disabled: !t.selectionGroupable, onSelect: t.onGroupElements })
-      else if (t.selectedElement?.type === 'group') items.push({ label: 'Ungroup', icon: <Ungroup size={14} />, shortcut: keysFor('pptx.ungroup'), separatorBefore: true, onSelect: t.onUngroupElement })
-      const elements = deckRef.current.slides[deckRef.current.activeIndex]?.elements ?? []
-      const picked = new Set(ids)
-      const layer = (label: string, how: Restack, icon: React.ReactNode, first = false): MenuEntry => ({
-        label,
-        icon,
-        shortcut: keysFor(`pptx.${how}`),
-        separatorBefore: first,
-        disabled: !canRestack(elements, picked, how),
-        onSelect: () => arrange(how),
-      })
+    const ids = engine.state.frames
+    const items: MenuEntry[] = []
+    const copy = () => {
+      copied.current = engine.doc.copyFrames()
+    }
+    if (ids.length) {
       items.push(
-        layer('Bring to Front', 'front', <BringToFront size={14} />, true),
-        layer('Bring Forward', 'forward', <MoveUp size={14} />),
-        layer('Send Backward', 'backward', <MoveDown size={14} />),
-        layer('Send to Back', 'back', <SendToBack size={14} />),
-        { label: 'Delete', icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: t.onDelete },
+        {
+          label: 'Cut',
+          icon: <Scissors size={14} />,
+          shortcut: '⌘X',
+          onSelect: () => {
+            copy()
+            engine.run({ cmd: 'delete' })
+          },
+        },
+        { label: 'Copy', icon: <Copy size={14} />, shortcut: '⌘C', onSelect: copy },
       )
-      setMenu({ x, y, items })
+    }
+    if (copied.current) items.push({ label: 'Paste', icon: <ClipboardPaste size={14} />, shortcut: '⌘V', onSelect: () => engine.run({ cmd: 'pasteFrames', json: copied.current! }) })
+    if (!ids.length) {
+      if (items.length) setMenu({ x, y, items })
+      return
+    }
+    const el = ids.length === 1 ? engine.elements.find((e) => e.id === ids[0]) ?? null : null
+    items.push({ label: 'Duplicate', icon: <Copy size={14} />, shortcut: keysFor('pptx.duplicate'), onSelect: () => engine.run({ cmd: 'duplicate' }) })
+    if (croppable(el, ids.length)) items.push({ label: 'Crop', icon: <Crop size={14} />, onSelect: startCrop })
+    if (ids.length > 1) items.push({ label: 'Group', icon: <Group size={14} />, shortcut: keysFor('pptx.group'), separatorBefore: true, onSelect: () => engine.run({ cmd: 'group' }) })
+    else if (el?.type === 'group') items.push({ label: 'Ungroup', icon: <Ungroup size={14} />, shortcut: keysFor('pptx.ungroup'), separatorBefore: true, onSelect: () => engine.run({ cmd: 'ungroup' }) })
+    const can = engine.state.restack
+    const layer = (label: string, how: Restack, icon: React.ReactNode, first = false): MenuEntry => ({
+      label,
+      icon,
+      shortcut: keysFor(`pptx.${how}`),
+      separatorBefore: first,
+      disabled: !can.includes(how),
+      onSelect: () => arrange(how),
     })
-  }
-  // Shift-click (or ⌘-click; Ctrl-click on Windows) adds an object to the selection or takes it
-  // out. The engine's own press handler first selects the object alone, so its click then
-  // undoes the pick; modified clicks are handled here instead.
-  const isAdditive = (e: React.MouseEvent) => e.shiftKey || (platform.isMac ? e.metaKey : e.ctrlKey)
-  const toggleObject = (pressedId: string) => {
-    const elements = deckRef.current.slides[deckRef.current.activeIndex]?.elements ?? []
-    // A press inside a group picks the whole group, as a plain click does.
-    const id = elements.find((el) => el.id === pressedId || containsId(el, pressedId))?.id ?? pressedId
-    const current = deckRef.current.selectedIds
-    handle.current?.selectElements(current.includes(id) ? current.filter((x) => x !== id) : [...current, id])
-  }
-  const canvasProps = {
-    ...cv,
-    onMouseDown: (id: string, e: React.MouseEvent) => {
-      if (e.button === 0 && isAdditive(e) && !cv.inlineEditingElementId) {
-        e.stopPropagation()
-        toggleObject(id)
-        return
-      }
-      cv.onMouseDown(id, e)
-    },
-    onClick: (id: string, e: React.MouseEvent) => {
-      if (isAdditive(e) && !cv.inlineEditingElementId) {
-        e.stopPropagation()
-        return
-      }
-      cv.onClick(id, e)
-    },
-    onContextMenu: (id: string, e: React.MouseEvent) => {
-      cv.onContextMenu(id, e)
-      objectMenu(e.clientX, e.clientY)
-    },
-    onCanvasContextMenu: (e: React.MouseEvent) => {
-      cv.onCanvasContextMenu?.(e)
-      objectMenu(e.clientX, e.clientY)
-    },
+    items.push(
+      layer('Bring to Front', 'front', <BringToFront size={14} />, true),
+      layer('Bring Forward', 'forward', <MoveUp size={14} />),
+      layer('Send Backward', 'backward', <MoveDown size={14} />),
+      layer('Send to Back', 'back', <SendToBack size={14} />),
+      { label: 'Delete', icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: () => engine.run({ cmd: 'delete' }) },
+    )
+    setMenu({ x, y, items })
   }
 
   // Shortcut actions (see state/shortcuts.ts); they read the deck through refs.
   const arrangeKey = (how: Restack) => {
-    if (isTextTarget(document.activeElement) || !deckRef.current.selectedIds.length) return false
-    arrangeRef.current(how)
+    if (engine.state.editing || !deckRef.current.selectedIds.length) return false
+    arrange(how)
   }
-  const toggleText = (key: 'bold' | 'italic' | 'underline') => {
-    const { selectedIds: ids, activeIndex: index, slides: all } = deckRef.current
-    const t = tbRef.current
-    if (ids.length === 1 && t.selectedElement && 'textStyle' in t.selectedElement) {
-      const style = (t.selectedElement as { textStyle?: Record<string, unknown> }).textStyle
-      t.onUpdateTextStyle({ [key]: !style?.[key] })
-      return
-    }
-    const picked = new Set(ids)
-    const texts = pickedText(all[index]?.elements ?? [], picked)
-    if (!texts.length) return false
-    const on = !texts.every((el) => !!el.textStyle?.[key])
-    handle.current?.editSlides(withElements(index, (els) => mapPicked(els, picked, (el) => styleText(el, { [key]: on }))))
+  const textKey = (key: 'b' | 'i' | 'u') => {
+    if (!engine.state.editing && !engine.state.frames.length) return false
+    toggleText(engine, key)
   }
 
   // ── Speaker notes
   const [notesOpen, setNotesOpen] = useState(true)
-  const setNotes = (id: string, notes: string) => handle.current?.editSlides((all) => all.map((s) => (s.id === id ? { ...s, notes, notesSegments: undefined } : s)))
 
   // ── Find across every slide's text.
   const findQuery = useRef('')
   const runFind = (query: string, from?: { index: number; skip: string }) => {
-    const q = query.trim().toLowerCase()
-    findQuery.current = q
-    const found: { slide: number; id: string }[] = []
-    if (q) {
-      slides.forEach((s, si) =>
-        s.elements.forEach((e) => {
-          const text = elementText(e)
-          if (text.toLowerCase().includes(q)) found.push({ slide: si, id: e.id })
-        }),
-      )
-    }
+    findQuery.current = query.trim()
+    const found = findQuery.current ? engine.run<{ slide: number; id: string }[]>({ cmd: 'find', query: findQuery.current }) : []
     // After a replace, carry on from the same place, past the object just changed.
     let index = 0
     if (from) {
@@ -521,30 +399,20 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
     setMatchIndex(index)
     if (found[index]) goToMatch(found[index])
   }
-  // A replace changes the slides; search them again once they're back.
-  const refind = useRef<{ index: number; skip: string } | null>(null)
-  useEffect(() => {
-    if (!refind.current) return
-    const from = refind.current
-    refind.current = null
-    runFind(findQuery.current, from)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slides])
-  const matching = (e: Element) => elementText(e).toLowerCase().includes(findQuery.current)
   const replaceCurrent = (by: string) => {
     const m = matches[matchIndex]
     if (!m || !findQuery.current) return
-    refind.current = { index: matchIndex, skip: m.id }
-    handle.current?.editSlides(withElements(m.slide, (els) => els.map((e) => (e.id === m.id ? replaceInElement(e, findQuery.current, by) : e))))
+    engine.run({ cmd: 'replaceMatch', index: matchIndex, text: by })
+    runFind(findQuery.current, { index: matchIndex, skip: m.id })
   }
   const replaceAll = (by: string) => {
     if (!matches.length || !findQuery.current) return
-    refind.current = { index: 0, skip: '' }
-    handle.current?.editSlides((all) => all.map((s) => (s.elements.some(matching) ? { ...s, elements: s.elements.map((e) => (matching(e) ? replaceInElement(e, findQuery.current, by) : e)) } : s)))
+    engine.run({ cmd: 'replaceAll', text: by })
+    runFind(findQuery.current, { index: 0, skip: '' })
   }
   const goToMatch = (m: { slide: number; id: string }) => {
-    handle.current?.setActiveSlideIndex(m.slide)
-    requestAnimationFrame(() => handle.current?.selectElements([m.id]))
+    go(m.slide)
+    engine.run({ cmd: 'selectFrames', ids: [Number(m.id)] })
   }
   const stepFind = (delta: number) => {
     if (!matches.length) return
@@ -554,33 +422,25 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
   }
 
   // ── Shell integration
-  const slidesRef = useRef(slides)
-  slidesRef.current = slides
-  const templateForRef = useRef(templateFor)
-  templateForRef.current = templateFor
   useEffect(
     () =>
       registerEditor(tab.id, {
-        getBytes: async () => {
-          const bytes = await handle.current?.getContent()
-          if (!bytes) throw new Error('The presentation is still loading.')
-          return bytes
-        },
+        getBytes: async () => engine.save(),
         markSaved: () => {
-          savedSlides.current = slidesRef.current
+          engine.run({ cmd: 'markSaved' })
           markDirty(tab.id, false)
         },
         find: () => setFindOpen('find'),
         replace: () => setFindOpen('replace'),
         zoom: (dir) => zoomStep(dir),
         actions: {
-          'text.bold': () => toggleText('bold'),
-          'text.italic': () => toggleText('italic'),
-          'text.underline': () => toggleText('underline'),
-          'pptx.new-slide': () => handle.current?.addSlide(deckRef.current.activeIndex),
-          'pptx.duplicate': () => (deckRef.current.selectedIds.length ? tbRef.current.onDuplicate() : handle.current?.duplicateSlides([...deckRef.current.selectedSlides])),
-          'pptx.group': () => deckRef.current.selectedIds.length > 1 && (tbRef.current.onGroupElements(), true),
-          'pptx.ungroup': () => tbRef.current.selectedElement?.type === 'group' && (tbRef.current.onUngroupElement(), true),
+          'text.bold': () => textKey('b'),
+          'text.italic': () => textKey('i'),
+          'text.underline': () => textKey('u'),
+          'pptx.new-slide': () => engine.run({ cmd: 'addSlide', after: deckRef.current.activeIndex, layout: null }),
+          'pptx.duplicate': () => (deckRef.current.selectedIds.length ? engine.run({ cmd: 'duplicate' }) : engine.run({ cmd: 'duplicateSlides', indexes: [...deckRef.current.selectedSlides] })),
+          'pptx.group': () => deckRef.current.selectedIds.length > 1 && (engine.run({ cmd: 'group' }), true),
+          'pptx.ungroup': () => deckRef.current.selectedElement?.type === 'group' && (engine.run({ cmd: 'ungroup' }), true),
           'pptx.front': () => arrangeKey('front'),
           'pptx.forward': () => arrangeKey('forward'),
           'pptx.backward': () => arrangeKey('backward'),
@@ -589,27 +449,20 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
           'pptx.present': () => setPresenting(deckRef.current.activeIndex),
           'pptx.present-start': () => setPresenting(0),
         },
-        print: () => printSlides(slidesRef.current, cvRef.current.canvasSize, templateForRef.current),
+        print: () => printSlides(engine),
       }),
-    [tab.id, markDirty],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tab.id, markDirty, engine],
   )
-  if (error) {
-    return (
-      <CenterState title="Couldn’t open this presentation">
-        <p className="muted">{error}</p>
-      </CenterState>
-    )
-  }
 
-  const left = loading ? null : (
+  const left = (
     <SlideStrip
+      engine={engine}
       slides={slides}
       activeIndex={activeIndex}
       selected={selectedSlides}
-      canvasSize={cv.canvasSize}
-      templateFor={templateFor}
       onSelect={pickSlide}
-      onMove={(from, to) => handle.current?.moveSlide(from, to)}
+      onMove={(from, to) => engine.run({ cmd: 'moveSlide', from, to })}
       onMenu={slideMenu}
       onDelete={() => deleteSlides(selectedSlides)}
     />
@@ -618,31 +471,27 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
   return (
     <Workbench
       tab={tab}
-      left={left ?? <div />}
+      left={left}
       leftFooter={slides.length ? <span>{slides.length === 1 ? '1 slide' : `${slides.length} slides`}</span> : undefined}
       right={
-        loading ? (
-          <div />
-        ) : (
-          <Inspector
-            deck={deck}
-            onInsertImage={() => void insertImage()}
-            onInsertTable={insertTable}
-            onInsertVideo={insertVideo}
-            onNewSlide={newSlideMenu}
-            onPresent={(fromStart) => setPresenting(fromStart ? 0 : activeIndex)}
-            onDeleteSlides={deleteSlides}
-            onArrange={arrange}
-            canArrange={canArrange}
-            onCrop={croppable(tb.selectedElement, selectedIds.length) ? startCrop : null}
-          />
-        )
+        <Inspector
+          deck={deck}
+          onInsertImage={() => void insertImage()}
+          onInsertTable={insertTable}
+          onInsertVideo={insertVideo}
+          onNewSlide={newSlideMenu}
+          onPresent={(fromStart) => setPresenting(fromStart ? 0 : activeIndex)}
+          onDeleteSlides={deleteSlides}
+          onArrange={arrange}
+          canArrange={canArrange}
+          onCrop={croppable(selectedElement, selectedIds.length) ? startCrop : null}
+        />
       }
     >
-      <div className={`deck-stage ${crop ? 'cropping' : ''} ${cv.zoom.editorScale > 1.01 ? 'slide-enlarged' : ''}`} ref={stageRef}>
-        {loading ? <CenterState spinner /> : <SlideCanvas {...canvasProps} showRulers={false} />}
+      <div className={`deck-stage ${crop ? 'cropping' : ''} ${scale > 1.01 ? 'slide-enlarged' : ''}`} ref={stageRef}>
+        <SlideCanvas engine={engine} scale={scale} padding={40} active={active} onContextMenu={objectMenu} viewportRef={viewportRef} wrapperRef={wrapperRef} onPixelScale={(s) => (pixelScale.current = s)} />
       </div>
-      {!loading && notesOpen && slides[activeIndex] && <NotesPane key={slides[activeIndex].id} slide={slides[activeIndex]} onChange={(text) => setNotes(slides[activeIndex].id, text)} />}
+      {notesOpen && slides[activeIndex] && <NotesPane key={slides[activeIndex].id} slide={slides[activeIndex]} onChange={(text) => engine.run({ cmd: 'notes', index: activeIndex, text })} />}
       <FindBar
         open={!!findOpen}
         replacing={findOpen === 'replace'}
@@ -656,32 +505,32 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
         current={matchIndex}
         placeholder="Find in slides"
       />
-      {!loading && slides.length > 0 && (
+      {slides.length > 0 && (
         <div className="canvas-bar" style={notesOpen ? { bottom: 'calc(var(--notes-h, 120px) + 12px)' } : undefined}>
-          <IconButton label="Undo (⌘Z)" size="sm" disabled={!tb.canUndo} onClick={tb.onUndo}>
+          <IconButton label="Undo (⌘Z)" size="sm" disabled={!st.canUndo} onClick={() => engine.run({ cmd: 'undo' })}>
             <Undo2 size={14} />
           </IconButton>
-          <IconButton label="Redo (⇧⌘Z)" size="sm" disabled={!tb.canRedo} onClick={tb.onRedo}>
+          <IconButton label="Redo (⇧⌘Z)" size="sm" disabled={!st.canRedo} onClick={() => engine.run({ cmd: 'redo' })}>
             <Redo2 size={14} />
           </IconButton>
           <span className="sep" />
-          <IconButton label="Previous slide" size="sm" disabled={activeIndex === 0} onClick={() => handle.current?.setActiveSlideIndex(activeIndex - 1)}>
+          <IconButton label="Previous slide" size="sm" disabled={activeIndex === 0} onClick={() => go(activeIndex - 1)}>
             <ChevronLeft size={14} />
           </IconButton>
           <span className="readout">
             {activeIndex + 1} / {slides.length}
           </span>
-          <IconButton label="Next slide" size="sm" disabled={activeIndex >= slides.length - 1} onClick={() => handle.current?.setActiveSlideIndex(activeIndex + 1)}>
+          <IconButton label="Next slide" size="sm" disabled={activeIndex >= slides.length - 1} onClick={() => go(activeIndex + 1)}>
             <ChevronRight size={14} />
           </IconButton>
           <span className="sep" />
-          <IconButton label="Zoom out (⌘−)" size="sm" onClick={() => zoomStep('out')} disabled={tb.scale <= ZOOM_STEPS[0] + 0.001}>
+          <IconButton label="Zoom out (⌘−)" size="sm" onClick={() => zoomStep('out')} disabled={scale <= ZOOM_STEPS[0] + 0.001}>
             <Minus size={14} />
           </IconButton>
-          <IconButton label="Fit to window (⌘0)" size="sm" className="readout" aria-label={formatZoom(tb.scale)} onClick={() => zoomStep('fit')}>
-            {formatZoom(tb.scale)}
+          <IconButton label="Fit to window (⌘0)" size="sm" className="readout" aria-label={formatZoom(scale)} onClick={() => zoomStep('fit')}>
+            {formatZoom(scale)}
           </IconButton>
-          <IconButton label="Zoom in (⌘+)" size="sm" onClick={() => zoomStep('in')} disabled={tb.scale >= ZOOM_STEPS[ZOOM_STEPS.length - 1] - 0.001}>
+          <IconButton label="Zoom in (⌘+)" size="sm" onClick={() => zoomStep('in')} disabled={scale >= ZOOM_STEPS[ZOOM_STEPS.length - 1] - 0.001}>
             <Plus size={14} />
           </IconButton>
           <span className="sep" />
@@ -697,31 +546,16 @@ function DeckEditor({ tab, active, content }: EditorProps & { content: Uint8Arra
       {crop && <CropOverlay src={crop.src} frame={crop.frame} image={crop.image} onDone={endCrop} onCancel={() => endCrop()} />}
       {presenting !== null && (
         <PresentMode
-          slides={slides}
+          engine={engine}
           startIndex={presenting}
-          canvasSize={cv.canvasSize}
-          templateFor={templateFor}
           onExit={(last) => {
             setPresenting(null)
-            handle.current?.setActiveSlideIndex(last)
+            go(last)
           }}
         />
       )}
     </Workbench>
   )
-}
-
-function elementText(e: Element): string {
-  const anyEl = e as { text?: string; textSegments?: { text?: string }[]; tableData?: { rows?: { cells?: { text?: string }[] }[] } }
-  if (anyEl.textSegments?.length) return anyEl.textSegments.map((s) => s.text ?? '').join('')
-  if (anyEl.text) return anyEl.text
-  if (anyEl.tableData?.rows) return anyEl.tableData.rows.flatMap((r) => r.cells?.map((c) => c.text ?? '') ?? []).join(' ')
-  return ''
-}
-
-function containsId(el: Element, id: string): boolean {
-  const children = (el as { children?: Element[] }).children
-  return !!children?.some((c) => c.id === id || containsId(c, id))
 }
 
 /** Zoom levels for the buttons and keys, relative to fitting the slide in the window. */
@@ -730,16 +564,7 @@ const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2
 /** Typing somewhere: a text box, a field, or text being edited on the slide. */
 function isTextTarget(target: EventTarget | null) {
   const el = target instanceof HTMLElement ? target : null
-  return !!el && (el.isContentEditable || !!el.closest('input, textarea, select'))
-}
-
-function readAsDataUrl(file: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
+  return !!el && !el.closest('[data-engine-input]') && (el.isContentEditable || !!el.closest('input, textarea, select'))
 }
 
 /**
@@ -747,14 +572,15 @@ function readAsDataUrl(file: Blob): Promise<string> {
  * a Retina screenshot) is scaled down to twice the slide's size, which keeps the slide, its
  * thumbnail and the saved file quick. Smaller ones are kept byte for byte.
  */
-async function loadImage(file: File, canvas: { width: number; height: number }) {
+async function loadImage(file: File, deck: { width: number; height: number }) {
   const bitmap = await createImageBitmap(file).catch(() => null)
-  if (!bitmap) return { dataUrl: await readAsDataUrl(file), width: 400, height: 300 }
+  const own = async () => ({ bytes: new Uint8Array(await file.arrayBuffer()), type: file.type || 'image/png' })
+  if (!bitmap) return { ...(await own()), width: 400, height: 300 }
   const { width, height } = bitmap
-  const scale = Math.min(1, (canvas.width * 2) / width, (canvas.height * 2) / height)
+  const scale = Math.min(1, (deck.width * 2) / width, (deck.height * 2) / height)
   if (scale > 0.75 || file.type === 'image/gif' || file.type === 'image/svg+xml') {
     bitmap.close()
-    return { dataUrl: await readAsDataUrl(file), width, height }
+    return { ...(await own()), width, height }
   }
   const out = document.createElement('canvas')
   out.width = Math.round(width * scale)
@@ -763,17 +589,12 @@ async function loadImage(file: File, canvas: { width: number; height: number }) 
   bitmap.close()
   // Photos stay JPEG; anything that may have transparency stays PNG.
   const type = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png'
-  return { dataUrl: out.toDataURL(type, 0.9), width: out.width, height: out.height }
-}
-
-function fitInside(w: number, h: number, maxW: number, maxH: number) {
-  const scale = Math.min(1, maxW / w, maxH / h)
-  return { width: Math.round(w * scale), height: Math.round(h * scale) }
+  const blob = await new Promise<Blob>((resolve) => out.toBlob((b) => resolve(b!), type, 0.9))
+  return { bytes: new Uint8Array(await blob.arrayBuffer()), type, width: out.width, height: out.height }
 }
 
 /** Render every visible slide into the print root at landscape page size, then print. */
-async function printSlides(all: readonly Slide[], canvasSize: Deck['cv']['canvasSize'], templateFor: (s: Slide) => Element[]) {
-  const slides = all.filter((s) => !s.hidden)
+async function printSlides(engine: SlidesEngine) {
   const root = document.getElementById('print-root')!
   root.innerHTML = '<style>@page { size: landscape; margin: 0.4in; }</style>'
   const host = document.createElement('div')
@@ -782,11 +603,13 @@ async function printSlides(all: readonly Slide[], canvasSize: Deck['cv']['canvas
   const reactRoot = createRoot(host)
   reactRoot.render(
     <>
-      {slides.map((s) => (
-        <div key={s.id} className="print-page pptx-print-page">
-          <SlidePreview slide={s} templateElements={templateFor(s)} canvasSize={canvasSize} width={width} lazy={false} />
-        </div>
-      ))}
+      {engine.slides.map((s, i) =>
+        s.hidden ? null : (
+          <div key={s.id} className="print-page pptx-print-page">
+            <SlideImage engine={engine} index={i} revision={s.revision} width={width} lazy={false} />
+          </div>
+        ),
+      )}
     </>,
   )
   await new Promise((r) => setTimeout(r, 400))
@@ -794,3 +617,5 @@ async function printSlides(all: readonly Slide[], canvasSize: Deck['cv']['canvas
   window.print()
   setTimeout(() => reactRoot.unmount(), 60_000)
 }
+
+export { SLIDES_CLIPBOARD }

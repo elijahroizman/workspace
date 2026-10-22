@@ -846,6 +846,44 @@ impl SlidesView {
         });
     }
 
+    /// Crops a picture frame: shares of the whole picture cut from each side (0 to 1), and the
+    /// frame's new box in pixels.
+    pub fn crop_picture(&mut self, id: u32, crop: [f64; 4], to: Boxed) {
+        let active = self.sel.active;
+        self.change_slide(active, None, |s| {
+            let Some(f) = s.frames.iter_mut().find(|f| f.id == id) else { return };
+            if !matches!(f.content, FrameContent::Picture { .. }) {
+                return;
+            }
+            let mut origin = f.origin.get().cloned().unwrap_or_else(|| Element::new(ns::P, "pic"));
+            let fill = origin.child_or_insert(ns::P, "blipFill");
+            if fill.child(ns::A, "srcRect").is_none() {
+                let at = fill.children.iter().position(|n| matches!(n, office_core::xml::Node::Element(e) if e.is(ns::A, "stretch") || e.is(ns::A, "tile"))).unwrap_or(fill.children.len());
+                fill.children.insert(at, office_core::xml::Node::Element(Element::new(ns::A, "srcRect")));
+            }
+            let rect = fill.child_mut(ns::A, "srcRect").expect("srcRect was just made");
+            for (k, v) in ["l", "t", "r", "b"].iter().zip(crop) {
+                let v = (v.clamp(0.0, 1.0) * 100_000.0).round() as i64;
+                if v == 0 {
+                    rect.remove_attr("", k);
+                } else {
+                    rect.set_attr("", k, v.to_string());
+                }
+            }
+            f.origin = Origin::new(origin);
+            let mut x = f.shape.xfrm.clone().unwrap_or_default();
+            x.x = px_emu(to.x);
+            x.y = px_emu(to.y);
+            x.width = px_emu(to.w.max(1.0));
+            x.height = px_emu(to.h.max(1.0));
+            if let FrameContent::Picture { image } = &mut f.content {
+                image.width = x.width;
+                image.height = x.height;
+            }
+            f.shape.xfrm = Some(x);
+        });
+    }
+
     // ---- inserting ----
 
     fn insert_frame(&mut self, mut frame: Frame) -> u32 {
