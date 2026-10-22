@@ -1,4 +1,4 @@
-import { Component, lazy, memo, Suspense, useEffect, useRef, useState } from 'react'
+import { Component, lazy, memo, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import type { ComponentType, ErrorInfo, ReactNode } from 'react'
 import type { PaletteItem } from './components/CommandPalette'
 import { CommandPalette, recentItems, sourceItems, usePalette } from './components/CommandPalette'
@@ -108,7 +108,8 @@ class EditorBoundary extends Component<{ name: string; children: ReactNode }, { 
  * until you look at them. After that it stays loaded, so switching back is instant.
  */
 const EditorSlot = memo(function EditorSlot({ tab, active, pane }: EditorProps & { pane?: 'left' | 'right' }) {
-  const Editor = editorFor(tab.kind)
+  // Keep the same component when an editor finishes preloading, so the first edit cannot remount it.
+  const Editor = useMemo(() => editorFor(tab.kind), [tab.kind])
   const visible = !!pane && !active
   const [shown, setShown] = useState(active || visible)
   if ((active || visible) && !shown) setShown(true)
