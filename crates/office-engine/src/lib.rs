@@ -11,4 +11,11 @@
 //!
 //! See `docs/internals/office-engine.md` for the design.
 
+pub mod edit;
 pub mod geometry;
+pub mod history;
+pub mod measure;
+pub mod para;
+pub mod pos;
+pub mod style;
+pub mod text;
