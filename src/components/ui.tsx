@@ -603,6 +603,19 @@ export function ActionCard({ icon, title, hint, keys, onClick }: { icon: ReactNo
   )
 }
 
+/** A compact action in a list of them: icon, title and hint on one line (Home's New panel). */
+export function ActionRow({ icon, title, hint, label, onClick }: { icon: ReactNode; title: ReactNode; hint?: ReactNode; label?: string; onClick: () => void }) {
+  return (
+    <button type="button" className="action-row" aria-label={label} onClick={onClick}>
+      {icon}
+      <span className="action-row-text">
+        <strong>{title}</strong>
+        {hint && <span className="muted">{hint}</span>}
+      </span>
+    </button>
+  )
+}
+
 /* ───────────────────────── Settings & forms ───────────────────────── */
 
 /** One setting: its name and a hint on the left, the control on the right (or below with `column`). `bare` leaves children unwrapped, for several blocks under the label. */

@@ -901,6 +901,51 @@ kbd.kbd {
   right: 14px;
 }
 
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.action-row:hover {
+  background: var(--raised);
+}
+
+.action-row:active {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+
+.action-row .doc-icon {
+  flex: none;
+  border-radius: 8px;
+}
+
+.action-row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.action-row-text strong {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.action-row-text .muted {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pill-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -1664,12 +1709,43 @@ kbd.kbd {
   font-size: 14px;
 }
 
+/* Open on the left; the file types you can make, as a list in one panel, on the right. */
 .home-actions {
   display: grid;
-  /* One row when every card gets 112px or more; past that, as many as fit. */
-  grid-template-columns: repeat(auto-fit, minmax(max(112px, calc((100% - (var(--cards, 5) - 1) * 12px) / var(--cards, 5))), 1fr));
+  grid-template-columns: minmax(200px, 1fr) minmax(0, 2.4fr);
   gap: 12px;
   margin-bottom: 40px;
+}
+
+.home-actions > .action-card {
+  justify-content: space-between;
+  padding: 18px;
+}
+
+.home-new {
+  padding: 10px 10px 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.home-new h2 {
+  margin: 4px 8px 8px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.home-new-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 2px 6px;
+}
+
+@media (max-width: 760px) {
+  .home-actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 .home-recents-header {

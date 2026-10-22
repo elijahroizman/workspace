@@ -8,15 +8,15 @@ import { enabledKinds, usePlugins } from '../state/plugins'
 import { useSettings } from '../state/settings'
 import type { RecentFile } from '../state/workspace'
 import { useWorkspace } from '../state/workspace'
-import { ActionCard, DocBadge, EmptyState, IconButton, KindIcon, PillTabs, PopoverMenu, Wordmark } from './ui'
+import { ActionCard, ActionRow, DocBadge, EmptyState, IconButton, KindIcon, PillTabs, PopoverMenu, Wordmark } from './ui'
 
 /** Recent's filters: file types grouped the way people think of them. */
 const RECENT_GROUPS = [
-  { id: 'office', label: 'Office', none: 'Office files', kinds: ['docx', 'pptx', 'xlsx', 'csv'], color: 'var(--kind-docx)' },
-  { id: 'notes', label: 'Notes', none: 'notes', kinds: ['md', 'txt'], color: 'var(--kind-md)' },
-  { id: 'pdf', label: 'PDF', none: 'PDFs', kinds: ['pdf'], color: 'var(--kind-pdf)' },
-  { id: 'image', label: 'Images', none: 'images', kinds: ['image'], color: 'var(--kind-image)' },
-  { id: 'latex', label: 'LaTeX', none: 'LaTeX files', kinds: ['latex'], color: 'var(--kind-latex)' },
+  { id: 'office', label: 'Office', none: 'Office files', kinds: ['docx', 'pptx', 'xlsx', 'csv'] },
+  { id: 'notes', label: 'Notes', none: 'notes', kinds: ['md', 'txt'] },
+  { id: 'pdf', label: 'PDF', none: 'PDFs', kinds: ['pdf'] },
+  { id: 'image', label: 'Images', none: 'images', kinds: ['image'] },
+  { id: 'latex', label: 'LaTeX', none: 'LaTeX files', kinds: ['latex'] },
 ] as const
 
 type RecentGroup = (typeof RECENT_GROUPS)[number]['id']
@@ -59,7 +59,7 @@ export function Home() {
           </div>
         </header>
 
-        <div className="home-actions" style={{ '--cards': 1 + kinds.filter((k) => k.create).length } as React.CSSProperties}>
+        <div className="home-actions">
           <ActionCard
             icon={
               <span className="action-card-icon">
@@ -71,11 +71,23 @@ export function Home() {
             keys={keysFor('open')}
             onClick={() => void openDialog()}
           />
-          {kinds
-            .filter((k) => k.create)
-            .map((k) => (
-              <ActionCard key={k.id} icon={<DocBadge kind={k.id} size={36} />} title={k.create!.title} hint={k.create!.hint} onClick={() => newDocument(k.id)} />
-            ))}
+          <div className="home-new" role="group" aria-labelledby="home-new-title">
+            <h2 id="home-new-title">New</h2>
+            <div className="home-new-list">
+              {kinds
+                .filter((k) => k.create)
+                .map((k) => (
+                  <ActionRow
+                    key={k.id}
+                    icon={<DocBadge kind={k.id} size={30} />}
+                    title={newName(k.create!.title)}
+                    hint={k.create!.hint}
+                    label={k.create!.title}
+                    onClick={() => newDocument(k.id)}
+                  />
+                ))}
+            </div>
+          </div>
         </div>
 
         <section className="home-recents">
@@ -85,7 +97,7 @@ export function Home() {
               label="Show"
               value={shownFilter}
               onChange={setFilter}
-              options={[{ value: 'all' as const, label: 'All' }, ...groups.map((g) => ({ value: g.id, label: g.label, color: g.color }))]}
+              options={[{ value: 'all' as const, label: 'All' }, ...groups.map((g) => ({ value: g.id, label: g.label }))]}
             />
           </div>
 
@@ -161,6 +173,12 @@ export function Home() {
 
 /** A row in the Recent list: a file, or a folder opened in the sidebar. */
 type Recent = RecentFile | { path: string; openedAt: number; kind: 'folder' }
+
+/** “New document” on its own under the New heading: “Document”. */
+function newName(title: string) {
+  const rest = title.replace(/^New\s+/i, '')
+  return rest.charAt(0).toUpperCase() + rest.slice(1)
+}
 
 function prettyDir(path: string) {
   return tildify(dirname(path))
