@@ -202,6 +202,11 @@
       "minimumSystemVersion": "12.0",
       "signingIdentity": "-",
       "hardenedRuntime": false
+    },
+    "windows": {
+      "nsis": {
+        "installerHooks": "./windows/hooks.nsh"
+      }
     }
   },
   "plugins": {
