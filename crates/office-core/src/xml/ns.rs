@@ -73,3 +73,21 @@ pub fn canonical(uri: &str) -> &str {
 pub fn same(a: &str, b: &str) -> bool {
     a == b || canonical(a) == canonical(b)
 }
+
+/// The strict URI for an Office namespace, leaving other namespaces alone.
+pub fn strict(uri: &str) -> &str {
+    match uri {
+        W => "http://purl.oclc.org/ooxml/wordprocessingml/main",
+        A => "http://purl.oclc.org/ooxml/drawingml/main",
+        P => "http://purl.oclc.org/ooxml/presentationml/main",
+        X => "http://purl.oclc.org/ooxml/spreadsheetml/main",
+        R => "http://purl.oclc.org/ooxml/officeDocument/relationships",
+        PIC => "http://purl.oclc.org/ooxml/drawingml/picture",
+        WP => "http://purl.oclc.org/ooxml/drawingml/wordprocessingDrawing",
+        XDR => "http://purl.oclc.org/ooxml/drawingml/spreadsheetDrawing",
+        C => "http://purl.oclc.org/ooxml/drawingml/chart",
+        EP => "http://purl.oclc.org/ooxml/officeDocument/extendedProperties",
+        VT => "http://purl.oclc.org/ooxml/officeDocument/docPropsVTypes",
+        _ => uri,
+    }
+}

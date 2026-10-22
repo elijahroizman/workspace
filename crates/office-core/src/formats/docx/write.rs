@@ -186,7 +186,7 @@ fn write_run(run: &Run, ctx: &mut Ctx, parent: &mut Element) {
             return;
         }
     }
-    let mut r = Element::new(ns::W, "r");
+    let mut r = Element::new(origin.and_then(|o| o.ns.as_deref()).unwrap_or(ns::W), "r");
     if let Some(o) = origin {
         r.attrs = o.attrs.clone();
     }

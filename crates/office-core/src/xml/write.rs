@@ -9,7 +9,7 @@ pub fn doc_to_bytes(doc: &XmlDoc) -> Vec<u8> {
         }
         out.push_str("?>");
     }
-    let mut w = Writer { out, scope: Vec::new() };
+    let mut w = Writer { out, scope: Vec::new(), strict: is_strict(&doc.root) };
     for n in &doc.before {
         w.node(n);
     }
@@ -27,13 +27,19 @@ pub fn element_to_string(el: &Element) -> String {
 /// One element as XML where `scope`'s namespace declarations are already in force, so it
 /// declares only what they don't.
 pub fn element_to_string_in(el: &Element, scope: &[Attr]) -> String {
+    let strict = is_strict(el) || scope.iter().any(|a| a.is_ns_decl() && ns::canonical(&a.value) != a.value);
     let scope = scope.iter().filter(|a| a.is_ns_decl()).map(|a| (a.prefix.as_ref().map(|_| a.local.clone()), a.value.clone())).collect();
-    let mut w = Writer { out: String::new(), scope };
+    let mut w = Writer { out: String::new(), scope, strict };
     w.element(el);
     w.out
 }
 
+fn is_strict(el: &Element) -> bool {
+    el.ns.as_deref().is_some_and(|uri| ns::canonical(uri) != uri)
+}
+
 struct Writer {
+    strict: bool,
     out: String,
     /// (prefix, uri) bindings in force, innermost last; `None` is the default namespace and an
     /// empty uri undeclares it.
@@ -103,11 +109,11 @@ impl Writer {
         // Declarations this element needs and doesn't have, written after its own.
         let mut extra: Vec<(Option<String>, String)> = Vec::new();
 
-        let prefix = self.resolve(el.prefix.as_deref(), el.ns.as_deref(), false, &mut extra);
+        let prefix = self.resolve(el.prefix.as_deref(), el.ns.as_deref(), false, mark, &mut extra);
         let name = join(&prefix, &el.local);
         let mut attrs: Vec<(String, &str)> = Vec::with_capacity(el.attrs.len());
         for a in &el.attrs {
-            let qname = if a.is_ns_decl() { a.qname() } else { self.attr_name(a, &mut extra) };
+            let qname = if a.is_ns_decl() { a.qname() } else { self.attr_name(a, mark, &prefix, &attrs, &mut extra) };
             attrs.push((qname, &a.value));
         }
 
@@ -144,7 +150,14 @@ impl Writer {
 
     /// The prefix to write a name in `uri` with ("" for none), binding one first if nothing in
     /// scope does. Attributes need a real prefix: the default namespace doesn't apply to them.
-    fn resolve(&mut self, prefix: Option<&str>, uri: Option<&str>, attr: bool, extra: &mut Vec<(Option<String>, String)>) -> String {
+    fn resolve(
+        &mut self,
+        prefix: Option<&str>,
+        uri: Option<&str>,
+        attr: bool,
+        reserved: usize,
+        extra: &mut Vec<(Option<String>, String)>,
+    ) -> String {
         let Some(uri) = uri else {
             // A prefix that was never declared where it was read: write it as it was.
             if let Some(p) = prefix {
@@ -156,6 +169,7 @@ impl Writer {
             }
             return String::new();
         };
+        let uri = if self.strict { ns::strict(uri) } else { uri };
         if self.bound(prefix) == Some(uri) && !(attr && prefix.is_none()) {
             return prefix.unwrap_or_default().to_string();
         }
@@ -167,15 +181,39 @@ impl Writer {
         if attr && p.is_none() {
             p = Some(ns::prefix_for(uri).map(str::to_string).unwrap_or_else(|| self.fresh_prefix()));
         }
+        if self.scope[reserved..].iter().any(|(q, u)| q == &p && u != uri) {
+            p = Some(self.fresh_prefix());
+        }
         self.bind(p.clone(), uri, extra);
         p.unwrap_or_default()
     }
 
-    fn attr_name(&mut self, a: &Attr, extra: &mut Vec<(Option<String>, String)>) -> String {
+    fn attr_name(
+        &mut self,
+        a: &Attr,
+        reserved: usize,
+        element_prefix: &str,
+        attrs: &[(String, &str)],
+        extra: &mut Vec<(Option<String>, String)>,
+    ) -> String {
         if a.ns.is_none() {
             return a.qname();
         }
-        let p = self.resolve(a.prefix.as_deref(), a.ns.as_deref(), true, extra);
+        // An inherited binding used by this tag's name cannot be rebound by an attribute.
+        let wanted = a.ns.as_deref().unwrap();
+        let wanted = if self.strict { ns::strict(wanted) } else { wanted };
+        let preferred = a.prefix.as_deref().or_else(|| ns::prefix_for(wanted));
+        let fresh;
+        let prefix = if preferred
+            .is_some_and(|p| p == element_prefix || attrs.iter().any(|(name, _)| name.split_once(':').is_some_and(|(used, _)| used == p)))
+            && self.bound(preferred) != Some(wanted)
+        {
+            fresh = self.fresh_prefix();
+            Some(fresh.as_str())
+        } else {
+            preferred
+        };
+        let p = self.resolve(prefix, a.ns.as_deref(), true, reserved, extra);
         format!("{p}:{}", a.local)
     }
 
