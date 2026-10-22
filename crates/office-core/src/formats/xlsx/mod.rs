@@ -1,7 +1,8 @@
 //! Excel (.xlsx): the workbook's sheets, their cells and merged ranges. The style sheet, number
-//! formats, column widths, conditional formatting, charts and defined names stay in the package
-//! (and the sheets' origins) for the Excel layer.
+//! formats, column widths, conditional formatting and defined names stay in the package
+//! (and the sheets' origins) for the Excel layer. Charts are read into the model ([`chart`]).
 
+pub mod chart;
 mod props;
 mod read;
 mod write;

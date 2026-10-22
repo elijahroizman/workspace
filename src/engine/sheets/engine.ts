@@ -87,6 +87,26 @@ export interface CellInfo {
   merged: boolean
 }
 
+export type ChartKind = 'column' | 'bar' | 'line' | 'area' | 'pie' | 'doughnut' | 'scatter' | 'other'
+export type ChartGrouping = 'standard' | 'stacked' | 'percentStacked'
+export type LegendPosition = 'right' | 'bottom' | 'top' | 'left'
+
+/** A chart as drawn: what it plots, worked out from the cells, and its box in grid pixels. */
+export interface ChartView {
+  kind: ChartKind
+  grouping: ChartGrouping
+  title: string | null
+  legend: LegendPosition | null
+  x: number
+  y: number
+  w: number
+  h: number
+  categories: string[]
+  series: { name: string; color: string | null; values: (number | null)[]; x: (number | null)[] | null }[]
+  palette: string[]
+  range: string | null
+}
+
 export interface SheetState {
   sheet: number
   anchor: [number, number]
@@ -115,6 +135,7 @@ export class SheetsEngine {
   revision = 0
   tick = 0
   private geometry = new Map<number, { revision: number; g: Geometry }>()
+  private chartCache = new Map<number, { revision: number; charts: ChartView[] }>()
   private listeners = new Set<() => void>()
   private stopFonts: () => void
   private disposed = false
@@ -173,6 +194,15 @@ export class SheetsEngine {
     const g = new Geometry(JSON.parse(this.doc.grid(sheet)))
     this.geometry.set(sheet, { revision: this.revision, g })
     return g
+  }
+
+  /** A sheet's charts, worked out once per change. */
+  chartsOf(sheet: number): ChartView[] {
+    const hit = this.chartCache.get(sheet)
+    if (hit && hit.revision === this.revision) return hit.charts
+    const charts = JSON.parse(this.doc.charts(sheet)) as ChartView[]
+    this.chartCache.set(sheet, { revision: this.revision, charts })
+    return charts
   }
 
   /** A block of cells drawn as HTML, in grid pixels. */

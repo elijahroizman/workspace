@@ -24,6 +24,9 @@ pub struct Sheet {
     pub merges: Vec<Range>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hidden: bool,
+    /// Charts on the sheet, back to front.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub charts: Vec<super::Chart>,
     /// The part the sheet was read from, so saving writes it back there.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub part: Option<String>,

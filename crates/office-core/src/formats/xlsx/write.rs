@@ -263,8 +263,18 @@ pub fn write(doc: &Document) -> Result<Package> {
                 part
             }
         };
-        if !untouched {
-            write_sheet(sheet, &part, &mut strings, same, &mut out)?;
+        // Charts first: a sheet that gains or loses its drawing must say so itself.
+        let link = super::chart::write_charts(sheet, &part, sheets, same && copy_of.is_none(), &mut out.pkg)?;
+        let shown = origin_as(&sheet.origin, ns::X, "worksheet")
+            .filter(|_| same && copy_of.is_none())
+            .and_then(|o| o.child(ns::X, "drawing").and_then(|d| rel_attr(d, "id")).map(str::to_string));
+        let drawing = match link {
+            super::chart::DrawingLink::Same => None,
+            super::chart::DrawingLink::Linked(rid) => (shown.as_deref() != Some(rid.as_str())).then_some(Some(rid)),
+            super::chart::DrawingLink::Gone => shown.is_some().then_some(None),
+        };
+        if !untouched || drawing.is_some() {
+            write_sheet(sheet, &part, &mut strings, same, drawing, &mut out)?;
         }
         written.insert(part.clone());
         let rid = ctx.relate(kind::WORKSHEET, &part);
@@ -520,7 +530,8 @@ fn splice(mut root: Element, content: &str) -> Vec<u8> {
     text.replacen(&format!("<!--{ROWS}-->"), content, 1).into_bytes()
 }
 
-fn write_sheet(sheet: &Sheet, part: &str, strings: &mut Strings, same: bool, out: &mut Out) -> Result<()> {
+/// `drawing`: the sheet's drawing changed, to this relationship id or to none.
+fn write_sheet(sheet: &Sheet, part: &str, strings: &mut Strings, same: bool, drawing: Option<Option<String>>, out: &mut Out) -> Result<()> {
     // Another package's sheet can't bring its drawings and comments (the parts its r:ids name)
     // along; anything else about it can come.
     let mut root = origin_as(&sheet.origin, ns::X, "worksheet").filter(|o| same || !names_parts(o)).unwrap_or_else(|| {
@@ -570,6 +581,13 @@ fn write_sheet(sheet: &Sheet, part: &str, strings: &mut Strings, same: bool, out
                 m.with_child(Element::new(ns::X, "mergeCell").with_attr("", "ref", r.to_string()))
             });
         root.place(merges, WORKSHEET);
+    }
+    match drawing {
+        Some(Some(rid)) => root.place(Element::new(ns::X, "drawing").with_attr(ns::R, "id", rid), WORKSHEET),
+        Some(None) => {
+            root.remove_children(ns::X, "drawing");
+        }
+        None => {}
     }
     // A sheet needs sheetData even if it's empty, and Excel asks for page margins.
     if root.child(ns::X, "pageMargins").is_none() && !same {

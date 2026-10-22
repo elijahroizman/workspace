@@ -1,7 +1,8 @@
 //! Workbooks and CSV files.
 
 use office_core::model::{CellRef, Kind, Range};
-use office_sheets::view::{FormatPatch, SheetsView};
+use office_core::model::ChartKind;
+use office_sheets::view::{ChartPatch, FormatPatch, SheetsView};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
@@ -56,6 +57,10 @@ enum Cmd {
     Find { query: String },
     ReplaceMatch { index: usize, text: String },
     ReplaceAll { text: String },
+    AddChart { sheet: usize, range: R, kind: ChartKind },
+    SetChart { sheet: usize, index: usize, patch: ChartPatch },
+    MoveChart { sheet: usize, index: usize, x: f64, y: f64, w: f64, h: f64 },
+    DeleteChart { sheet: usize, index: usize },
 }
 
 #[wasm_bindgen]
@@ -92,6 +97,11 @@ impl SheetsDoc {
         let p = self.view.paint(&mut m, sheet, r0, r1, c0, c1);
         let styles = self.view.new_styles();
         json(&serde_json::json!({ "items": p.items, "styles": styles }))
+    }
+
+    /// A sheet's charts as the app draws them (see `ChartView`).
+    pub fn charts(&mut self, sheet: usize) -> String {
+        json(&self.view.charts(sheet))
     }
 
     /// A cell as the formula bar and inspector see it.
@@ -218,6 +228,19 @@ impl SheetsDoc {
                 if let Some(m) = self.matches.get(index).copied() {
                     v.replace(&[m], &self.query, &text);
                 }
+                null
+            }
+            Cmd::AddChart { sheet, range, kind } => serde_json::json!(v.add_chart(sheet, range.range(), kind)),
+            Cmd::SetChart { sheet, index, patch } => {
+                v.set_chart(sheet, index, &patch);
+                null
+            }
+            Cmd::MoveChart { sheet, index, x, y, w, h } => {
+                v.move_chart(sheet, index, x, y, w, h);
+                null
+            }
+            Cmd::DeleteChart { sheet, index } => {
+                v.delete_chart(sheet, index);
                 null
             }
             Cmd::ReplaceAll { text } => {

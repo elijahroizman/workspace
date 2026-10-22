@@ -3,6 +3,7 @@
 //! widths and row heights, number formats, fills and borders, merged cells, formulas worked out
 //! again after each change, and sheets.
 
+mod charts;
 mod commands;
 
 use std::collections::HashMap;
@@ -22,6 +23,7 @@ use office_engine::style::TextStyle;
 use serde::Serialize;
 
 use crate::{format_of, CellFormat, Sheets};
+pub use charts::{ChartPatch, ChartView, SeriesView};
 pub use commands::FormatPatch;
 
 /// A picked range: where it started and where it's been extended to.
@@ -49,6 +51,8 @@ pub enum CStep {
     Sheet { sheet: usize, before: Box<Sheet>, after: Box<Sheet> },
     /// The sheets themselves (added, removed, renamed, moved).
     Book { before: Vec<Sheet>, after: Vec<Sheet> },
+    /// A sheet's charts.
+    Charts { sheet: usize, before: Vec<office_core::model::Chart>, after: Vec<office_core::model::Chart> },
 }
 
 impl Step for CStep {}
@@ -252,8 +256,10 @@ impl SheetsView {
         let Some(s) = self.sheets().get(sheet) else { return Grid::default() };
         let used = s.used_range();
         let merges_end = s.merges.iter().map(|m| (m.end.row, m.end.col)).fold((0, 0), |a, b| (a.0.max(b.0), a.1.max(b.1)));
-        let rows = used.map(|u| u.end.row + 1).unwrap_or(0).max(merges_end.0 + 1) + 200;
-        let cols = used.map(|u| u.end.col + 1).unwrap_or(0).max(merges_end.1 + 1).max(26) + 26;
+        // Room for the charts too.
+        let charts_end = s.charts.iter().map(|c| c.anchor.to.unwrap_or(c.anchor.from)).fold((0, 0), |a, p| (a.0.max(p.row), a.1.max(p.col)));
+        let rows = used.map(|u| u.end.row + 1).unwrap_or(0).max(merges_end.0 + 1).max(charts_end.0 + 1) + 200;
+        let cols = used.map(|u| u.end.col + 1).unwrap_or(0).max(merges_end.1 + 1).max(charts_end.1 + 1).max(26) + 26;
         let origin = s.origin.get();
         let fmt = origin.and_then(|o| o.child(ns::X, "sheetFormatPr"));
         let chars = |w: f64| (w * 7.0 + 5.0).round();

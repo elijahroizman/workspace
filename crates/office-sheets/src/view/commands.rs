@@ -50,6 +50,10 @@ impl SheetsView {
 
     // ---- recording changes ----
 
+    pub(super) fn record_step(&mut self, step: CStep, before: SheetSel) {
+        self.record(vec![step], before);
+    }
+
     fn record(&mut self, steps: Vec<CStep>, before: SheetSel) {
         let after = self.sel;
         self.history.record(steps, before, after, None);
@@ -133,6 +137,11 @@ impl SheetsView {
                 }
             }
             CStep::Book { before, after } => *self.sheets_mut() = if undo { before.clone() } else { after.clone() },
+            CStep::Charts { sheet, before, after } => {
+                if let Some(s) = self.sheets_mut().get_mut(*sheet) {
+                    s.charts = if undo { before.clone() } else { after.clone() };
+                }
+            }
         }
     }
 
@@ -323,6 +332,8 @@ impl SheetsView {
             // group that this shift touches before those origins are cleared, and move references the
             // way inserting or deleting rows does.
             prepare_shift(s, Axis::Row, at, n);
+            let name = s.name.clone();
+            super::charts::shift_charts(s, true, at, n, |f| adjust_formula(f, &name, Axis::Row, at, n));
             if n < 0 {
                 let end = at as i64 - n;
                 s.rows.retain(|r| (r.index as i64) < at as i64 || r.index as i64 >= end);
@@ -352,6 +363,8 @@ impl SheetsView {
         self.change_sheet(sheet, |v| {
             let Some(s) = v.sheets_mut().get_mut(sheet) else { return };
             prepare_shift(s, Axis::Col, at, n);
+            let name = s.name.clone();
+            super::charts::shift_charts(s, false, at, n, |f| adjust_formula(f, &name, Axis::Col, at, n));
             for r in &mut s.rows {
                 if n < 0 {
                     let end = at as i64 - n;
@@ -422,7 +435,9 @@ impl SheetsView {
         if name.is_empty() || self.sheets().iter().enumerate().any(|(i, s)| i != sheet && s.name.eq_ignore_ascii_case(&name)) {
             return;
         }
+        let Some(old) = self.sheets().get(sheet).map(|s| s.name.clone()) else { return };
         self.change_book(|v| {
+            super::charts::rename_charts(v.sheets_mut(), &old, &name);
             if let Some(s) = v.sheets_mut().get_mut(sheet) {
                 s.name = name;
             }
