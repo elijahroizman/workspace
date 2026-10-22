@@ -244,7 +244,9 @@ fn write_frame(frame: &Frame, ctx: &mut PartCtx, out: &mut Out, ids: &mut FrameI
             let mut el = origin_as(&frame.origin, ns::P, local).unwrap_or_else(|| {
                 let c_nv = if *connector { "cNvCxnSpPr" } else { "cNvSpPr" };
                 let mut c = Element::new(ns::P, c_nv);
-                if !*connector && frame.placeholder.is_none() && text.is_some() {
+                // A text box is a plain rectangle of text; a filled shape or another outline isn't one.
+                let plain = frame.shape.preset.as_deref().is_none_or(|p| p == "rect") && frame.shape.fill.is_none();
+                if !*connector && frame.placeholder.is_none() && text.is_some() && plain {
                     c.set_attr("", "txBox", "1");
                 }
                 Element::new(ns::P, local).with_child(nv_props(nv, c)).with_child(Element::new(ns::P, "spPr"))

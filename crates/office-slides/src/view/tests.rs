@@ -1,0 +1,178 @@
+use office_core::drawing::Xfrm;
+use office_core::model::{Body, Document, Frame, Paragraph, Slide};
+use office_core::units::Emu;
+use office_core::{Compiler, Kind};
+use office_engine::display::Item;
+use office_engine::measure::FixedMeasurer;
+
+use super::*;
+use crate::Decks;
+
+fn deck(texts: &[&[&str]]) -> Vec<u8> {
+    let mut doc = Document::new(Kind::Slides);
+    let slides = texts
+        .iter()
+        .map(|frames| Slide {
+            frames: frames
+                .iter()
+                .enumerate()
+                .map(|(i, t)| {
+                    Frame::text_box(
+                        i as u32 + 2,
+                        Xfrm {
+                            x: Emu::from_inches(1.0),
+                            y: Emu::from_inches(1.0 + i as f64 * 1.5),
+                            width: Emu::from_inches(6.0),
+                            height: Emu::from_inches(1.0),
+                            ..Default::default()
+                        },
+                        vec![Paragraph::text(*t)],
+                    )
+                })
+                .collect(),
+            ..Default::default()
+        })
+        .collect();
+    doc.body = Body::Slides { size: Default::default(), slides };
+    Compiler::new().with_layer(Decks).write(&doc, Kind::Slides).unwrap()
+}
+
+fn texts(items: &[Item]) -> Vec<String> {
+    let mut out = Vec::new();
+    for i in items {
+        match i {
+            Item::Text { text, .. } => out.push(text.clone()),
+            Item::Group { items, .. } => out.extend(texts(items)),
+            _ => {}
+        }
+    }
+    out
+}
+
+#[test]
+fn draws_slides() {
+    let mut host = FixedMeasurer::default();
+    let mut v = SlidesView::open(&deck(&[&["Hello", "World"], &["Second"]])).unwrap();
+    assert_eq!(v.slides().len(), 2);
+    let (w, h) = v.size();
+    assert!((w - 1280.0).abs() < 1.0 && (h - 720.0).abs() < 1.0);
+    let p = v.paint(&mut host, 0);
+    assert_eq!(texts(&p.items), vec!["Hello", "World"]);
+    assert!(!v.new_styles().is_empty());
+    let els = v.elements(&mut host, 0);
+    assert_eq!(els.len(), 2);
+    assert_eq!(els[0].x, 96.0);
+    assert_eq!(els[0].kind, "text");
+    assert_eq!(v.slide_infos().len(), 2);
+}
+
+#[test]
+fn blank_deck() {
+    let mut host = FixedMeasurer::default();
+    let mut v = SlidesView::blank();
+    assert_eq!(v.slides().len(), 2);
+    assert!(texts(&v.paint(&mut host, 0).items).contains(&"Presentation title".to_string()));
+}
+
+#[test]
+fn select_move_and_undo() {
+    let mut host = FixedMeasurer::default();
+    let mut v = SlidesView::open(&deck(&[&["Hello", "World"]])).unwrap();
+    assert_eq!(v.press(&mut host, 100.0, 100.0, false), Some(2));
+    v.move_frames(&mut host, &[2], 50.0, 20.0);
+    assert_eq!(v.elements(&mut host, 0)[0].x, 146.0);
+    assert!(v.is_dirty());
+    v.undo();
+    assert_eq!(v.elements(&mut host, 0)[0].x, 96.0);
+    v.redo();
+    v.set_box(&mut host, 2, Boxed { x: 10.0, y: 10.0, w: 300.0, h: 50.0, rot: 45.0, ..Default::default() });
+    let e = &v.elements(&mut host, 0)[0];
+    assert_eq!((e.x, e.width, e.rotation), (10.0, 300.0, 45.0));
+    v.delete_frames();
+    assert_eq!(v.elements(&mut host, 0).len(), 1);
+}
+
+#[test]
+fn typing_in_a_frame() {
+    let mut host = FixedMeasurer::default();
+    let mut v = SlidesView::open(&deck(&[&["Hello"]])).unwrap();
+    assert!(v.begin_edit(&mut host, 2, None));
+    v.move_caret(&mut host, "end", false);
+    for c in [",", " ", "y", "o", "u"] {
+        v.insert_text(c);
+    }
+    v.enter();
+    v.insert_text("Next");
+    assert_eq!(v.elements(&mut host, 0)[0].text, "Hello, you\nNext");
+    assert!(v.text_overlay(&mut host).unwrap().caret.is_some());
+    v.undo();
+    v.undo();
+    assert_eq!(v.elements(&mut host, 0)[0].text, "Hello, you");
+    v.end_edit();
+    let bytes = v.save().unwrap();
+    let mut back = SlidesView::open(&bytes).unwrap();
+    assert_eq!(back.elements(&mut host, 0)[0].text, "Hello, you");
+}
+
+#[test]
+fn slide_operations() {
+    let mut host = FixedMeasurer::default();
+    let mut v = SlidesView::open(&deck(&[&["One"], &["Two"], &["Three"]])).unwrap();
+    v.move_slide(0, 2);
+    assert_eq!(texts(&v.paint(&mut host, 2).items), vec!["One"]);
+    v.duplicate_slides(&[0]);
+    assert_eq!(v.slides().len(), 4);
+    v.delete_slides(&[0, 1]);
+    assert_eq!(v.slides().len(), 2);
+    v.toggle_hidden(&[0]);
+    assert!(v.slides()[0].hidden);
+    v.set_notes(0, "Speaker notes");
+    assert_eq!(v.slide_infos()[0].notes, "Speaker notes");
+    v.set_transition(
+        &[0],
+        Some(crate::Transition { kind: "fade".into(), direction: None, duration_ms: Some(700), on_click: true, after_ms: None }),
+    );
+    assert_eq!(v.slide_infos()[0].transition.as_ref().map(|t| t.kind.as_str()), Some("fade"));
+    let bytes = v.save().unwrap();
+    let back = SlidesView::open(&bytes).unwrap();
+    assert_eq!(back.slides().len(), 2);
+    assert_eq!(back.slide_infos()[0].notes, "Speaker notes");
+    assert!(back.slides()[0].hidden);
+}
+
+#[test]
+fn shapes_tables_and_styles() {
+    let mut host = FixedMeasurer::default();
+    let mut v = SlidesView::open(&deck(&[&["Title"]])).unwrap();
+    let shape = v.insert_shape("star5");
+    let p = v.paint(&mut host, 0);
+    assert!(format!("{:?}", p.items).contains("Path"), "the star is drawn");
+    v.set_fill(Some("FF0000"));
+    let el = v.elements(&mut host, 0).into_iter().find(|e| e.id == shape.to_string()).unwrap();
+    assert_eq!(el.shape_style.unwrap().fill_color.as_deref(), Some("#ff0000"));
+    let t = v.insert_table(3, 2);
+    let el = v.elements(&mut host, 0).into_iter().find(|e| e.id == t.to_string()).unwrap();
+    assert_eq!(el.table.as_ref().map(|t| (t.rows, t.columns, t.header)), Some((3, 2, true)));
+    v.table_op("rows", Some("4"));
+    assert_eq!(v.elements(&mut host, 0).into_iter().find(|e| e.id == t.to_string()).unwrap().table.unwrap().rows, 4);
+    assert!(v.begin_edit(&mut host, t, None));
+    v.insert_text("cell");
+    v.end_edit();
+    v.select_frames(vec![2]);
+    v.text_style(&TextPatch { bold: Some(true), font_size: Some(40.0), ..Default::default() });
+    let ts = v.elements(&mut host, 0)[0].text_style.clone().unwrap();
+    assert!(ts.bold);
+    assert_eq!(ts.font_size, Some(40.0));
+    v.select_frames(vec![2, shape]);
+    v.group(&mut host);
+    assert_eq!(v.elements(&mut host, 0).iter().filter(|e| e.kind == "group").count(), 1);
+    v.ungroup();
+    assert_eq!(v.elements(&mut host, 0).iter().filter(|e| e.kind == "group").count(), 0);
+    let before: Vec<String> = v.elements(&mut host, 0).iter().map(|e| format!("{}:{}", e.kind, e.text)).collect();
+    let bytes = v.save().unwrap();
+    let mut back = SlidesView::open(&bytes).unwrap();
+    let after: Vec<String> = back.elements(&mut host, 0).iter().map(|e| format!("{}:{}", e.kind, e.text)).collect();
+    assert_eq!(before, after);
+    let p = back.paint(&mut host, 0);
+    assert!(texts(&p.items).contains(&"cell".to_string()), "{:?}", texts(&p.items));
+}

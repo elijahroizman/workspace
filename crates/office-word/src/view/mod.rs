@@ -775,47 +775,7 @@ fn to_page(pages: &[Page], si: usize, x: f64, y: f64) -> (usize, f64, f64) {
     (page, p.body_x + x, p.body_y + y - p.top)
 }
 
-/// The position nearest (`x`, `y`) in a laid-out flow.
-pub(crate) fn hit_flow(ctx: &mut Ctx, flow: &FlowLayout, x: f64, y: f64) -> Option<Pos> {
-    // The block whose extent (with its spacing) holds y, or the nearest one.
-    let mut best: Option<&BlockBox> = None;
-    for b in &flow.blocks {
-        let (top, bottom) = match b {
-            BlockBox::Para(p) => (p.y - p.spec.space_before, p.y + p.layout.height + p.spec.space_after),
-            BlockBox::Table(t) => (t.y, t.y + t.height),
-            BlockBox::Empty { .. } => continue,
-        };
-        if y < bottom || best.is_none() {
-            best = Some(b);
-        }
-        if y < bottom {
-            let _ = top;
-            break;
-        }
-    }
-    match best? {
-        BlockBox::Para(p) => {
-            let ly = y - p.y;
-            let li = p.layout.lines.iter().position(|l| ly < l.top + l.height).unwrap_or(p.layout.lines.len().saturating_sub(1));
-            let off = p.layout.offset_at(ctx, &p.spec, li, x);
-            Some(Pos::new(p.path.clone(), off))
-        }
-        BlockBox::Table(t) => {
-            let tx = x - t.x;
-            let ty = y - t.y;
-            let cell = t
-                .cells
-                .iter()
-                .find(|c| tx >= c.x && tx < c.x + c.width && ty >= c.y && ty < c.y + c.height)
-                .or_else(|| {
-                    t.cells.iter().filter(|c| ty >= c.y && ty < c.y + c.height).min_by(|a, b| (a.x - tx).abs().total_cmp(&(b.x - tx).abs()))
-                })
-                .or_else(|| t.cells.last())?;
-            hit_flow(ctx, &cell.content, tx - cell.x - cell.look.margins[3], ty - cell.y - cell.content_y)
-        }
-        BlockBox::Empty { .. } => None,
-    }
-}
+pub(crate) use office_engine::flow::hit as hit_flow;
 
 /// The link on the text at `offset` of the paragraph at `path`.
 fn link_at(blocks: &[Block], path: &Path, offset: u32) -> Option<String> {

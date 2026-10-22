@@ -119,7 +119,9 @@ name = "office-slides"
 version = "0.1.0"
 dependencies = [
  "office-core",
+ "office-engine",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

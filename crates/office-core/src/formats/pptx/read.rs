@@ -40,6 +40,15 @@ pub fn read(pkg: Package) -> Result<Document> {
     Ok(doc)
 }
 
+/// The frames on any slide-like part (a layout's or master's shapes, for drawing them behind
+/// slides), with pictures' media registered on `doc`.
+pub fn read_part_frames(pkg: &Package, part: &str, doc: &mut Document) -> Result<Vec<Frame>> {
+    let xml = pkg.xml(part)?;
+    let rels = PartRels::new(pkg, part)?;
+    let tree = xml.root.path(ns::P, &["cSld", "spTree"]);
+    Ok(tree.map(|t| t.elements().filter(|e| !is_tree_props(e)).map(|e| read_frame(e, &rels, doc)).collect()).unwrap_or_default())
+}
+
 fn read_slide(pkg: &Package, part: &str, doc: &mut Document) -> Result<Slide> {
     let xml = pkg.xml(part)?;
     let rels = PartRels::new(pkg, part)?;

@@ -10,6 +10,7 @@
 //! Add [`Decks`] to a compiler to have it read and write all this.
 
 pub mod templates;
+pub mod view;
 
 use office_core::drawing::{Color, Rgba, Theme, Xfrm};
 use office_core::formats::common::PartCtx;
