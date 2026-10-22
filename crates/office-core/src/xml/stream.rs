@@ -3,7 +3,7 @@
 //! [`for_each_element`] and [`parse_in`] then go through that content one element at a time.
 
 use quick_xml::events::Event;
-use quick_xml::Reader;
+use quick_xml::{name::ResolveResult, NsReader, Reader};
 
 use super::{Attr, Element, XmlDoc};
 
@@ -22,7 +22,8 @@ pub struct Hollow {
 pub fn parse_hollow(bytes: &[u8], local: Option<&str>) -> Result<Hollow, String> {
     let text = super::parse::decode(bytes)?;
     let target_depth = if local.is_some() { 1 } else { 0 };
-    let mut reader = Reader::from_str(&text);
+    let mut reader = NsReader::from_str(&text);
+    let mut root_ns: Option<String> = None;
     reader.config_mut().trim_text(false);
     let mut depth = 0usize;
     // Where the element's content starts and ends.
@@ -30,10 +31,20 @@ pub fn parse_hollow(bytes: &[u8], local: Option<&str>) -> Result<Hollow, String>
     let mut open_at: Option<usize> = None;
     loop {
         let before = reader.buffer_position() as usize;
-        let event = reader.read_event().map_err(|e| format!("{e} at byte {}", reader.error_position()))?;
+        let (resolved, event) = reader.read_resolved_event().map_err(|e| e.to_string())?;
+        let uri = match resolved {
+            ResolveResult::Bound(uri) => Some(uri.0),
+            _ => None,
+        };
+        if depth == 0 && matches!(event, Event::Start(_) | Event::Empty(_)) {
+            root_ns = uri.map(str::to_string);
+        }
         let name_matches = |name: &[u8]| {
             let name = std::str::from_utf8(name).unwrap_or("");
-            local.is_none_or(|l| name.rsplit(':').next() == Some(l))
+            local.is_none_or(|l| {
+                name.rsplit(':').next() == Some(l)
+                    && (uri == root_ns.as_deref() || uri.zip(root_ns.as_deref()).is_some_and(|(a, b)| super::ns::same(a, b)))
+            })
         };
         match event {
             Event::Start(s) => {
@@ -65,8 +76,14 @@ pub fn parse_hollow(bytes: &[u8], local: Option<&str>) -> Result<Hollow, String>
     let doc = super::parse(shell.as_bytes())?;
     let mut scope: Vec<Attr> = doc.root.attrs.iter().filter(|a| a.is_ns_decl()).cloned().collect();
     if let Some(l) = local {
-        if let Some(el) = doc.root.elements().find(|e| e.local == l) {
-            scope.extend(el.attrs.iter().filter(|a| a.is_ns_decl()).cloned());
+        if let Some(el) = doc.root.child(doc.root.ns.as_deref().unwrap_or(""), l) {
+            for a in el.attrs.iter().filter(|a| a.is_ns_decl()) {
+                if let Some(old) = scope.iter_mut().find(|old| old.prefix == a.prefix && old.local == a.local) {
+                    *old = a.clone();
+                } else {
+                    scope.push(a.clone());
+                }
+            }
         }
     }
     Ok(Hollow { doc, inner, scope })

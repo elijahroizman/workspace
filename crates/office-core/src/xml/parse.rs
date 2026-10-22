@@ -170,6 +170,30 @@ impl Parser {
         }
         let (prefix, local) = split(start.name().0);
         let ns = self.lookup(prefix.as_deref());
+        // QName values and markup-compatibility prefix lists need their bindings even when
+        // this element is later written apart from its ancestors.
+        let mut needed = Vec::new();
+        for a in attrs.iter().filter(|a| !a.is_ns_decl()) {
+            let prefix_list = (ns.as_deref().is_some_and(|n| n == super::ns::MC) && a.local == "Requires")
+                || (a.ns.as_deref().is_some_and(|n| n == super::ns::MC) && matches!(a.local.as_str(), "Ignorable" | "MustUnderstand"));
+            for token in a.value.split_whitespace() {
+                let p = match token.split_once(':') {
+                    Some((p, _)) => p,
+                    None if prefix_list => token,
+                    None => continue,
+                };
+                if p == "xml"
+                    || attrs.iter().any(|a| a.is_ns_decl() && a.prefix.is_some() && a.local == p)
+                    || needed.iter().any(|a: &Attr| a.local == p)
+                {
+                    continue;
+                }
+                if let Some(uri) = self.lookup(Some(p)) {
+                    needed.push(Attr { prefix: Some("xmlns".into()), local: p.into(), ns: Some(xmlns.clone()), value: uri.to_string() });
+                }
+            }
+        }
+        attrs.extend(needed);
         Ok(Element { prefix, local, ns, attrs, children: Vec::new() })
     }
 

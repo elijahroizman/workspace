@@ -149,10 +149,7 @@ impl PartCtx {
 
     /// The id of an external hyperlink to `url`, made if there isn't one.
     pub fn link(&mut self, url: &str) -> String {
-        if let Some(r) = self.rels.of_kind(kind::HYPERLINK).find(|r| r.external && r.target == url) {
-            return r.id.clone();
-        }
-        self.rels.add(kind::HYPERLINK, url, true)
+        self.rels.link(url)
     }
 
     /// The id of a relationship of type `kind_` to `part`, made if there isn't one.

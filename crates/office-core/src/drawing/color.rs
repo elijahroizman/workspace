@@ -280,9 +280,9 @@ impl Working {
         let v = frac(value);
         let unit = |x: f64| x.clamp(0.0, 1.0);
         match kind {
-            "alpha" => self.alpha = v,
-            "alphaMod" => self.alpha *= v,
-            "alphaOff" => self.alpha += v,
+            "alpha" => self.alpha = unit(v),
+            "alphaMod" => self.alpha = unit(self.alpha * v),
+            "alphaOff" => self.alpha = unit(self.alpha + v),
             "lum" => self.hsl().l = unit(v),
             "lumMod" => self.hsl().l = unit(self.hsl().l * v),
             "lumOff" => self.hsl().l = unit(self.hsl().l + v),

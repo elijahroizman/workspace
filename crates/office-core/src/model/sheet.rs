@@ -122,7 +122,10 @@ impl CellRef {
         let mut bytes = s.trim().bytes().filter(|&b| b != b'$').peekable();
         let (mut col, mut letters) = (0u32, 0);
         while let Some(b) = bytes.next_if(u8::is_ascii_alphabetic) {
-            col = col * 26 + (b.to_ascii_uppercase() - b'A' + 1) as u32;
+            if letters == 3 {
+                return None;
+            }
+            col = col.checked_mul(26)?.checked_add((b.to_ascii_uppercase() - b'A' + 1) as u32)?;
             letters += 1;
         }
         let (mut row, mut digits) = (0u32, 0);
@@ -320,7 +323,7 @@ impl Sheet {
         let Some(used) = self.used_range() else { return Ok(Vec::new()) };
         self.check_laid_out(used.end)?;
         let mut out = vec![Vec::new(); used.end.row as usize + 1];
-        for row in &self.rows {
+        for row in self.rows.iter().filter(|r| !r.cells.is_empty()) {
             let line = &mut out[row.index as usize];
             for c in &row.cells {
                 if line.len() <= c.col as usize {

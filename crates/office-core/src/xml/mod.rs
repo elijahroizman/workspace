@@ -343,6 +343,10 @@ impl Element {
     /// prefixes), the same attributes in any order, and the same content, ignoring layout
     /// whitespace between tags.
     pub fn same_content(&self, other: &Element) -> bool {
+        self.same_content_in(other, false, false)
+    }
+
+    fn same_content_in(&self, other: &Element, preserve_a: bool, preserve_b: bool) -> bool {
         fn key(a: &Attr) -> (String, &str, &str) {
             // Declarations by what they declare; other attributes by namespace.
             let space = if a.is_ns_decl() {
@@ -360,14 +364,20 @@ impl Element {
         if self.local != other.local || !same_ns(&self.ns, &other.ns) || sorted(self) != sorted(other) {
             return false;
         }
+        let preserve = |e: &Element, inherited| match e.attr_ns(ns::XML, "space") {
+            Some("preserve") => true,
+            Some("default") => false,
+            _ => inherited,
+        };
+        let (pa, pb) = (preserve(self, preserve_a), preserve(other, preserve_b));
         let tags = |e: &Element| e.children.iter().any(|n| matches!(n, Node::Element(_)));
         let (ta, tb) = (tags(self), tags(other));
-        let mut a = self.children.iter().filter(|n| !is_layout(n, ta));
-        let mut b = other.children.iter().filter(|n| !is_layout(n, tb));
+        let mut a = self.children.iter().filter(|n| pa || !is_layout(n, ta));
+        let mut b = other.children.iter().filter(|n| pb || !is_layout(n, tb));
         loop {
             match (a.next(), b.next()) {
                 (None, None) => return true,
-                (Some(Node::Element(x)), Some(Node::Element(y))) if x.same_content(y) => {}
+                (Some(Node::Element(x)), Some(Node::Element(y))) if x.same_content_in(y, pa, pb) => {}
                 (Some(x), Some(y)) if !matches!(x, Node::Element(_)) && x == y => {}
                 _ => return false,
             }

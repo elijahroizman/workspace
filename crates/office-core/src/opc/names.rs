@@ -9,7 +9,7 @@
 /// (`""` for the package's own relationships).
 pub fn resolve(source: &str, target: &str) -> String {
     // The fragment and query go first: an encoded `%23` is part of the name.
-    let target = percent_decode(target.split(['#', '?']).next().unwrap_or(""));
+    let target = percent_encode(target.split(['#', '?']).next().unwrap_or(""));
     let mut segments: Vec<&str> =
         if target.starts_with('/') { Vec::new() } else { folder(source).split('/').filter(|s| !s.is_empty()).collect() };
     for seg in target.split('/') {
@@ -56,33 +56,37 @@ pub fn extension(part: &str) -> String {
     file.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default()
 }
 
-fn percent_decode(s: &str) -> String {
-    if !s.contains('%') {
-        return s.to_string();
-    }
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        let hex = |b: u8| (b as char).to_digit(16);
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let (Some(hi), Some(lo)) = (hex(bytes[i + 1]), hex(bytes[i + 2])) {
-                out.push((hi * 16 + lo) as u8);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8(out).unwrap_or_else(|_| s.to_string())
-}
-
 fn percent_encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
-    for b in s.bytes() {
+    let mut bytes = s.bytes().peekable();
+    while let Some(b) = bytes.next() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' => out.push(b as char),
+            b'%' if bytes.clone().take(2).count() == 2 && bytes.clone().take(2).all(|b| b.is_ascii_hexdigit()) => {
+                out.push('%');
+                out.push(bytes.next().unwrap().to_ascii_uppercase() as char);
+                out.push(bytes.next().unwrap().to_ascii_uppercase() as char);
+            }
+            b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'-'
+            | b'_'
+            | b'.'
+            | b'~'
+            | b'/'
+            | b'!'
+            | b'$'
+            | b'&'
+            | b'\''
+            | b'('
+            | b')'
+            | b'*'
+            | b'+'
+            | b','
+            | b';'
+            | b'='
+            | b':'
+            | b'@' => out.push(b as char),
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }
@@ -100,7 +104,7 @@ mod tests {
         assert_eq!(resolve("word/document.xml", "media/image1.png"), "word/media/image1.png");
         assert_eq!(resolve("ppt/slides/slide1.xml", "../slideLayouts/slideLayout2.xml"), "ppt/slideLayouts/slideLayout2.xml");
         assert_eq!(resolve("xl/workbook.xml", "worksheets/sheet1.xml"), "xl/worksheets/sheet1.xml");
-        assert_eq!(resolve("word/document.xml", "media/my%20picture.png"), "word/media/my picture.png");
+        assert_eq!(resolve("word/document.xml", "media/my%20picture.png"), "word/media/my%20picture.png");
         assert_eq!(resolve("word/document.xml", "./a/../b.xml"), "word/b.xml");
     }
 
@@ -115,7 +119,7 @@ mod tests {
             ("ppt/slides/slide1.xml", "ppt/media/x.png"),
             ("", "docProps/core.xml"),
             ("a/b/c.xml", "d/e.xml"),
-            ("word/document.xml", "word/media/a#b?.png"),
+            ("word/document.xml", "word/media/a%23b%3F.png"),
         ] {
             assert_eq!(resolve(src, &relative(src, part)), part);
         }
