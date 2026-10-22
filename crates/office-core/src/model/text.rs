@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use super::{Image, Origin};
 use crate::drawing::Color;
 use crate::units::{Emu, FontSize, Percent};
-use crate::xml::Element;
+use crate::xml::{ns, Element, Node};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -254,7 +254,7 @@ impl Paragraph {
         let mut merged: Vec<Inline> = Vec::with_capacity(self.content.len());
         for inline in self.content.drain(..) {
             if let (Some(Inline::Text(prev)), Inline::Text(run)) = (merged.last_mut(), &inline) {
-                if prev.props == run.props && prev.link == run.link {
+                if prev.props == run.props && prev.link == run.link && same_run_formatting(&prev.origin, &run.origin) {
                     prev.text.push_str(&run.text);
                     continue;
                 }
@@ -320,4 +320,24 @@ pub fn underline_to_drawingml(word: &str) -> &str {
 /// The model's (Word's) name for one of PowerPoint's underlines.
 pub fn underline_from_drawingml(dml: &str) -> &str {
     UNDERLINES.iter().find(|(_, d)| *d == dml).map(|(w, _)| *w).unwrap_or("single")
+}
+
+fn same_run_formatting(a: &Origin, b: &Origin) -> bool {
+    let (a, b) = match (a.get(), b.get()) {
+        (None, None) => return true,
+        (Some(a), Some(b)) => (a, b),
+        _ => return false,
+    };
+    let same_kind =
+        a.local == b.local || (a.in_ns(ns::A) && matches!(a.local.as_str(), "r" | "br") && matches!(b.local.as_str(), "r" | "br"));
+    let text = |e: &Element| {
+        (e.local == "t" && (e.in_ns(ns::W) || e.in_ns(ns::A) || e.in_ns(ns::X)))
+            || (e.in_ns(ns::W) && matches!(e.local.as_str(), "tab" | "br" | "noBreakHyphen" | "softHyphen"))
+    };
+    let formatting = |n: &&Node| !matches!(n, Node::Element(e) if text(e));
+    same_kind
+        && a.ns == b.ns
+        && a.attrs == b.attrs
+        && a.children.iter().filter(formatting).eq(b.children.iter().filter(formatting))
+        && a.elements().filter(|e| text(e)).flat_map(|e| &e.attrs).eq(b.elements().filter(|e| text(e)).flat_map(|e| &e.attrs))
 }

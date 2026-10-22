@@ -20,7 +20,7 @@ impl Emu {
     pub const PER_PIXEL: i64 = 9_525;
 
     pub fn from_twips(t: i64) -> Emu {
-        Emu(t * Self::PER_TWIP)
+        Emu(t.saturating_mul(Self::PER_TWIP))
     }
     pub fn from_points(pt: f64) -> Emu {
         Emu((pt * Self::PER_POINT as f64).round() as i64)
@@ -71,21 +71,22 @@ impl Emu {
                 return n.checked_mul(unit).map(Emu);
             }
         }
-        num.parse::<f64>().ok().filter(|n| n.is_finite()).map(|n| Emu((n * per).round() as i64))
+        let value = (num.parse::<f64>().ok()? * per).round();
+        (value.is_finite() && value >= i64::MIN as f64 && value < -(i64::MIN as f64)).then_some(Emu(value as i64))
     }
 }
 
 impl std::ops::Add for Emu {
     type Output = Emu;
     fn add(self, o: Emu) -> Emu {
-        Emu(self.0 + o.0)
+        Emu(self.0.saturating_add(o.0))
     }
 }
 
 impl std::ops::Sub for Emu {
     type Output = Emu;
     fn sub(self, o: Emu) -> Emu {
-        Emu(self.0 - o.0)
+        Emu(self.0.saturating_sub(o.0))
     }
 }
 
@@ -100,14 +101,14 @@ impl FontSize {
         FontSize((pt * 100.0).round().max(0.0) as u32)
     }
     pub fn from_half_points(hp: u32) -> FontSize {
-        FontSize(hp * 50)
+        FontSize(hp.saturating_mul(50))
     }
     pub fn points(self) -> f64 {
         self.0 as f64 / 100.0
     }
     /// Rounded to the nearest half-point, as Word stores sizes.
     pub fn half_points(self) -> u32 {
-        (self.0 + 25) / 50
+        ((self.0 as u64 + 25) / 50) as u32
     }
 }
 
@@ -148,10 +149,12 @@ impl Angle {
 }
 
 fn div_round(n: i64, d: i64) -> i64 {
-    if (n < 0) == (d < 0) {
-        (n + d / 2) / d
+    let quotient = n / d;
+    let remainder = n % d;
+    if remainder.abs() >= (d.abs() + 1) / 2 {
+        quotient + if (n < 0) == (d < 0) { 1 } else { -1 }
     } else {
-        (n - d / 2) / d
+        quotient
     }
 }
 
