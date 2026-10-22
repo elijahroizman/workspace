@@ -81,7 +81,7 @@ async function decode(bytes: Uint8Array, format: Format | null): Promise<HTMLCan
       URL.revokeObjectURL(url)
     }
   } catch (err) {
-    if (format !== 'heic') throw new Error(format ? 'This picture is damaged, or in a form Workspace can’t read.' : 'Workspace opens PNG, JPEG and HEIC pictures.', { cause: err })
+    if (format !== 'heic') throw new Error(format ? 'This picture is damaged, or in a form Writan can’t read.' : 'Writan opens PNG, JPEG and HEIC pictures.', { cause: err })
   }
   const { decodeHeic } = await import('./heic')
   const data = await decodeHeic(bytes)
@@ -569,7 +569,7 @@ export function mountViewer(element: HTMLElement, context: PluginEditorContext):
   } else if (format === 'heic' && context.openDocument) {
     const editButton = el('button', 'btn img-text-btn', 'Edit a JPEG copy')
     editButton.type = 'button'
-    editButton.title = 'Workspace can’t save HEIC photos. This opens a JPEG copy in a new tab to mark up and save.'
+    editButton.title = 'Writan can’t save HEIC photos. This opens a JPEG copy in a new tab to mark up and save.'
     editButton.addEventListener('click', () => void editCopy())
     toolbar.append(editButton, divider())
   }

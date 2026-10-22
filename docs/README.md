@@ -1,6 +1,6 @@
-# Workspace docs
+# Writan docs
 
-## Using Workspace
+## Using Writan
 
 - [What each editor can do](user/features.md)
 - [Keyboard shortcuts](user/keyboard-shortcuts.md)
@@ -8,7 +8,7 @@
 - [Updating, and the APT repository](user/updating.md)
 - [What it doesn't do yet](user/limitations.md)
 
-## Working on Workspace
+## Working on Writan
 
 - [Development: building, running and testing](internals/development.md)
 - [Releases and signing](internals/releasing.md)

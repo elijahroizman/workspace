@@ -12,7 +12,7 @@ interface FolderState {
   expanded: string[]
   /** The sidebar is showing (the folder stays open while it's hidden). */
   visible: boolean
-  /** List every file, not only the ones Workspace opens. */
+  /** List every file, not only the ones Writan opens. */
   showAll: boolean
   /** Folders opened lately, newest first; Home lists them with the recent files. */
   recent: RecentFolder[]

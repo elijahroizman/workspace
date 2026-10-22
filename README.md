@@ -1,6 +1,6 @@
 <img src="assets/app-icon.svg" width="72" height="72" alt="">
 
-# Workspace
+# Writan
 
 A small, fast app for the documents most people actually open: **Word, PowerPoint, Excel, CSV, PDF, Markdown, plain text and images**, each in a tab of one window. Optional plugins add **LaTeX** and extra fonts.
 
@@ -8,7 +8,7 @@ Runs on macOS (Apple silicon), Windows (x64) and Debian/Ubuntu (x64). Everything
 
 ## Why
 
-Word, PowerPoint and Preview are slow to open and heavy to keep running. Workspace is built on [Tauri](https://tauri.app), so it uses the system's own web view instead of shipping a browser. It launches quickly, and each document engine loads only when you first open that kind of file.
+Word, PowerPoint and Preview are slow to open and heavy to keep running. Writan is built on [Tauri](https://tauri.app), so it uses the system's own web view instead of shipping a browser. It launches quickly, and each document engine loads only when you first open that kind of file.
 
 ## Install
 
@@ -16,12 +16,14 @@ Download the latest build from [Releases](https://github.com/elijahroizman/works
 
 | | |
 | --- | --- |
-| **Mac** | Open `Workspace_…_aarch64.dmg` and drag Workspace to Applications. |
-| **Windows** | Run `Workspace_…_x64-setup.exe`. If Windows says it protected your PC, click **More info → Run anyway** (the app isn't code-signed for Windows yet). |
+| **Mac** | Open `Writan_…_aarch64.dmg` and drag Writan to Applications. |
+| **Windows** | Run `Writan_…_x64-setup.exe`. If Windows says it protected your PC, click **More info → Run anyway** (the app isn't code-signed for Windows yet). |
 | **Debian, Ubuntu** | `sudo apt install ./Workspace_…_amd64.deb` (Ubuntu 22.04 or Debian 12 and newer). |
 | **Fedora** | `sudo dnf install ./Workspace-…x86_64.rpm` |
 
-Workspace keeps itself up to date. On Mac and Windows, new versions download in the background and install when you quit. On Linux, the .deb adds Workspace's APT repository and the .rpm its dnf repository, so updates come with your system's other updates. See [Updating](docs/user/updating.md).
+Linux packages retain the package name `workspace` for upgrades from older versions; the app and terminal command are named Writan and `writan`.
+
+Writan keeps itself up to date. On Mac and Windows, new versions download in the background and install when you quit. On Linux, the .deb adds Writan's APT repository and the .rpm its dnf repository, so updates come with your system's other updates. See [Updating](docs/user/updating.md).
 
 ## Some notes
 
@@ -85,4 +87,4 @@ Release builds are signed in GitHub Actions. Nothing secret lives in the reposit
 
 ## Thanks
 
-Word, PowerPoint and Excel files run on Workspace's own engine, written in Rust ([crates](crates)). Workspace is also built on open-source engines and fonts: [PDFium](https://pdfium.googlesource.com/pdfium/) through [EmbedPDF](https://github.com/embedpdf/embed-pdf-viewer), [CodeMirror](https://codemirror.net), [markdown-it](https://github.com/markdown-it/markdown-it), the Carlito, Caladea and Liberation fonts, and many more. **Settings › General › Open-source licenses** lists every one with its license. The theme picker is heavily inspired by [T3 Code](https://github.com/pingdotgg/t3code)'s.
+Word, PowerPoint and Excel files run on Writan's own engine, written in Rust ([crates](crates)). Writan is also built on open-source engines and fonts: [PDFium](https://pdfium.googlesource.com/pdfium/) through [EmbedPDF](https://github.com/embedpdf/embed-pdf-viewer), [CodeMirror](https://codemirror.net), [markdown-it](https://github.com/markdown-it/markdown-it), the Carlito, Caladea and Liberation fonts, and many more. **Settings › General › Open-source licenses** lists every one with its license. The theme picker is heavily inspired by [T3 Code](https://github.com/pingdotgg/t3code)'s.

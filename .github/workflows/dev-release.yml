@@ -3,7 +3,7 @@ name: Dev release
 # A Mac-only maintainer build of main, for trying a change before it goes into a full release.
 # Run it from the Actions tab. macOS (Apple silicon) only.
 #
-# It builds "Workspace Dev" (its own app ID, see src-tauri/tauri.dev.conf.json, so it sits beside
+# It builds "Writan Dev" (its own app ID, see src-tauri/tauri.dev.conf.json, so it sits beside
 # a normal install) as version <tauri.conf.json's version with the patch bumped>-dev.<run>, signs
 # and notarizes it like a release, and attaches the .dmg to a pre-release tagged dev-<version>.
 # A pre-release, so the updater and the app's "latest release" never pick it: it has no update
@@ -103,7 +103,7 @@ jobs:
       - name: Check the app is signed and notarized
         run: |
           set -euo pipefail
-          app="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Workspace Dev.app"
+          app="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Writan Dev.app"
           codesign --verify --deep --strict --verbose=2 "$app"
           codesign -dv "$app" 2>&1 | grep -E '^(Authority|TeamIdentifier|Runtime|Identifier)'
           xcrun stapler validate "$app"
@@ -141,14 +141,14 @@ jobs:
           set -euo pipefail
           tag="dev-$VERSION"
           {
-            echo "> **Maintainer build, not a release.** macOS (Apple silicon) only. It installs as **Workspace Dev**, with its own app ID, so it sits beside a normal Workspace and keeps its own settings and recents. Signed and notarized like a release."
+            echo "> **Maintainer build, not a release.** macOS (Apple silicon) only. It installs as **Writan Dev**, with its own app ID, so it sits beside a normal Writan and keeps its own settings and recents. Signed and notarized like a release."
             echo
             printf '%s\n' "$NOTES"
             echo
             echo "Built from [\`${GITHUB_SHA:0:7}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}) on \`${GITHUB_REF_NAME}\`."
           } > "$RUNNER_TEMP/notes.md"
           # A spaceless asset name, like the release builds'.
-          asset="$RUNNER_TEMP/Workspace-Dev_${VERSION}_aarch64.dmg"
+          asset="$RUNNER_TEMP/Writan-Dev_${VERSION}_aarch64.dmg"
           cp "$DMG" "$asset"
           gh release create "$tag" "$asset" -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-            --title "Workspace Dev $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
+            --title "Writan Dev $VERSION" --notes-file "$RUNNER_TEMP/notes.md"

@@ -114,7 +114,7 @@
   inset: -7px;
 }
 
-/* The link popover, placed by Workspace under the selected words and dressed like the app. */
+/* The link popover, placed by Writan under the selected words and dressed like the app. */
 .docx-link-popover {
   display: contents;
 }

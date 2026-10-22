@@ -1,12 +1,12 @@
 //! Finder writes the version after an app's name in Open With when more than one
-//! bundle with that name can open the file. Workspace (0.3.0) beside Workspace
+//! bundle with that name can open the file. Writan (0.3.0) beside Writan
 //! (0.1.0) means Launch Services still has an older copy: a previous install, a
 //! build under `src-tauri/target`, or a disk image that is still mounted.
 //! Launching this copy unregisters the others. Their files stay on disk.
 
 use std::path::{Component, Path, PathBuf};
 
-/// `Workspace.app` for a bundled executable at `….app/Contents/MacOS/<bin>`.
+/// `Writan.app` for a bundled executable at `….app/Contents/MacOS/<bin>`.
 /// `tauri dev` runs the bare binary and has nothing to register.
 pub fn bundle_app_dir(exe: &Path) -> Option<PathBuf> {
     let macos = exe.parent()?;
@@ -201,14 +201,14 @@ mod tests {
     fn bundled_executable_resolves_to_the_app() {
         let exe = parts(&[
             "Applications",
-            "Workspace.app",
+            "Writan.app",
             "Contents",
             "MacOS",
             "workspace",
         ]);
         assert_eq!(
             bundle_app_dir(&exe),
-            Some(parts(&["Applications", "Workspace.app"]))
+            Some(parts(&["Applications", "Writan.app"]))
         );
     }
 
@@ -219,7 +219,7 @@ mod tests {
             None
         );
         assert_eq!(
-            bundle_app_dir(&parts(&["Workspace.app", "workspace"])),
+            bundle_app_dir(&parts(&["Writan.app", "workspace"])),
             None
         );
     }
@@ -233,7 +233,7 @@ mod tests {
                 "release",
                 "bundle",
                 "macos",
-                "Workspace.app",
+                "Writan.app",
             ])),
             Some(parts(&["src-tauri", "target"]))
         );
@@ -245,12 +245,12 @@ mod tests {
                 "release",
                 "bundle",
                 "macos",
-                "Workspace.app",
+                "Writan.app",
             ])),
             Some(parts(&["src-tauri", "target"]))
         );
         assert_eq!(
-            cargo_target_dir(&parts(&["Applications", "Workspace.app"])),
+            cargo_target_dir(&parts(&["Applications", "Writan.app"])),
             None
         );
         assert_eq!(
@@ -267,7 +267,7 @@ mod tests {
                 "release",
                 "bundle",
                 "macos",
-                "Workspace.app",
+                "Writan.app",
             ])),
             Some(parts(&["target", "code", "src-tauri", "target"]))
         );
@@ -276,8 +276,8 @@ mod tests {
     #[test]
     fn keeps_the_running_copy_and_drops_the_other() {
         let root = std::env::temp_dir().join(format!("workspace-ls-{}", std::process::id()));
-        let installed = root.join("Applications/Workspace.app");
-        let built = root.join("src-tauri/target/release/bundle/macos/Workspace.app");
+        let installed = root.join("Applications/Writan.app");
+        let built = root.join("src-tauri/target/release/bundle/macos/Writan.app");
         fs::create_dir_all(&installed).unwrap();
         fs::create_dir_all(&built).unwrap();
 
@@ -287,7 +287,7 @@ mod tests {
         );
         assert_eq!(stale, vec![built.clone()]);
 
-        let gone = root.join("missing/Workspace.app");
+        let gone = root.join("missing/Writan.app");
         let stale = registrations_to_drop(&installed, &[installed.clone(), gone.clone()]);
         assert_eq!(stale, vec![gone]);
 

@@ -323,7 +323,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
           continue
         }
         if (!kind) {
-          failures.push(`“${platform.basename(path)}” isn't a file type Workspace opens (${openableTypes()}).`)
+          failures.push(`“${platform.basename(path)}” isn't a file type Writan opens (${openableTypes()}).`)
           continue
         }
         if (!kindEnabled(kind)) {

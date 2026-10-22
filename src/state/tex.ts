@@ -1,5 +1,5 @@
 // The system's TeX, for the LaTeX plugin: whether it's installed, compiling, and installing it
-// (src-tauri/src/tex.rs). Workspace doesn't ship TeX; it offers to install it (MacTeX, MiKTeX or
+// (src-tauri/src/tex.rs). Writan doesn't ship TeX; it offers to install it (MacTeX, MiKTeX or
 // TeX Live, through Homebrew, winget or apt where those are there) when the plugin is turned on
 // and there's none, and to remove it again when the plugin is turned off.
 
@@ -23,7 +23,7 @@ interface TexState {
   offer: boolean
   /**
    * The "turn off LaTeX" question is showing: how TeX would be removed (null while that's being
-   * worked out, or when Workspace can't remove it), and where that has got to.
+   * worked out, or when Writan can't remove it), and where that has got to.
    */
   removal: { method: string | null; checking: boolean; busy: boolean; error: string | null } | null
   installing: InstallProgress | null
@@ -34,7 +34,7 @@ interface TexState {
   install(variant: InstallVariant): Promise<void>
   close(): void
   /**
-   * Called when the LaTeX plugin is turned off. Asks to confirm and, if Workspace can take TeX off
+   * Called when the LaTeX plugin is turned off. Asks to confirm and, if Writan can take TeX off
    * the computer, whether to do that too (it's off unless they tick it). Resolves false if they
    * cancel turning the plugin off.
    */
@@ -76,7 +76,7 @@ export const useTex = create<TexState>((set, get) => ({
       set({ status })
       if (status.installed) get().close()
       // If the offer was hidden while installing, it comes back to say what went wrong.
-      else set({ error: 'TeX installed, but Workspace can’t find it. Restart Workspace and try again.', offer: true })
+      else set({ error: 'TeX installed, but Writan can’t find it. Restart Writan and try again.', offer: true })
     } catch (err) {
       set({ error: String(err), offer: true })
     } finally {

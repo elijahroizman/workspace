@@ -1,4 +1,4 @@
-/* The layout Markdown uses (src/editors/markdown/markdown.css), for plugins. Workspace's own
+/* The layout Markdown uses (src/editors/markdown/markdown.css), for plugins. Writan's own
    variables (--fg, --line, --accent, --font-mono…) apply, since plugins render in its page. */
 
 .sp-split {
@@ -99,7 +99,7 @@
   flex-direction: column;
 }
 
-/* Workspace's own section classes (.section, .section-header, .section-body) style the sidebar;
+/* Writan's own section classes (.section, .section-header, .section-body) style the sidebar;
    these are only for what a plugin adds. */
 .sp-list {
   gap: 0;

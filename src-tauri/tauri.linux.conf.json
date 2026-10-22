@@ -1,0 +1,19 @@
+{
+  "productName": "Workspace",
+  "bundle": {
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux/main.desktop",
+        "files": {
+          "/usr/bin/workspace": "linux/workspace"
+        }
+      },
+      "rpm": {
+        "desktopTemplate": "linux/main.desktop",
+        "files": {
+          "/usr/bin/workspace": "linux/workspace"
+        }
+      }
+    }
+  }
+}

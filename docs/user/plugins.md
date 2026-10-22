@@ -6,7 +6,7 @@ Word, PowerPoint, PDF, Markdown, text and images are built in. LaTeX is optional
 | --- | --- | --- | --- |
 | LaTeX | `.tex` documents | about 120 KB (TeX itself is separate) | Downloaded |
 
-Workspace checks every downloaded plugin's signature before installing it. Turning a downloaded plugin off removes its files; turning it back on downloads it again. Tabs using a plugin close first (Workspace asks about unsaved changes).
+Writan checks every downloaded plugin's signature before installing it. Turning a downloaded plugin off removes its files; turning it back on downloads it again. Tabs using a plugin close first (Writan asks about unsaved changes).
 
 ## Images
 
@@ -14,7 +14,7 @@ A plain viewer for PNG, JPEG and HEIC. Pinch or ⌘-scroll to zoom, double-click
 
 The toolbar has a few touch-ups: **highlight**, **draw**, **line**, **arrow**, **box**, **select** (to crop, or to copy part of the picture), and **turn** left or right. Hold Shift while highlighting or drawing for a straight line, or while drawing a line or arrow to keep it level, upright or at 45°. ⌘Z undoes, ⌘C copies the picture (or the selection). Changes save into the same file and format; a file you haven't changed is saved back exactly as it was. **⋯** saves a copy as PNG or JPEG, or prints.
 
-Workspace can read HEIC photos but can't write them, so they open for viewing. **Edit a JPEG copy** opens a copy in a new tab to mark up and save. Outside Safari's engine on recent Macs, HEIC is decoded by [libheif](https://github.com/strukturag/libheif) (LGPL-3.0), loaded the first time you open one.
+Writan can read HEIC photos but can't write them, so they open for viewing. **Edit a JPEG copy** opens a copy in a new tab to mark up and save. Outside Safari's engine on recent Macs, HEIC is decoded by [libheif](https://github.com/strukturag/libheif) (LGPL-3.0), loaded the first time you open one.
 
 It doesn't pick out text in pictures (OCR).
 
@@ -22,23 +22,23 @@ It doesn't pick out text in pictures (OCR).
 
 LaTeX works like Markdown: source and preview side by side, and ⌘E (Ctrl+E on Windows and Linux) switches between the preview, both, and the source.
 
-LaTeX compiles with the TeX installed on your computer a few seconds after you stop typing (set how long in **Settings › Plugins**). The PDF shows in Workspace's own viewer, and errors and the outline are in the sidebar. A document compiles from the folder it's saved in, so `\input` and pictures beside it work.
+LaTeX compiles with the TeX installed on your computer a few seconds after you stop typing (set how long in **Settings › Plugins**). The PDF shows in Writan's own viewer, and errors and the outline are in the sidebar. A document compiles from the folder it's saved in, so `\input` and pictures beside it work.
 
 ### Getting TeX
 
-If there's no TeX when you turn LaTeX on, Workspace offers to install it:
+If there's no TeX when you turn LaTeX on, Writan offers to install it:
 
 - **Mac:** MacTeX or the smaller BasicTeX, through Homebrew if you have it, otherwise MacTeX's own installer (its signature is checked).
 - **Windows:** MiKTeX, just for your user account, through winget. If winget isn't there or fails, MiKTeX's own installer is downloaded and checked against its published SHA-256.
 - **Debian, Ubuntu:** TeX Live through apt, after asking for your password.
 
-You can hide the install window while it runs; **Settings › Plugins** shows the progress. When you turn LaTeX off, Workspace asks whether to remove TeX too (only if it knows how it was installed). It's unticked unless you choose it.
+You can hide the install window while it runs; **Settings › Plugins** shows the progress. When you turn LaTeX off, Writan asks whether to remove TeX too (only if it knows how it was installed). It's unticked unless you choose it.
 
 LaTeX on Windows is still being tested. If installing or removing TeX fails, the message includes what winget or the installer said; please put that in an [issue](https://github.com/elijahroizman/workspace/issues).
 
 ## Fonts
 
-**Settings › Plugins › Fonts** downloads extra fonts for Word documents and PowerPoint slides. Each is off until you turn it on; Workspace then downloads it from its maker, checks every file against the copy it was tested with, and adds it to the font menus. Turning it off removes it.
+**Settings › Plugins › Fonts** downloads extra fonts for Word documents and PowerPoint slides. Each is off until you turn it on; Writan then downloads it from its maker, checks every file against the copy it was tested with, and adds it to the font menus. Turning it off removes it.
 
 | Font | What it's for | From |
 | --- | --- | --- |

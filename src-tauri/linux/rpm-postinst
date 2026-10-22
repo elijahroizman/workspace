@@ -1,9 +1,9 @@
 #!/bin/sh
-# Adds Workspace's dnf repository, so new versions arrive with the system's other updates
+# Adds Writan's dnf repository, so new versions arrive with the system's other updates
 # (GNOME Software, dnf upgrade) and the app's Update button can install them. The repository is
 # the assets of the GitHub releases tagged "rpm/repodata" and "rpm/packages"; its metadata is
 # signed with the key this package installs (the same key as the APT repository). Once the repo
-# file exists it's left alone, so setting enabled=0 turns the updates off until Workspace is
+# file exists it's left alone, so setting enabled=0 turns the updates off until Writan is
 # removed (the uninstall script deletes the file).
 set -e
 
@@ -12,9 +12,9 @@ KEY=/etc/pki/rpm-gpg/RPM-GPG-KEY-workspace
 
 if [ ! -e "$REPO" ] && [ -d /etc/yum.repos.d ] && [ -r "$KEY" ]; then
   cat > "$REPO" <<LIST
-# Workspace updates (https://github.com/elijahroizman/workspace). Set enabled=0 to stop them.
+# Writan updates (https://github.com/elijahroizman/workspace). Set enabled=0 to stop them.
 [workspace]
-name=Workspace
+name=Writan
 baseurl=https://github.com/elijahroizman/workspace/releases/download/rpm/
 enabled=1
 gpgcheck=0

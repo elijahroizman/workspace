@@ -36,7 +36,7 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSOpenPanel", "NSSavePanel", "NSPanel", "NSWindow", "NSResponder", "NSApplication"] }
 
-# A second launch (`workspace notes.md`, a double-click) hands its files to the running copy.
+# A second launch (`writan notes.md`, a double-click) hands its files to the running copy.
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 tauri-plugin-single-instance = "2"
 
@@ -44,7 +44,7 @@ tauri-plugin-single-instance = "2"
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39"
 windows-core = "0.62"
-# Registers Workspace's file types with Windows' Default Apps settings.
+# Registers Writan's file types with Windows' Default Apps settings.
 windows-registry = "0.6"
 # The open dialog's "Open folder" button, and title and menu bars in the app's colors.
 windows = { version = "0.62", features = [

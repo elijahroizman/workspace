@@ -63,7 +63,7 @@ pub fn set_menu_shortcuts<R: Runtime>(app: AppHandle<R>, shortcuts: Shortcuts) -
 
 fn build_with<R: Runtime>(app: &AppHandle<R>, keys: &Shortcuts) -> tauri::Result<Menu<R>> {
     let about = AboutMetadataBuilder::new()
-        .name(Some("Workspace"))
+        .name(Some("Writan"))
         .version(Some(env!("CARGO_PKG_VERSION")))
         .comments(Some("Word, PowerPoint, PDF, Markdown and text files in one tabbed window."))
         .build();
@@ -163,8 +163,8 @@ fn build_with<R: Runtime>(app: &AppHandle<R>, keys: &Shortcuts) -> tauri::Result
         .build()?;
 
     let menus: Vec<Submenu<R>> = if cfg!(target_os = "macos") {
-        let app_menu = SubmenuBuilder::new(app, "Workspace")
-            .about(Some(about))
+        let app_menu = SubmenuBuilder::new(app, "Writan")
+            .about_with_text("About Writan", Some(about))
             .separator()
             .item(&item(app, keys, "settings", "Settings…", Some("CmdOrCtrl+,"))?)
             .item(&item(app, keys, "check-updates", "Check for Updates…", None)?)
@@ -172,12 +172,12 @@ fn build_with<R: Runtime>(app: &AppHandle<R>, keys: &Shortcuts) -> tauri::Result
             .separator()
             .services()
             .separator()
-            .hide()
+            .hide_with_text("Hide Writan")
             .hide_others()
             .show_all()
             .separator()
             // Custom quit so unsaved tabs get a chance to prompt.
-            .item(&item(app, keys, "quit", "Quit Workspace", Some("CmdOrCtrl+Q"))?)
+            .item(&item(app, keys, "quit", "Quit Writan", Some("CmdOrCtrl+Q"))?)
             .build()?;
         vec![app_menu, file_menu, edit_menu, view_menu, window_menu]
     } else {
@@ -185,7 +185,7 @@ fn build_with<R: Runtime>(app: &AppHandle<R>, keys: &Shortcuts) -> tauri::Result
         let help_menu = SubmenuBuilder::new(app, "Help")
             .item(&item(app, keys, "check-updates", "Check for Updates…", None)?)
             .separator()
-            .about(Some(about))
+            .about_with_text("About Writan", Some(about))
             .build()?;
         vec![file_menu, edit_menu, view_menu, window_menu, help_menu]
     };

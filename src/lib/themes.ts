@@ -18,7 +18,7 @@ export interface ThemeDef {
 export const DEFAULT_THEME_ID = 'workspace'
 
 export const PRESET_THEMES: ThemeDef[] = [
-  { id: DEFAULT_THEME_ID, name: 'Workspace', accent: '#4f8cff', light: '#e6e6e6', dark: '#1c1c1c' },
+  { id: DEFAULT_THEME_ID, name: 'Writan', accent: '#4f8cff', light: '#e6e6e6', dark: '#1c1c1c' },
   { id: 'iris', name: 'Iris', accent: '#7061ee', light: '#d8d3f6', dark: '#1d1b2e' },
   { id: 'rose', name: 'Rose', accent: '#d6477f', light: '#f4d9e4', dark: '#2a1621' },
   { id: 'grove', name: 'Grove', accent: '#3f9a6b', light: '#d8e7da', dark: '#16241b' },

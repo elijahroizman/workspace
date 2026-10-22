@@ -19,7 +19,7 @@ In Word, typing `- `, `* `, `1. ` or `1) ` at the start of a paragraph starts a 
 
 ## Signing PDFs and filling in forms
 
-Pick **Sign** in a PDF's inspector. The first time, make a signature: draw it with the trackpad or mouse, type your name in a handwriting style, or use a picture of it (Workspace can make the white paper see-through). Make initials the same way. They're kept on this computer only, and you can have a few of each.
+Pick **Sign** in a PDF's inspector. The first time, make a signature: draw it with the trackpad or mouse, type your name in a handwriting style, or use a picture of it (Writan can make the white paper see-through). Make initials the same way. They're kept on this computer only, and you can have a few of each.
 
 Pick one and click on the page to place it; it's selected afterwards, so you can drag it into place or resize it from the corner. **Date** adds today's date as text, and the check mark and cross are for boxes that aren't real form fields. A PDF's own signature fields show **Sign here**: click one and your signature fills it.
 
@@ -41,13 +41,13 @@ The Home tab's **Recent** list has the files and folders you've opened, and its 
 
 **View › Focus Mode** (⌥⌘F) hides the tabs, sidebars, inspector and the bar at the bottom, leaving only the document. Move the pointer to the top of the window to see the tabs and focus mode's controls; leave it with ⌥⌘F, Esc or **Exit**. In Word documents, Markdown and text files, every paragraph but the one you're writing fades (turn that off with **Dim**).
 
-**Typewriter scrolling** (⌥⌘T) keeps the line you're typing at the same height on screen, a little above the middle, so your eyes stay put while the page moves. It works with or without focus mode, and Workspace remembers whether it's on.
+**Typewriter scrolling** (⌥⌘T) keeps the line you're typing at the same height on screen, a little above the middle, so your eyes stay put while the page moves. It works with or without focus mode, and Writan remembers whether it's on.
 
 ## Folders
 
-**File › Open…** (⌘O) opens a folder as well as files: on a Mac, pick the folder in the panel; on Windows and Linux, go into it and click **Open Folder**. It opens in a sidebar to the left of everything, like a project in a code editor. It lists the folder's documents, with subfolders you can expand; click a file to open it in a tab. Files Workspace can't open are hidden unless you pick **Show all files** from the sidebar's **⋯** menu. Hidden files and folders such as `.git` and `node_modules` are always left out.
+**File › Open…** (⌘O) opens a folder as well as files: on a Mac, pick the folder in the panel; on Windows and Linux, go into it and click **Open Folder**. It opens in a sidebar to the left of everything, like a project in a code editor. It lists the folder's documents, with subfolders you can expand; click a file to open it in a tab. Files Writan can't open are hidden unless you pick **Show all files** from the sidebar's **⋯** menu. Hidden files and folders such as `.git` and `node_modules` are always left out.
 
-Type in **Find a file** to search every document under the folder by name. ⇧⌘E hides and shows the sidebar. The folder (and which subfolders were expanded) comes back the next time you open Workspace, and Home's Recent list has the folders you've opened, under All and Folders. Dropping a folder on the window opens it too. The list refreshes when you come back to Workspace from another app; the **⋯** menu also has **Refresh**, **Collapse all folders** and **Close folder**. Drag the sidebar's edge to make it wider.
+Type in **Find a file** to search every document under the folder by name. ⇧⌘E hides and shows the sidebar. The folder (and which subfolders were expanded) comes back the next time you open Writan, and Home's Recent list has the folders you've opened, under All and Folders. Dropping a folder on the window opens it too. The list refreshes when you come back to Writan from another app; the **⋯** menu also has **Refresh**, **Collapse all folders** and **Close folder**. Drag the sidebar's edge to make it wider.
 
 ## Split view
 
@@ -61,20 +61,20 @@ Click in a pane to work in it: a blue line along its top shows which one, and Sa
 
 ## Autosave
 
-A file you've already saved is written back to the same place a few seconds after you stop editing. That place can be any folder, including one iCloud Drive, Dropbox, OneDrive or another sync app watches; the sync app uploads it. Workspace doesn't sign in to anything. A new document isn't saved until you use Save.
+A file you've already saved is written back to the same place a few seconds after you stop editing. That place can be any folder, including one iCloud Drive, Dropbox, OneDrive or another sync app watches; the sync app uploads it. Writan doesn't sign in to anything. A new document isn't saved until you use Save.
 
 In **Settings › Autosave** you can turn it off, change the delay, or leave some file types on manual save. Saving doesn't move a PDF: it stays on the page you're reading. While you're typing into a PDF form field or a text box, or drawing, autosave waits until you finish.
 
 ## Version history
 
-Each time a file is saved, by you or by autosave, Workspace keeps a copy of that version. **File › Version History…** (or right-click a tab and pick **Version history…**) lists them by day. Pick one to see what's different: **Compare with now** shows what going back would undo, and **What changed in this save** shows that save's own changes. Text, Markdown and LaTeX files compare line by line; Word documents and PowerPoint presentations compare their text paragraph by paragraph. PDFs and pictures can be opened or restored but not compared.
+Each time a file is saved, by you or by autosave, Writan keeps a copy of that version. **File › Version History…** (or right-click a tab and pick **Version history…**) lists them by day. Pick one to see what's different: **Compare with now** shows what going back would undo, and **What changed in this save** shows that save's own changes. Text, Markdown and LaTeX files compare line by line; Word documents and PowerPoint presentations compare their text paragraph by paragraph. PDFs and pictures can be opened or restored but not compared.
 
 - **Save version** saves now, with a description if you type one, like a commit message.
 - **Restore** puts that version back. What the document was before is kept in the history too, so restoring can be undone.
 - **Open copy** opens the old version in a new tab without touching the file.
 - Click a version's name to name it. Named versions are always kept.
 
-Every save from the last hour is kept, then one per ten minutes for a day, one per day for a month and one per week after that. Identical versions are stored once. The copies live in Workspace's own data folder on this computer, not next to your files. The first time Workspace saves over a file, it also keeps the file as it was. **Settings › Autosave** turns version history off, shows how much space it takes, and can delete it all. A file that's moved or renamed outside Workspace starts a new history.
+Every save from the last hour is kept, then one per ten minutes for a day, one per day for a month and one per week after that. Identical versions are stored once. The copies live in Writan's own data folder on this computer, not next to your files. The first time Writan saves over a file, it also keeps the file as it was. **Settings › Autosave** turns version history off, shows how much space it takes, and can delete it all. A file that's moved or renamed outside Writan starts a new history.
 
 ## Fonts
 
@@ -88,16 +88,16 @@ Word documents use open-licensed stand-ins for Calibri, Cambria, Arial, Times Ne
 
 ## Command line
 
-Like `code` for VS Code, `workspace` opens things from a terminal:
+Like `code` for VS Code, `writan` opens things from a terminal:
 
 ```sh
-workspace .              # this folder, in the folder sidebar
-workspace notes.md       # a file; a new Markdown, text or LaTeX file is created empty
-workspace a.pdf b.docx   # several files, each in a tab
+writan .              # this folder, in the folder sidebar
+writan notes.md       # a file; a new Markdown, text or LaTeX file is created empty
+writan a.pdf b.docx   # several files, each in a tab
 ```
 
-On a Mac, install it from **Settings › General › Command line** or **Workspace › Install Command Line Tool…**. It goes in `/usr/local/bin`, which usually asks for your password. It finds Workspace by its app ID, so moving the app doesn't break it. On Debian and Ubuntu the .deb puts `workspace` on the PATH already. On Windows and Linux, running it while Workspace is open hands the files to the open window instead of starting a second copy.
+On a Mac, install it from **Settings › General › Command line** or **Writan › Install Command Line Tool…**. It goes in `/usr/local/bin`, which usually asks for your password. It finds Writan by its app ID, so moving the app doesn't break it. On Debian and Ubuntu the .deb puts `writan` on the PATH already. The old `workspace` command remains as an alias so older copies can restart after an update. On Windows and Linux, running it while Writan is open hands the files to the open window instead of starting a second copy.
 
 ## Default apps
 
-The welcome tour on first launch ends by asking which file types Workspace should open, and **Settings › General › Default apps** can change that later. On Windows, each one is confirmed in Windows' own Default apps settings. Workspace also appears in every Open With menu.
+The welcome tour on first launch ends by asking which file types Writan should open, and **Settings › General › Default apps** can change that later. On Windows, each one is confirmed in Windows' own Default apps settings. Writan also appears in every Open With menu.

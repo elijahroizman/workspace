@@ -334,7 +334,7 @@ export function SignaturePad({ kind, onClose }: { kind: SavedSignature['kind']; 
             {mode === 'image' && image && <Button onClick={() => void pickImage()}>Another picture…</Button>}
           </div>
         </div>
-        <p className="signature-note faint">Kept on this computer only, for signing PDFs in Workspace.</p>
+        <p className="signature-note faint">Kept on this computer only, for signing PDFs in Writan.</p>
         <div className="dialog-actions">
           <Button onClick={() => onClose(null)}>Cancel</Button>
           <Button variant="primary" disabled={!ready} onClick={save}>

@@ -1,7 +1,7 @@
 // Word comments, read from and written into the .docx package.
 //
 // The editing engine keeps the comment markers of a file through edits and writes them back on
-// save, but adding, answering or resolving a comment needs its paid review module. So Workspace
+// save, but adding, answering or resolving a comment needs its paid review module. So Writan
 // keeps the threads itself: it reads them from the file, follows each one's text by paragraph and
 // offset while the document changes, and writes the markers and comment parts into the saved file.
 

@@ -1,8 +1,8 @@
-//! Making Workspace the app that opens a file type.
+//! Making Writan the app that opens a file type.
 //!
 //! macOS lets an app set itself as the default handler (Launch Services), so this does it
 //! directly. Windows doesn't: since Windows 8 only the user can choose, in Settings. There
-//! Workspace registers itself as a capable app for its file types and opens its page in
+//! Writan registers itself as a capable app for its file types and opens its page in
 //! Default Apps, where each type is one click.
 
 use serde::Serialize;
@@ -64,7 +64,7 @@ fn set_defaults<R: Runtime>(app: &AppHandle<R>, exts: &[String]) -> Result<SetDe
     let bundle_id = &app.config().identifier;
     let failed: Vec<&str> = exts.iter().filter(|ext| !mac::set_default_handler(ext, bundle_id)).map(String::as_str).collect();
     if !failed.is_empty() {
-        return Err(format!("macOS didn't make Workspace the default for .{}.", failed.join(", .")));
+        return Err(format!("macOS didn't make Writan the default for .{}.", failed.join(", .")));
     }
     Ok(SetDefaults { opened_settings: false })
 }
@@ -149,7 +149,7 @@ mod mac {
 // ── Windows
 
 #[cfg(windows)]
-const CAPABILITIES: &str = r"Software\Workspace\Capabilities";
+const CAPABILITIES: &str = r"Software\Writan\Capabilities";
 
 #[cfg(windows)]
 fn is_default<R: Runtime>(app: &AppHandle<R>, ext: &str) -> Option<bool> {
@@ -170,12 +170,12 @@ fn set_defaults<R: Runtime>(app: &AppHandle<R>, _exts: &[String]) -> Result<SetD
     use tauri_plugin_opener::OpenerExt;
     use windows_registry::CURRENT_USER;
     fn fail(e: impl std::fmt::Display) -> String {
-        format!("Couldn't register Workspace with Windows: {e}")
+        format!("Couldn't register Writan with Windows: {e}")
     }
     let caps = CURRENT_USER.create(CAPABILITIES).map_err(fail)?;
-    caps.set_string("ApplicationName", "Workspace").map_err(fail)?;
+    caps.set_string("ApplicationName", "Writan").map_err(fail)?;
     caps.set_string("ApplicationDescription", "Word, PowerPoint, PDF, Markdown and text files in one tabbed window").map_err(fail)?;
-    // Every type Workspace opens, so its Default Apps page lists them all. The user picks the
+    // Every type Writan opens, so its Default Apps page lists them all. The user picks the
     // ones they asked for there.
     let assoc = CURRENT_USER.create(format!(r"{CAPABILITIES}\FileAssociations")).map_err(fail)?;
     for association in app.config().bundle.file_associations.iter().flatten() {
@@ -186,10 +186,18 @@ fn set_defaults<R: Runtime>(app: &AppHandle<R>, _exts: &[String]) -> Result<SetD
     }
     CURRENT_USER
         .create(r"Software\RegisteredApplications")
-        .and_then(|key| key.set_string("Workspace", CAPABILITIES))
+        .and_then(|key| key.set_string("Writan", CAPABILITIES))
         .map_err(fail)?;
+    // Keep the installer's existing file classes (ProgIDs), so Windows' UserChoice
+    // hashes remain valid. Only the displayed application registration changes.
+    if let Ok(registered) = CURRENT_USER.create(r"Software\RegisteredApplications") {
+        if registered.get_string("Workspace").ok().as_deref() == Some(r"Software\Workspace\Capabilities") {
+            let _ = registered.remove_value("Workspace");
+            let _ = CURRENT_USER.remove_tree(r"Software\Workspace\Capabilities");
+        }
+    }
     app.opener()
-        .open_url("ms-settings:defaultapps?registeredAppUser=Workspace", None::<&str>)
+        .open_url("ms-settings:defaultapps?registeredAppUser=Writan", None::<&str>)
         .map_err(|e| format!("Couldn't open Default Apps: {e}"))?;
     Ok(SetDefaults { opened_settings: true })
 }

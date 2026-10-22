@@ -1,7 +1,7 @@
 fn main() {
     tauri_build::build();
 
-    // A `tauri build` copy under target/ is a real Workspace.app, so Spotlight
+    // A `tauri build` copy under target/ is a real Writan.app, so Spotlight
     // will offer it in Open With next to the installed app. The empty marker
     // keeps that directory out of the index. Launching the installed app also
     // writes this if it finds an older build that was already indexed.

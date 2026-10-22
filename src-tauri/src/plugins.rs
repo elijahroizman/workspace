@@ -1,5 +1,5 @@
 //! Optional plugins that don't ship inside the app (LaTeX) are downloaded from the
-//! Workspace GitHub release when you turn them on. Each archive is
+//! Writan GitHub release when you turn them on. Each archive is
 //! signed with the same key as app updates; nothing is unpacked unless the signature checks
 //! out. Installed plugins live in `<app data>/plugins/<id>/` and the web view loads them
 //! through the `wsplugin:` scheme served here.
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tauri::http::{header, Request, Response, StatusCode};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-/// Only archives attached to Workspace's own releases.
+/// Only archives attached to Writan's own releases.
 const DOWNLOAD_PREFIX: &str = "https://github.com/elijahroizman/workspace/releases/download/";
 const MAX_ARCHIVE: u64 = 100 * 1024 * 1024;
 
@@ -68,7 +68,7 @@ pub async fn install_plugin<R: Runtime>(app: AppHandle<R>, id: String, version: 
         return Err("Unknown plugin".into());
     }
     if !url.starts_with(DOWNLOAD_PREFIX) || url.contains("..") {
-        return Err("Plugins only download from Workspace's releases.".into());
+        return Err("Plugins only download from Writan's releases.".into());
     }
     let pubkey = updater_pubkey(&app)?;
     let root = plugins_dir(&app)?;
@@ -113,7 +113,7 @@ fn download(url: &str, limit: u64, mut progress: impl FnMut(u64, u64)) -> Result
     let failed = |_| "Couldn't download the plugin. Check your connection and try again.".to_string();
     let mut response = crate::files::download_agent()
         .get(url)
-        .header("User-Agent", "Workspace")
+        .header("User-Agent", "Writan")
         .call()
         .map_err(failed)?;
     let total = response

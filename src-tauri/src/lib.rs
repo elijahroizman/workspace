@@ -133,7 +133,7 @@ pub fn run() {
             tauri::async_runtime::spawn_blocking(move || responder.respond(plugins::serve(&app, &request)));
         })
         .setup(|app| {
-            // A second Workspace.app (an old install, a target/ build, a mounted
+            // A second Writan.app (an old install, a target/ build, a mounted
             // disk image) shows up in Open With as another version. Unregister
             // the others in the background. A dev run has no app bundle, so
             // there is nothing to register.
@@ -198,7 +198,7 @@ pub fn run() {
             defaults::set_default_apps,
         ])
         .build(tauri::generate_context!())
-        .expect("error while building Workspace");
+        .expect("error while building Writan");
 
     app.run(|app, event| match event {
         // Finder: double-click, "Open With", or dropping files on the Dock icon.

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Removing Workspace also removes the APT repository its install added. The keyring goes with
+# Removing Writan also removes the APT repository its install added. The keyring goes with
 # the package, so a source left behind would make every `apt update` fail. (dpkg doesn't run
 # this with "remove" during an upgrade.)
 set -e

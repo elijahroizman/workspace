@@ -1,5 +1,5 @@
 // The source-and-preview layout Markdown has, for plugins: CodeMirror on the left, a preview on
-// the right, and Workspace's view switch (⌘E) choosing one, the other or both. LaTeX uses
+// the right, and Writan's view switch (⌘E) choosing one, the other or both. LaTeX uses
 // it; so can any plugin whose files are text that renders into something.
 //
 // It doesn't know what the preview is. The plugin renders into `preview` and gets told, through
@@ -150,7 +150,7 @@ export function decode(bytes: Uint8Array) {
 export const encode = (text: string) => new TextEncoder().encode(text)
 
 /**
- * A section in the plugin's sidebar, built from the same classes as Workspace's own (a bold
+ * A section in the plugin's sidebar, built from the same classes as Writan's own (a bold
  * title, a divider between sections). Buttons and text go in as they are; pass `list` for rows
  * made with sidebarItem, which sit closer to the edge.
  */

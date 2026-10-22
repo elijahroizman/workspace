@@ -1,8 +1,8 @@
 #!/bin/sh
-# Installed by Workspace (Settings › General › Command line). Reinstall it there after moving the app.
+# Installed by Writan (Settings › General › Command line). Reinstall it there after moving the app.
 #
-# workspace [file or folder]...
-#   Opens files in tabs and a folder in the sidebar, in the running Workspace (or starts it).
+# writan [file or folder]...
+#   Opens files in tabs and a folder in the sidebar, in the running Writan (or starts it).
 #   A Markdown, text or LaTeX file that doesn't exist yet is created empty first.
 
 BUNDLE_ID='@BUNDLE_ID@'
@@ -10,14 +10,14 @@ VERSION='@VERSION@'
 
 usage() {
   cat <<USAGE
-Usage: workspace [options] [file or folder]...
+Usage: writan [options] [file or folder]...
 
-Opens files in Workspace tabs and a folder in its sidebar.
-With no arguments, brings Workspace to the front.
+Opens files in Writan tabs and a folder in its sidebar.
+With no arguments, brings Writan to the front.
 
-  workspace .             open this folder
-  workspace notes.md      open (or create) a file
-  workspace a.pdf b.docx  open several files
+  writan .             open this folder
+  writan notes.md      open (or create) a file
+  writan a.pdf b.docx  open several files
 
 Options:
   -h, --help     show this help
@@ -35,7 +35,7 @@ for arg do
       exit 0
       ;;
     -v | --version)
-      echo "Workspace $VERSION"
+      echo "Writan $VERSION"
       exit 0
       ;;
     --)
@@ -43,7 +43,7 @@ for arg do
       continue
       ;;
     -*)
-      echo "workspace: unknown option $arg (see workspace --help)" >&2
+      echo "writan: unknown option $arg (see writan --help)" >&2
       exit 2
       ;;
   esac
@@ -56,7 +56,7 @@ for arg do
         fi
         ;;
       *)
-        echo "workspace: $arg: no such file or folder" >&2
+        echo "writan: $arg: no such file or folder" >&2
         status=1
         continue
         ;;

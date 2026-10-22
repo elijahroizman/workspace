@@ -34,7 +34,7 @@ fn version_from_tag(tag: &str) -> String {
 
 fn notes_from_release(release: GithubRelease) -> ReleaseNotes {
     let version = version_from_tag(&release.tag_name);
-    let name = release.name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| format!("Workspace {version}"));
+    let name = release.name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| format!("Writan {version}"));
     ReleaseNotes {
         version,
         name,
@@ -57,7 +57,7 @@ pub async fn latest_release() -> Result<ReleaseNotes, String> {
 fn fetch_latest_release() -> Result<ReleaseNotes, String> {
     let mut response = crate::files::http_agent()
         .get(LATEST_RELEASE)
-        .header("User-Agent", "Workspace")
+        .header("User-Agent", "Writan")
         .header("Accept", "application/vnd.github+json")
         .call()
         .map_err(|_| "Couldn't reach GitHub. Check your connection and try again.".to_string())?;
@@ -71,16 +71,16 @@ fn fetch_latest_release() -> Result<ReleaseNotes, String> {
     Ok(notes_from_release(release))
 }
 
-/// Where the .deb's install script puts Workspace's APT repository (src-tauri/linux/postinst).
+/// Where the .deb's install script puts Writan's APT repository (src-tauri/linux/postinst).
 #[cfg(target_os = "linux")]
 const APT_SOURCES: &str = "/etc/apt/sources.list.d/workspace.list";
 
-/// Where the .rpm's install script puts Workspace's dnf repository (src-tauri/linux/rpm-postinst).
+/// Where the .rpm's install script puts Writan's dnf repository (src-tauri/linux/rpm-postinst).
 #[cfg(target_os = "linux")]
 const DNF_REPO: &str = "/etc/yum.repos.d/workspace.repo";
 
 /// How this Linux copy was installed: `format` is "deb" or "rpm" (none for a build run from
-/// source), and `repo` says Workspace's own repository is there and on, so the package manager
+/// source), and `repo` says Writan's own repository is there and on, so the package manager
 /// can install new versions.
 #[derive(Serialize)]
 pub struct LinuxPackage {
@@ -97,7 +97,7 @@ fn installed_version(format: &str) -> Option<String> {
     output.ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).filter(|v| !v.is_empty())
 }
 
-/// Whether the dnf repo file has Workspace's section switched on (`enabled=1`, the default).
+/// Whether the dnf repo file has Writan's section switched on (`enabled=1`, the default).
 #[cfg(target_os = "linux")]
 fn dnf_repo_enabled(repo: &str) -> bool {
     let mut in_section = false;
@@ -150,8 +150,8 @@ pub async fn linux_package() -> LinuxPackage {
     }
 }
 
-/// Installs the newest Workspace from its APT or dnf repository, after polkit asks for the
-/// password. Only Workspace's own repository is refreshed, so a broken or slow mirror elsewhere
+/// Installs the newest Writan from its APT or dnf repository, after polkit asks for the
+/// password. Only Writan's own repository is refreshed, so a broken or slow mirror elsewhere
 /// can't stop it.
 #[tauri::command]
 pub async fn package_upgrade() -> Result<(), String> {
@@ -169,14 +169,14 @@ pub async fn package_upgrade() -> Result<(), String> {
                 ),
                 // -y also accepts the repository's key the first time dnf sees it.
                 Some("rpm") if package.repo => ("rpm", "dnf -y --refresh --repo=workspace upgrade workspace".to_string(), "dnf"),
-                _ => return Err("This copy of Workspace didn't come with its update repository.".into()),
+                _ => return Err("This copy of Writan didn't come with its update repository.".into()),
             };
             let before = installed_version(format);
-            crate::tex::pkexec(&line, "Updating Workspace")?;
+            crate::tex::pkexec(&line, "Updating Writan")?;
             // apt and dnf succeed without doing anything when the repository hasn't got the
             // release yet (the Linux build finishes after the Mac and Windows ones).
             if before.is_some() && installed_version(format) == before {
-                return Err(format!("The new version isn't in Workspace's {what} repository yet. Try again in a few minutes."));
+                return Err(format!("The new version isn't in Writan's {what} repository yet. Try again in a few minutes."));
             }
             Ok(())
         })
@@ -224,7 +224,7 @@ fn relaunch_macos(app: tauri::AppHandle) -> Result<(), String> {
     // The path recorded at launch. After the updater swaps the bundle, this path
     // is the new app; resolving `current_exe` again can follow the old inode into
     // the temp directory the previous copy was moved to.
-    let bundle = launch_bundle().ok_or("Workspace is not running from an app bundle.")?;
+    let bundle = launch_bundle().ok_or("Writan is not running from an app bundle.")?;
     let pid = std::process::id();
     // A short pause after the process dies lets Launch Services drop the old
     // registration. Opening any sooner focuses the copy that is still quitting.
@@ -242,7 +242,7 @@ fn relaunch_macos(app: tauri::AppHandle) -> Result<(), String> {
     // Its own process group, so nothing sent to ours on the way out reaches it.
     // The shell then `exec`s `open`, which asks Launch Services to start the app.
     cmd.process_group(0);
-    cmd.spawn().map_err(|_| "Couldn't reopen Workspace.".to_string())?;
+    cmd.spawn().map_err(|_| "Couldn't reopen Writan.".to_string())?;
     app.exit(0);
     Ok(())
 }
@@ -278,14 +278,14 @@ mod tests {
 
     #[test]
     fn quotes_paths_for_the_shell() {
-        assert_eq!(sh_quote(std::path::Path::new("/Applications/Workspace.app")), "'/Applications/Workspace.app'");
+        assert_eq!(sh_quote(std::path::Path::new("/Applications/Writan.app")), "'/Applications/Writan.app'");
         assert_eq!(sh_quote(std::path::Path::new("/tmp/O'Hare.app")), "'/tmp/O'\\''Hare.app'");
     }
 
     #[cfg(target_os = "linux")]
     #[test]
     fn reads_the_dnf_repo_switch() {
-        let repo = "[workspace]\nname=Workspace\nbaseurl=https://example.com/\nenabled=1\n";
+        let repo = "[workspace]\nname=Writan\nbaseurl=https://example.com/\nenabled=1\n";
         assert!(dnf_repo_enabled(repo));
         assert!(!dnf_repo_enabled(&repo.replace("enabled=1", "enabled=0")));
         assert!(!dnf_repo_enabled("[other]\nenabled=1\n"));
@@ -296,7 +296,7 @@ mod tests {
     fn reads_release_notes() {
         let release = GithubRelease {
             tag_name: "v0.4.0".into(),
-            name: Some("Workspace v0.4.0".into()),
+            name: Some("Writan v0.4.0".into()),
             body: Some("## Changes\n\n- Fixes the Dock icon".into()),
             html_url: "https://github.com/elijahroizman/workspace/releases/tag/v0.4.0".into(),
             published_at: Some("2026-10-16T00:00:00Z".into()),

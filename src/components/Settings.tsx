@@ -127,7 +127,7 @@ function GeneralPage() {
   useEffect(() => void linuxPackage().then(setLinux), [])
   return (
     <>
-      <SettingsRow label={`Workspace ${__APP_VERSION__}`} hint={updateHint(linux)}>
+      <SettingsRow label={`Writan ${__APP_VERSION__}`} hint={updateHint(linux)}>
         <Button onClick={() => (setOpen(false), openUpdatePanel())}>Check for updates</Button>
       </SettingsRow>
 
@@ -144,14 +144,14 @@ function GeneralPage() {
         <Button onClick={() => (setOpen(false), useSetup.getState().show())}>Show the tour again</Button>
       </SettingsRow>
 
-      <SettingsRow label="Open-source licenses" hint="Workspace is built on open-source engines, including PDFium, CodeMirror and the Carlito, Caladea and Liberation fonts.">
+      <SettingsRow label="Open-source licenses" hint="Writan is built on open-source engines, including PDFium, CodeMirror and the Carlito, Caladea and Liberation fonts.">
         <Button onClick={() => setPage('licenses')}>View licenses</Button>
       </SettingsRow>
     </>
   )
 }
 
-/** The `workspace` shell command: installed from here on a Mac, already there on Linux. */
+/** The `writan` shell command: installed from here on a Mac, already there on Linux. */
 function CommandLineRow() {
   const [status, setStatus] = useState<CliStatus | null>(null)
   const [busy, setBusy] = useState(false)
@@ -175,10 +175,10 @@ function CommandLineRow() {
       label="Command line"
       hint={
         status.taken
-          ? `Something else is already at ${status.path}, so Workspace can’t put its command there.`
+          ? `Something else is already at ${status.path}, so Writan can’t put its command there.`
           : status.supported
-            ? `Open files and folders from Terminal: workspace . opens the folder you’re in, workspace notes.md a file. ${status.installed ? `Installed at ${status.path}.` : 'Installing asks for your password.'}`
-            : 'Open files and folders from a terminal: workspace . opens the folder you’re in, workspace notes.md a file.'
+            ? `Open files and folders from Terminal: writan . opens the folder you’re in, writan notes.md a file. ${status.installed ? `Installed at ${status.path}.` : 'Installing asks for your password.'}`
+            : 'Open files and folders from a terminal: writan . opens the folder you’re in, writan notes.md a file.'
       }
     >
       {status.supported && !status.taken && (
@@ -213,7 +213,7 @@ function RecentFilesRow() {
   )
 }
 
-/** Which file types open in Workspace, and a button for each that doesn't. */
+/** Which file types open in Writan, and a button for each that doesn't. */
 function DefaultAppsRow() {
   const plugins = usePlugins((s) => s.enabled)
   const kinds = enabledKinds(plugins)
@@ -249,7 +249,7 @@ function DefaultAppsRow() {
       column
       bare
       label="Default apps"
-      hint={isMac ? 'Double-clicking these files in Finder opens them in Workspace.' : 'Windows asks you to confirm each one in Settings › Default apps.'}
+      hint={isMac ? 'Double-clicking these files in Finder opens them in Writan.' : 'Windows asks you to confirm each one in Settings › Default apps.'}
     >
       <div className="default-apps">
         {kinds.map((k) => (
@@ -259,7 +259,7 @@ function DefaultAppsRow() {
               {k.label} <span className="faint">{k.extensions.map((e) => `.${e}`).join(' ')}</span>
             </span>
             {status[k.id] ? (
-              <span className="faint">Opens in Workspace</span>
+              <span className="faint">Opens in Writan</span>
             ) : (
               <Button disabled={busy || status[k.id] == null} onClick={() => void set([k.id])}>
                 Make default
@@ -271,7 +271,7 @@ function DefaultAppsRow() {
       {missing.length > 1 && (
         <div>
           <Button disabled={busy} onClick={() => void set(missing)}>
-            Make Workspace the default for all
+            Make Writan the default for all
           </Button>
         </div>
       )}
@@ -332,7 +332,7 @@ function PluginsPage() {
   )
 }
 
-/** A font Workspace downloads from its maker (state/fonts.ts): on downloads it, off removes it. */
+/** A font Writan downloads from its maker (state/fonts.ts): on downloads it, off removes it. */
 function FontRow({ font }: { font: ExtraFont }) {
   const installed = useExtraFonts((s) => !!s.installed[font.id])
   const busy = useExtraFonts((s) => !!s.busy[font.id])
@@ -421,7 +421,7 @@ async function disablePlugin(id: string, disable: (id: string) => Promise<void>)
   const open = useWorkspace.getState().tabs.filter((t) => kinds.has(t.kind))
   if (open.length) {
     const tabs = open.length === 1 ? `“${open[0].title}”` : `${open.length} tabs`
-    const ok = await confirmDialog(`${plugin.name} can’t turn off while ${tabs} ${open.length === 1 ? 'is' : 'are'} open. Workspace asks before closing anything with unsaved changes.`, {
+    const ok = await confirmDialog(`${plugin.name} can’t turn off while ${tabs} ${open.length === 1 ? 'is' : 'are'} open. Writan asks before closing anything with unsaved changes.`, {
       title: `Close ${tabs} and turn off ${plugin.name}?`,
       okLabel: open.length === 1 ? 'Close Tab' : 'Close Tabs',
     })

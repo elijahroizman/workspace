@@ -1,4 +1,4 @@
-// Collects the license of every open-source package that ships in Workspace: the npm packages in
+// Collects the license of every open-source package that ships in Writan: the npm packages in
 // the app and in each plugin, and the Rust crates in the native app. Writes public/licenses.json,
 // which Settings › General › Open-source licenses shows. Runs as part of `npm run build`.
 

@@ -46,7 +46,7 @@ export default function LicensesPage() {
   return (
     <>
       <p className="settings-intro">
-        Workspace is free to use thanks to these open-source projects. Each is used under its license, shown below.
+        Writan is free to use thanks to these open-source projects. Each is used under its license, shown below.
       </p>
       <p className="settings-intro">
         The theme picker in Settings › Appearance is heavily inspired by the one in{' '}
