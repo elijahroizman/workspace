@@ -123,7 +123,7 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
     if (!d) return
     draft.current = null
     setEditing(null)
-    engine.run({ cmd: 'input', sheet: d.sheet, row: d.row, col: d.col, text: d.text })
+    if (d.text !== d.original) engine.run({ cmd: 'input', sheet: d.sheet, row: d.row, col: d.col, text: d.text })
   }
 
   const range = engine.range
@@ -140,7 +140,7 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
     const targetSheet = d?.sheet ?? engine.state.sheet
     draft.current = null
     setEditing(null)
-    engine.run({ cmd: 'input', sheet: targetSheet, row: r, col: c, text })
+    if (!d || text !== d.original) engine.run({ cmd: 'input', sheet: targetSheet, row: r, col: c, text })
     const next: [number, number] = move === 'down' ? [r + 1, c] : move === 'up' ? [Math.max(0, r - 1), c] : move === 'right' ? [r, c + 1] : move === 'left' ? [r, Math.max(0, c - 1)] : [r, c]
     if (engine.state.sheet === targetSheet) engine.run({ cmd: 'select', sheet: targetSheet, anchor: next, focus: next })
   }
