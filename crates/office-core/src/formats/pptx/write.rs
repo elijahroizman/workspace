@@ -188,7 +188,14 @@ fn write_slide(slide: &Slide, part: &str, out: &mut Out) -> Result<()> {
     if tree.child(ns::P, "nvGrpSpPr").is_none() {
         *tree = new_tree();
     }
-    let mut ids = FrameIds::new(&slide.frames);
+    // The tree's own id is not a frame. A new tree uses 1; a file may use another.
+    let root_id = tree
+        .child(ns::P, "nvGrpSpPr")
+        .and_then(|nv| nv.child(ns::P, "cNvPr"))
+        .and_then(|c| c.attr("id"))
+        .and_then(|id| id.parse().ok())
+        .unwrap_or(1);
+    let mut ids = FrameIds::new(&slide.frames, root_id);
     let mut shapes = Vec::new();
     for frame in &slide.frames {
         if let Some(el) = write_frame(frame, &mut ctx, out, &mut ids)? {
@@ -210,34 +217,43 @@ fn write_slide(slide: &Slide, part: &str, out: &mut Out) -> Result<()> {
 /// Frame ids, unique within a slide: a frame's own, or the next free one for frames without.
 struct FrameIds {
     next: u32,
+    used: std::collections::HashSet<u32>,
 }
 
 impl FrameIds {
-    fn new(frames: &[Frame]) -> FrameIds {
-        fn max(frames: &[Frame]) -> u32 {
-            frames
-                .iter()
-                .map(|f| match &f.content {
-                    FrameContent::Group { frames } => f.id.max(max(frames)),
-                    _ => f.id,
-                })
-                .max()
-                .unwrap_or(1)
+    /// `root_id` is the spTree group. 0 means "no id", and 1 is reserved because a new tree uses it.
+    fn new(frames: &[Frame], root_id: u32) -> FrameIds {
+        fn collect(frames: &[Frame], used: &mut std::collections::HashSet<u32>) {
+            for frame in frames {
+                used.insert(frame.id);
+                if let FrameContent::Group { frames } = &frame.content {
+                    collect(frames, used);
+                }
+            }
         }
-        FrameIds { next: max(frames) + 1 }
+        let mut used = std::collections::HashSet::from([0, 1]);
+        if root_id != 0 {
+            used.insert(root_id);
+        }
+        collect(frames, &mut used);
+        FrameIds { next: 2, used }
     }
 
-    fn id(&mut self, frame: &Frame) -> u32 {
+    fn id(&mut self, frame: &Frame) -> Result<u32> {
         if frame.id != 0 {
-            return frame.id;
+            return Ok(frame.id);
         }
-        self.next += 1;
-        self.next - 1
+        while self.used.contains(&self.next) {
+            self.next = self.next.checked_add(1).ok_or_else(|| Error::Invalid("no shape ids remain".into()))?;
+        }
+        let id = self.next;
+        self.used.insert(id);
+        Ok(id)
     }
 }
 
 fn write_frame(frame: &Frame, ctx: &mut PartCtx, out: &mut Out, ids: &mut FrameIds) -> Result<Option<Element>> {
-    let id = ids.id(frame);
+    let id = ids.id(frame)?;
     let mut el = match &frame.content {
         FrameContent::Shape { text, connector } => {
             let (local, nv) = if *connector { ("cxnSp", "nvCxnSpPr") } else { ("sp", "nvSpPr") };

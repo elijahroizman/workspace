@@ -289,6 +289,8 @@ pub struct Line {
     pub end: u32,
     pub frags: Vec<Frag>,
     pub ends: LineEnd,
+    /// Caret x when the line has no text, after indents, a list label and alignment.
+    pub origin: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -770,7 +772,10 @@ impl Builder<'_, '_, '_> {
         let start = self.line_start;
         let end = if ends == LineEnd::Wrap { end_start } else { end_end };
         let _ = end_start;
-        self.lines.push(Line { top: self.top, height, baseline, start, end, frags, ends });
+        // `self.x` is where the next glyph would be placed, before the alignment shift.
+        // An empty line has no fragment to move, so the caret has to remember it.
+        let origin = self.x + shift;
+        self.lines.push(Line { top: self.top, height, baseline, start, end, frags, ends, origin });
         self.top += height;
         self.line_start = end;
     }
@@ -881,15 +886,8 @@ pub fn x_in_line(ctx: &mut Ctx, spec: &ParaSpec, line: &Line, offset: u32) -> f6
         }
         last_x = Some(f.x + f.width);
     }
-    last_x.unwrap_or_else(|| {
-        // An empty line: where its text would start.
-        let first = line.start == 0;
-        let base = spec.indent_start + if first { spec.first_line } else { 0.0 };
-        match spec.align {
-            Align::Center => (base + spec.indent_end.max(0.0)).max(base),
-            _ => base,
-        }
-    })
+    // No text on this line. `origin` is the aligned start, including a list label and indents.
+    last_x.unwrap_or(line.origin)
 }
 
 /// The character boundary before `offset`.
@@ -1130,6 +1128,85 @@ mod tests {
         // Past the end of a wrapped line: before its trailing space.
         assert_eq!(l.offset_at(&mut ctx, &spec, 0, 44.0), 9);
         assert_eq!(l.offset_at(&mut ctx, &spec, 1, 400.0), 14);
+    }
+
+    #[test]
+    fn empty_aligned_lines_position_carets_and_selections() {
+        use crate::display::{caret_rect, selection_rects};
+        use crate::flow::{Keep, ParaBox};
+        use crate::pos::Path;
+        use std::sync::Arc;
+
+        let (mut host, mut measure, mut styles, s) = setup();
+        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &mut styles };
+        for align in [Align::Center, Align::Right] {
+            for (indent_start, indent_end, first_line) in [(0.0, 0.0, 0.0), (20.0, 10.0, 15.0), (20.0, 10.0, -10.0)] {
+                for text in ["", "\nab", "ab\n", "\n\n"] {
+                    let mut spec = ParaSpec::plain(text, s);
+                    spec.align = align;
+                    spec.indent_start = indent_start;
+                    spec.indent_end = indent_end;
+                    spec.first_line = first_line;
+                    let l = layout(&mut ctx, &spec, 100.0);
+                    let p = ParaBox {
+                        path: Path::top(0),
+                        spec: Arc::new(spec.clone()),
+                        layout: Arc::new(l.clone()),
+                        keep: Keep::default(),
+                        y: 3.0,
+                    };
+                    for (li, line) in l.lines.iter().enumerate().filter(|(_, line)| line.frags.is_empty()) {
+                        let base = indent_start + if li == 0 { first_line } else { 0.0 };
+                        let factor = if align == Align::Center { 0.5 } else { 1.0 };
+                        let expected = base + (100.0 - indent_end - base).max(0.0) * factor;
+                        assert_eq!(l.caret(&mut ctx, &spec, line.start, false), (expected, li), "{align:?}, {text:?}, line {li}");
+                        assert_eq!(caret_rect(&mut ctx, &p, 7.0, 11.0, line.start, false), (7.0 + expected, 14.0 + line.top, line.height));
+                        let rects = selection_rects(&mut ctx, &p, 7.0, 11.0, line.start, line.end, true);
+                        assert!(rects.contains(&(7.0 + expected, 14.0 + line.top, 5.0, line.height)), "{align:?}, {text:?}: {rects:?}");
+
+                        // A typed 5 px glyph takes half/all its width off the aligned origin.
+                        let mut typed_text = text.to_string();
+                        typed_text.insert(line.start as usize, 'x');
+                        let mut typed = ParaSpec::plain(&typed_text, s);
+                        typed.align = align;
+                        typed.indent_start = indent_start;
+                        typed.indent_end = indent_end;
+                        typed.first_line = first_line;
+                        let typed_layout = layout(&mut ctx, &typed, 100.0);
+                        assert_eq!(typed_layout.lines[li].frags[0].x + 5.0 * factor, expected);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn empty_list_line_caret_starts_after_the_label() {
+        let (mut host, mut measure, mut styles, s) = setup();
+        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &mut styles };
+        for (align, expected) in [(Align::Left, 24.0), (Align::Center, 57.0), (Align::Right, 90.0)] {
+            let mut spec = ParaSpec::plain("", s);
+            spec.align = align;
+            spec.indent_start = 24.0;
+            spec.indent_end = 10.0;
+            spec.first_line = -24.0;
+            spec.label = Some(Label { text: "1.".into(), style: s });
+            let l = layout(&mut ctx, &spec, 100.0);
+            assert_eq!(l.caret(&mut ctx, &spec, 0, false), (expected, 0));
+            let mut typed = ParaSpec::plain("x", s);
+            typed.align = align;
+            typed.indent_start = spec.indent_start;
+            typed.indent_end = spec.indent_end;
+            typed.first_line = spec.first_line;
+            typed.label = spec.label.clone();
+            let typed_layout = layout(&mut ctx, &typed, 100.0);
+            let shift = match align {
+                Align::Center => 2.5,
+                Align::Right => 5.0,
+                _ => 0.0,
+            };
+            assert_eq!(typed_layout.lines[0].frags[1].x + shift, expected);
+        }
     }
 
     #[test]
