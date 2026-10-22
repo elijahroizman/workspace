@@ -16,12 +16,12 @@ use office_core::model::{Block, Body, Document, Inline, Paragraph};
 use office_core::xml::ns;
 use office_core::Compiler;
 use office_engine::display::{self, Item, Objects};
+use office_engine::edit::Splice;
 use office_engine::flow::{self, BlockBox, Cache, FlowLayout};
 use office_engine::history::{History, Step};
 use office_engine::measure::{Measure, Measurer};
 use office_engine::para::{Ctx, Styles};
 use office_engine::pos::{self, Path, Pos, Selection};
-use office_engine::edit::Splice;
 use office_engine::text;
 use serde::Serialize;
 
@@ -45,7 +45,11 @@ pub enum StoryId {
 pub enum WStep {
     Text(StoryId, Splice),
     /// A body paragraph's origin (section settings live there) or, for `None`, the document's.
-    Origin { block: Option<u32>, before: office_core::model::Origin, after: office_core::model::Origin },
+    Origin {
+        block: Option<u32>,
+        before: office_core::model::Origin,
+        after: office_core::model::Origin,
+    },
 }
 
 impl Step for WStep {
@@ -127,7 +131,11 @@ pub(crate) enum Dirty {
     Clean,
     /// Top-level blocks `first..end` (as the body is now) changed, and the body has `delta` more
     /// blocks than when it was laid out.
-    Blocks { first: u32, end: u32, delta: i64 },
+    Blocks {
+        first: u32,
+        end: u32,
+        delta: i64,
+    },
     /// Anything else: lay it all out.
     Full,
 }
@@ -342,18 +350,31 @@ impl WordView {
             && self.sections.len() == sections.len()
             && self.sections.iter().zip(&sections).zip(&ranges).all(|((old, new), &(f, l))| {
                 let shift = |x: u32| if x >= keep_from { (x as i64 + delta).max(0) as u32 } else { x };
-                old.section == *new && shift(old.first).min(f) == f && (old.last >= keep_from || old.last == l) && (old.last < keep_from || shift(old.last) == l)
+                old.section == *new
+                    && shift(old.first).min(f) == f
+                    && (old.last >= keep_from || old.last == l)
+                    && (old.last < keep_from || shift(old.last) == l)
             });
-        let mut old_flows: Vec<Option<SectionFlow>> = if reusable { std::mem::take(&mut self.sections).into_iter().map(Some).collect() } else { Vec::new() };
+        let mut old_flows: Vec<Option<SectionFlow>> =
+            if reusable { std::mem::take(&mut self.sections).into_iter().map(Some).collect() } else { Vec::new() };
         let mut flows = Vec::with_capacity(sections.len());
         for (i, section) in sections.into_iter().enumerate() {
             let (first, last) = ranges[i];
             let width = emu_px(section.text_width()).max(24.0);
             let slice = body.get(first as usize..=(last as usize).min(body.len().saturating_sub(1))).unwrap_or(&[]);
             let mut ctx = Ctx { host, measure: &mut self.measure, styles: &mut self.styles };
-            let mut r = WordResolver { doc: &self.doc, extras: &self.extras, story: body, labels: &self.labels, fields: None, specs: &mut self.specs };
+            let mut r = WordResolver {
+                doc: &self.doc,
+                extras: &self.extras,
+                story: body,
+                labels: &self.labels,
+                fields: None,
+                specs: &mut self.specs,
+            };
             let flow = match old_flows.get_mut(i).and_then(Option::take) {
-                Some(old) => relayout(&mut ctx, &mut self.cache, &mut r, old, slice, first, width, (keep_from, keep_end, delta), &self.labels),
+                Some(old) => {
+                    relayout(&mut ctx, &mut self.cache, &mut r, old, slice, first, width, (keep_from, keep_end, delta), &self.labels)
+                }
                 None => flow::layout_from(&mut ctx, &mut self.cache, &mut r, slice, &[], first, width),
             };
             flows.push(SectionFlow { section, first, last, flow });
@@ -412,7 +433,14 @@ impl WordView {
         let blocks = word(&self.doc)?.headers.get(story)?.blocks.clone();
         let labels = HashMap::new();
         let mut ctx = Ctx { host, measure: &mut self.measure, styles: &mut self.styles };
-        let mut r = WordResolver { doc: &self.doc, extras: &self.extras, story: &blocks, labels: &labels, fields: Some(fields), specs: &mut self.specs };
+        let mut r = WordResolver {
+            doc: &self.doc,
+            extras: &self.extras,
+            story: &blocks,
+            labels: &labels,
+            fields: Some(fields),
+            specs: &mut self.specs,
+        };
         Some(flow::layout(&mut ctx, &mut self.cache, &mut r, &blocks, &[], width))
     }
 
@@ -444,8 +472,26 @@ impl WordView {
             let mut objects = PageObjects { doc: &self.doc, story: StoryId::Story(story) };
             let links = |_: &Path, _: u32| None;
             let mut ctx = Ctx { host, measure: &mut self.measure, styles: &mut self.styles };
-            display::paint_flow(&mut ctx, &flow, x, y, (f64::MIN, f64::MAX), &mut objects, &links, &mut out);
-            items.push(Item::Group { x: 0.0, y: 0.0, w: p.width, h: p.height, rot: 0.0, fh: false, fv: false, clip: false, id: Some(if editing_story { "hf".into() } else { "hf-dim".into() }), items: out });
+            display::paint_flow(
+                &mut ctx,
+                &flow,
+                x,
+                y,
+                (f64::MIN, f64::MAX),
+                &mut display::Sink { objects: &mut objects, links: &links, out: &mut out },
+            );
+            items.push(Item::Group {
+                x: 0.0,
+                y: 0.0,
+                w: p.width,
+                h: p.height,
+                rot: 0.0,
+                fh: false,
+                fv: false,
+                clip: false,
+                id: Some(if editing_story { "hf".into() } else { "hf-dim".into() }),
+                items: out,
+            });
         }
         let sf = &self.sections[p.section];
         let blocks = match &self.doc.body {
@@ -455,7 +501,14 @@ impl WordView {
         let links = |path: &Path, offset: u32| link_at(blocks, path, offset);
         let mut objects = PageObjects { doc: &self.doc, story: StoryId::Body };
         let mut ctx = Ctx { host, measure: &mut self.measure, styles: &mut self.styles };
-        display::paint_flow(&mut ctx, &sf.flow, p.body_x, p.body_y - p.top, (p.top, p.bottom), &mut objects, &links, &mut items);
+        display::paint_flow(
+            &mut ctx,
+            &sf.flow,
+            p.body_x,
+            p.body_y - p.top,
+            (p.top, p.bottom),
+            &mut display::Sink { objects: &mut objects, links: &links, out: &mut items },
+        );
         paint_floating(&self.doc, &p, page, blocks, &sf.flow, &mut items);
         PagePaint { width: display::r(p.width), height: display::r(p.height), items }
     }
@@ -661,7 +714,13 @@ fn relayout(
     let mut out = Vec::with_capacity(slice.len());
     for (k, block) in slice.iter().enumerate() {
         let i = first + k as u32;
-        let old_index = if i < from { Some(i as i64) } else if i >= end { Some(i as i64 - delta) } else { None };
+        let old_index = if i < from {
+            Some(i as i64)
+        } else if i >= end {
+            Some(i as i64 - delta)
+        } else {
+            None
+        };
         let near_edit = i + 1 == from || i == end;
         let kept = old_index
             .filter(|_| !near_edit)
@@ -748,7 +807,9 @@ pub(crate) fn hit_flow(ctx: &mut Ctx, flow: &FlowLayout, x: f64, y: f64) -> Opti
                 .cells
                 .iter()
                 .find(|c| tx >= c.x && tx < c.x + c.width && ty >= c.y && ty < c.y + c.height)
-                .or_else(|| t.cells.iter().filter(|c| ty >= c.y && ty < c.y + c.height).min_by(|a, b| (a.x - tx).abs().total_cmp(&(b.x - tx).abs())))
+                .or_else(|| {
+                    t.cells.iter().filter(|c| ty >= c.y && ty < c.y + c.height).min_by(|a, b| (a.x - tx).abs().total_cmp(&(b.x - tx).abs()))
+                })
                 .or_else(|| t.cells.last())?;
             hit_flow(ctx, &cell.content, tx - cell.x - cell.look.margins[3], ty - cell.y - cell.content_y)
         }
@@ -773,7 +834,7 @@ struct PageObjects<'a> {
 }
 
 impl Objects for PageObjects<'_> {
-    fn object(&mut self, para: &Path, inline: u32, x: f64, y: f64, w: f64, h: f64, out: &mut Vec<Item>) {
+    fn object(&mut self, para: &Path, inline: u32, (x, y, w, h): display::Rect, out: &mut Vec<Item>) {
         let blocks: &[Block] = match self.story {
             StoryId::Body => match &self.doc.body {
                 Body::Flow { blocks } => blocks,
@@ -848,7 +909,15 @@ fn paint_floating(doc: &Document, page: &Page, _index: usize, blocks: &[Block], 
                 let v = |k: &str| rect.attr(k).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0) / 100_000.0;
                 [v("l"), v("t"), v("r"), v("b")]
             });
-            out.push(Item::Image { x: display::r(offset("positionH")), y: display::r(offset("positionV")), w: display::r(w), h: display::r(h), media, crop, id: None });
+            out.push(Item::Image {
+                x: display::r(offset("positionH")),
+                y: display::r(offset("positionV")),
+                w: display::r(w),
+                h: display::r(h),
+                media,
+                crop,
+                id: None,
+            });
         }
     }
 }

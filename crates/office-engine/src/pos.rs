@@ -94,11 +94,19 @@ impl Selection {
     }
 
     pub fn start(&self) -> &Pos {
-        if self.anchor <= self.focus { &self.anchor } else { &self.focus }
+        if self.anchor <= self.focus {
+            &self.anchor
+        } else {
+            &self.focus
+        }
     }
 
     pub fn end(&self) -> &Pos {
-        if self.anchor <= self.focus { &self.focus } else { &self.anchor }
+        if self.anchor <= self.focus {
+            &self.focus
+        } else {
+            &self.anchor
+        }
     }
 
     pub fn ordered(&self) -> (Pos, Pos) {
@@ -231,9 +239,7 @@ pub fn next_para(root: &[Block], path: &Path) -> Option<Path> {
         r += 1;
         c = 0;
     }
-    next_para(root, &table)
-        .or_else(|| first_para_from(root, table.container(), table.block() + 1))
-        .filter(|p| p > path)
+    next_para(root, &table).or_else(|| first_para_from(root, table.container(), table.block() + 1)).filter(|p| p > path)
 }
 
 /// The paragraph before `path` in reading order.

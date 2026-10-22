@@ -236,7 +236,12 @@ pub fn split(p: &Paragraph, offset: u32) -> (Paragraph, Paragraph) {
     let i = boundary(&mut first, offset);
     let tail: Vec<Inline> = first.content.drain(i..).collect();
     let at_cut = props_at(p, offset);
-    let second = Paragraph { props: p.props.clone(), content: tail, mark: (!at_cut.is_empty()).then_some(at_cut).or(p.mark.clone()), ..Default::default() };
+    let second = Paragraph {
+        props: p.props.clone(),
+        content: tail,
+        mark: (!at_cut.is_empty()).then_some(at_cut).or(p.mark.clone()),
+        ..Default::default()
+    };
     (first, second)
 }
 
@@ -315,7 +320,10 @@ mod tests {
 
     fn para(parts: &[(&str, bool)]) -> Paragraph {
         Paragraph {
-            content: parts.iter().map(|(t, b)| Inline::Text(Run::new(*t).with_props(if *b { bold() } else { RunProps::default() }))).collect(),
+            content: parts
+                .iter()
+                .map(|(t, b)| Inline::Text(Run::new(*t).with_props(if *b { bold() } else { RunProps::default() })))
+                .collect(),
             ..Default::default()
         }
     }
@@ -345,7 +353,14 @@ mod tests {
     #[test]
     fn objects_are_one_character() {
         let mut p = para(&[("ab", false)]);
-        let img = Inline::Image(Image { media: "m".into(), width: Emu(1), height: Emu(1), name: String::new(), description: None, origin: Default::default() });
+        let img = Inline::Image(Image {
+            media: "m".into(),
+            width: Emu(1),
+            height: Emu(1),
+            name: String::new(),
+            description: None,
+            origin: Default::default(),
+        });
         insert_inline(&mut p, 1, img);
         let f = flat(&p);
         assert_eq!(f.text, "a\u{FFFC}b");
@@ -381,7 +396,11 @@ mod tests {
     #[test]
     fn typing_after_a_link_leaves_it() {
         let mut p = para(&[("see ", false)]);
-        p.content.push(Inline::Text(Run { text: "here".into(), link: Some(office_core::model::Link { url: Some("https://x".into()), ..Default::default() }), ..Default::default() }));
+        p.content.push(Inline::Text(Run {
+            text: "here".into(),
+            link: Some(office_core::model::Link { url: Some("https://x".into()), ..Default::default() }),
+            ..Default::default()
+        }));
         if let Some(Inline::Text(r)) = p.content.last_mut() {
             r.props.color = Some(office_core::drawing::Color::rgb(office_core::drawing::Rgb(5, 99, 193)));
         }

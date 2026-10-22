@@ -28,6 +28,8 @@ fn main() {
         times.push((a, b - a, c - b, d - c));
     }
     let n = times.len() as u32;
-    let sum = |f: fn(&(std::time::Duration, std::time::Duration, std::time::Duration, std::time::Duration)) -> std::time::Duration| times.iter().map(f).sum::<std::time::Duration>() / n;
+    let sum = |f: fn(&(std::time::Duration, std::time::Duration, std::time::Duration, std::time::Duration)) -> std::time::Duration| {
+        times.iter().map(f).sum::<std::time::Duration>() / n
+    };
     println!("per key: edit {:?} layout {:?} paint {:?} overlay+state {:?}", sum(|t| t.0), sum(|t| t.1), sum(|t| t.2), sum(|t| t.3));
 }

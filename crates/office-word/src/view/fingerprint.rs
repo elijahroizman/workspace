@@ -50,7 +50,8 @@ pub fn run_props(h: &mut Fnv, r: &RunProps) {
 }
 
 pub fn para_props(h: &mut Fnv, p: &ParaProps) {
-    (&p.style, p.align.map(|a| a as u8), p.level, p.indent_start.map(|e| e.0), p.indent_end.map(|e| e.0), p.indent_first_line.map(|e| e.0)).hash(h);
+    (&p.style, p.align.map(|a| a as u8), p.level, p.indent_start.map(|e| e.0), p.indent_end.map(|e| e.0), p.indent_first_line.map(|e| e.0))
+        .hash(h);
     (p.space_before.map(|e| e.0), p.space_after.map(|e| e.0), p.rtl).hash(h);
     match p.line_spacing {
         Some(LineSpacing::Multiple(m)) => (1u8, m.0 as i64).hash(h),

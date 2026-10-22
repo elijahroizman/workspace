@@ -159,10 +159,10 @@ impl WordView {
             runs.iter().all(|r| f(r) == first).then_some(first).flatten()
         };
         st.font = same(&|r| Some(r.font.clone().unwrap_or_else(|| super::resolve::DEFAULT_FONT.to_string())));
-        st.size = same(&|r| r.size.map(|s| s.half_points().to_string())).and_then(|s| s.parse().ok()).or_else(|| runs[0].size.is_none().then_some(20));
-        st.color = same(&|r| {
-            r.color.as_ref().map(|c| super::resolve::paint_color(self.doc.theme.as_ref(), c).rgb.hex())
-        });
+        st.size = same(&|r| r.size.map(|s| s.half_points().to_string()))
+            .and_then(|s| s.parse().ok())
+            .or_else(|| runs[0].size.is_none().then_some(20));
+        st.color = same(&|r| r.color.as_ref().map(|c| super::resolve::paint_color(self.doc.theme.as_ref(), c).rgb.hex()));
         st.highlight = same(&|r| {
             r.highlight.as_ref().map(|c| match &c.base {
                 ColorBase::Preset { name } => name.clone(),
@@ -187,16 +187,25 @@ impl WordView {
         };
         if self.story == StoryId::Body {
             if let Some((num, _)) = crate::list_of(&self.doc, p).filter(|(n, _)| n != "0") {
-                let bullet = word(&self.doc).and_then(|w| w.numbering.levels(&num)).and_then(|l| l.first()).is_some_and(|l| l.format == "bullet");
+                let bullet =
+                    word(&self.doc).and_then(|w| w.numbering.levels(&num)).and_then(|l| l.first()).is_some_and(|l| l.format == "bullet");
                 st.list = Some(if bullet { "bullet" } else { "numbered" }.into());
             }
         }
         if let Some((_, _, _, t)) = self.table_at_caret() {
-            st.table = Some(TableState { rows: t.rows.len(), columns: t.columns.len().max(t.rows.first().map(|r| r.cells.len()).unwrap_or(0)) });
+            st.table =
+                Some(TableState { rows: t.rows.len(), columns: t.columns.len().max(t.rows.first().map(|r| r.cells.len()).unwrap_or(0)) });
         }
         if let Some((_, _, img)) = self.selected_image() {
             let crop = image_crop(img).unwrap_or([0.0; 4]);
-            let rot = img.origin.get().and_then(|o| o.descendant(office_core::xml::ns::A, "xfrm")).and_then(|x| x.attr("rot")).and_then(|r| r.parse::<f64>().ok()).unwrap_or(0.0) / 60_000.0;
+            let rot = img
+                .origin
+                .get()
+                .and_then(|o| o.descendant(office_core::xml::ns::A, "xfrm"))
+                .and_then(|x| x.attr("rot"))
+                .and_then(|r| r.parse::<f64>().ok())
+                .unwrap_or(0.0)
+                / 60_000.0;
             st.image = Some(ImageState {
                 width_emu: img.width.0,
                 height_emu: img.height.0,
@@ -221,7 +230,15 @@ impl WordView {
             .filter(|s| s.kind == StyleKind::Paragraph && (s.quick || s.default))
             .map(|s| StyleOption { style_id: s.id.clone(), name: display_name(&s.name) })
             .collect();
-        for (id, name) in [("Normal", "Normal"), ("Title", "Title"), ("Subtitle", "Subtitle"), ("Heading1", "Heading 1"), ("Heading2", "Heading 2"), ("Heading3", "Heading 3"), ("Quote", "Quote")] {
+        for (id, name) in [
+            ("Normal", "Normal"),
+            ("Title", "Title"),
+            ("Subtitle", "Subtitle"),
+            ("Heading1", "Heading 1"),
+            ("Heading2", "Heading 2"),
+            ("Heading3", "Heading 3"),
+            ("Quote", "Quote"),
+        ] {
             if !out.iter().any(|o| o.style_id == id || o.name == name) {
                 out.push(StyleOption { style_id: id.into(), name: name.into() });
             }
@@ -236,7 +253,12 @@ impl WordView {
             page_width_twips: tw(s.page_width),
             page_height_twips: tw(s.page_height),
             orientation: if s.landscape || s.page_width > s.page_height { "landscape" } else { "portrait" },
-            margins_twips: Margins { top: tw(s.margin_top), bottom: tw(s.margin_bottom), left: tw(s.margin_left), right: tw(s.margin_right) },
+            margins_twips: Margins {
+                top: tw(s.margin_top),
+                bottom: tw(s.margin_bottom),
+                left: tw(s.margin_left),
+                right: tw(s.margin_right),
+            },
         }
     }
 

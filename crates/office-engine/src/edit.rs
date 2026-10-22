@@ -175,9 +175,13 @@ pub fn push(splices: &mut Vec<Splice>, s: Splice) {
     splices.push(s);
 }
 
+/// What a new paragraph's properties are after Enter: from the paragraph split and whether the
+/// caret was at its end.
+pub type NextProps<'a> = &'a dyn Fn(&ParaProps, bool) -> ParaProps;
+
 /// Splits the paragraph at `at` (Enter). `next` gives the new paragraph's properties when it
 /// differs from the first's (a heading followed by body text).
-pub fn split_para(root: &mut Vec<Block>, at: &Pos, next: Option<&dyn Fn(&ParaProps, bool) -> ParaProps>) -> Edit {
+pub fn split_para(root: &mut Vec<Block>, at: &Pos, next: Option<NextProps>) -> Edit {
     let Some(p) = para(root, &at.path) else { return Edit::default() };
     let at_end = at.offset >= text::len(p);
     let (a, mut b) = text::split(p, at.offset);
@@ -281,7 +285,11 @@ pub fn copy(root: &[Block], sel: &Selection) -> Vec<Block> {
     let (from, to) = sel.ordered();
     if from.path == to.path {
         let Some(p) = para(root, &from.path) else { return Vec::new() };
-        return vec![Block::Paragraph(Paragraph { props: p.props.clone(), content: text::slice(p, from.offset, to.offset), ..Default::default() })];
+        return vec![Block::Paragraph(Paragraph {
+            props: p.props.clone(),
+            content: text::slice(p, from.offset, to.offset),
+            ..Default::default()
+        })];
     }
     let level = common_level(&from.path, &to.path);
     let container = &from.path.0[..level];
@@ -290,12 +298,16 @@ pub fn copy(root: &[Block], sel: &Selection) -> Vec<Block> {
     let mut out = Vec::new();
     for (i, block) in list.iter().enumerate().take(b + 1).skip(a) {
         match block {
-            Block::Paragraph(p) if i == a && from.path.0.len() == level + 1 => {
-                out.push(Block::Paragraph(Paragraph { props: p.props.clone(), content: text::slice(p, from.offset, text::len(p)), ..Default::default() }))
-            }
-            Block::Paragraph(p) if i == b && to.path.0.len() == level + 1 => {
-                out.push(Block::Paragraph(Paragraph { props: p.props.clone(), content: text::slice(p, 0, to.offset), ..Default::default() }))
-            }
+            Block::Paragraph(p) if i == a && from.path.0.len() == level + 1 => out.push(Block::Paragraph(Paragraph {
+                props: p.props.clone(),
+                content: text::slice(p, from.offset, text::len(p)),
+                ..Default::default()
+            })),
+            Block::Paragraph(p) if i == b && to.path.0.len() == level + 1 => out.push(Block::Paragraph(Paragraph {
+                props: p.props.clone(),
+                content: text::slice(p, 0, to.offset),
+                ..Default::default()
+            })),
             other => out.push(strip_origins(other.clone())),
         }
     }
@@ -387,7 +399,11 @@ mod tests {
         e.splices[0].undo(&mut root);
         assert_eq!(texts(&root), vec!["abc", "def", "ghi"]);
 
-        let table = Block::Table(Table { columns: vec![Default::default()], rows: vec![Row { cells: vec![Cell::text("x")], ..Default::default() }], ..Default::default() });
+        let table = Block::Table(Table {
+            columns: vec![Default::default()],
+            rows: vec![Row { cells: vec![Cell::text("x")], ..Default::default() }],
+            ..Default::default()
+        });
         let mut root = vec![Block::Paragraph(Paragraph::text("before")), table, Block::Paragraph(Paragraph::text("after"))];
         // From inside "before" to inside the table's cell: the table goes too.
         delete(&mut root, &Selection { anchor: at(0, 3), focus: Pos::new(Path(vec![1, 0, 0, 0]), 1) });

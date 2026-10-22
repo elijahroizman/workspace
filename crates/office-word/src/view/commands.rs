@@ -137,7 +137,7 @@ impl WordView {
                 if let para::FragKind::Object { inline, height } = f.kind {
                     let top = line.top + line.baseline - height;
                     if fx >= f.x && fx <= f.x + f.width && fy >= top && fy <= top + height {
-                        let (_, start) = text::inline_at(p, f.start).map(|(i, s)| (i, s))?;
+                        let (_, start) = text::inline_at(p, f.start)?;
                         let _ = inline;
                         return Some(Selection { anchor: Pos::new(at.path.clone(), start), focus: Pos::new(at.path.clone(), f.end) });
                     }
@@ -450,16 +450,24 @@ impl WordView {
                 Some(p) => {
                     let flat = text::flat(p);
                     let len = flat.text.len() as u32;
-                    if !forward && at.offset == 0 && self.story == StoryId::Body && crate::list_of(&self.doc, p).is_some_and(|(n, _)| n != "0") {
+                    if !forward
+                        && at.offset == 0
+                        && self.story == StoryId::Body
+                        && crate::list_of(&self.doc, p).is_some_and(|(n, _)| n != "0")
+                    {
                         // Backspace at the start of a list item takes it out of the list first, as Word does.
                         Plan::Unlist
                     } else if forward && at.offset >= len {
-                        match pos::next_para(blocks, &at.path).filter(|n| n.container() == at.path.container() && n.block() == at.path.block() + 1) {
+                        match pos::next_para(blocks, &at.path)
+                            .filter(|n| n.container() == at.path.container() && n.block() == at.path.block() + 1)
+                        {
                             Some(n) => Plan::Range(Pos::new(n, 0)),
                             None => Plan::Nothing,
                         }
                     } else if !forward && at.offset == 0 {
-                        match pos::prev_para(blocks, &at.path).filter(|n| n.container() == at.path.container() && n.block() + 1 == at.path.block()) {
+                        match pos::prev_para(blocks, &at.path)
+                            .filter(|n| n.container() == at.path.container() && n.block() + 1 == at.path.block())
+                        {
                             Some(n) => {
                                 let l = pos::para(blocks, &n).map(text::len).unwrap_or(0);
                                 Plan::Range(Pos::new(n, l))
@@ -643,8 +651,24 @@ impl WordView {
         // Turning something off that a style turns on needs an explicit "off".
         let styled = self.styled_props();
         self.format(&move |r: &mut RunProps| match t {
-            Toggle::Bold => r.bold = if on { Some(true) } else if styled.bold == Some(true) { Some(false) } else { None },
-            Toggle::Italic => r.italic = if on { Some(true) } else if styled.italic == Some(true) { Some(false) } else { None },
+            Toggle::Bold => {
+                r.bold = if on {
+                    Some(true)
+                } else if styled.bold == Some(true) {
+                    Some(false)
+                } else {
+                    None
+                }
+            }
+            Toggle::Italic => {
+                r.italic = if on {
+                    Some(true)
+                } else if styled.italic == Some(true) {
+                    Some(false)
+                } else {
+                    None
+                }
+            }
             Toggle::Underline => {
                 r.underline = if on {
                     Some("single".into())
@@ -744,7 +768,8 @@ impl WordView {
         let paths = pos::paras_between(&blocks, &from.path, &to.path);
         // A new list goes on from the list just before, when it's the same kind.
         let num = kind.map(|k| {
-            let prev = pos::prev_para(&blocks, &from.path).and_then(|pp| pos::para(&blocks, &pp)).and_then(|p| crate::list_of(&self.doc, p));
+            let prev =
+                pos::prev_para(&blocks, &from.path).and_then(|pp| pos::para(&blocks, &pp)).and_then(|p| crate::list_of(&self.doc, p));
             match prev {
                 Some((n, _)) if n != "0" && self.list_kind(&n) == Some(k) => n,
                 _ => crate::add_list(&mut self.doc, k),
@@ -758,7 +783,12 @@ impl WordView {
             let level = before.props.level.unwrap_or(0);
             crate::set_list(&mut self.doc, index, num.as_deref().map(|n| (n, level)));
             if let Some(after) = pos::para(self.blocks(StoryId::Body), &path).cloned() {
-                let s = Splice { container: path.container().to_vec(), index: path.block(), removed: vec![Block::Paragraph(before)], inserted: vec![Block::Paragraph(after)] };
+                let s = Splice {
+                    container: path.container().to_vec(),
+                    index: path.block(),
+                    removed: vec![Block::Paragraph(before)],
+                    inserted: vec![Block::Paragraph(after)],
+                };
                 self.record(vec![s], None, None);
             }
         }
@@ -904,7 +934,10 @@ impl WordView {
                             while b + 1 < p.content.len() && matches!(&p.content[b + 1], Inline::Text(x) if x.link == link) {
                                 b += 1;
                             }
-                            sel = Selection { anchor: Pos::new(sel.focus.path.clone(), flat.spans[a].0), focus: Pos::new(sel.focus.path.clone(), flat.spans[b].1) };
+                            sel = Selection {
+                                anchor: Pos::new(sel.focus.path.clone(), flat.spans[a].0),
+                                focus: Pos::new(sel.focus.path.clone(), flat.spans[b].1),
+                            };
                         }
                     }
                 }
@@ -1029,7 +1062,13 @@ impl WordView {
             .map(|s| s.section.text_width())
             .unwrap_or(Emu::from_inches(6.27));
         let col = Emu(width.0 / cols as i64);
-        let border = |side: &str| Element::new(ns::W, side).with_attr(ns::W, "val", "single").with_attr(ns::W, "sz", "4").with_attr(ns::W, "space", "0").with_attr(ns::W, "color", "auto");
+        let border = |side: &str| {
+            Element::new(ns::W, side)
+                .with_attr(ns::W, "val", "single")
+                .with_attr(ns::W, "sz", "4")
+                .with_attr(ns::W, "space", "0")
+                .with_attr(ns::W, "color", "auto")
+        };
         let mut borders = Element::new(ns::W, "tblBorders");
         for side in ["top", "left", "bottom", "right", "insideH", "insideV"] {
             borders.push(border(side));
@@ -1040,7 +1079,12 @@ impl WordView {
             .with_child(Element::new(ns::W, "tblLook").with_attr(ns::W, "val", "04A0"));
         let table = Table {
             columns: vec![col; cols],
-            rows: (0..rows).map(|_| Row { cells: (0..cols).map(|_| Cell { blocks: vec![Block::Paragraph(Paragraph::default())], ..Default::default() }).collect(), ..Default::default() }).collect(),
+            rows: (0..rows)
+                .map(|_| Row {
+                    cells: (0..cols).map(|_| Cell { blocks: vec![Block::Paragraph(Paragraph::default())], ..Default::default() }).collect(),
+                    ..Default::default()
+                })
+                .collect(),
             style: None,
             origin: Origin::new(Element::new(ns::W, "tbl").with_child(tbl_pr)),
         };
@@ -1080,7 +1124,10 @@ impl WordView {
             TableOp::InsertRow { below } => {
                 let at = if below { row + t.rows[row].cells[col].row_span.max(1) as usize } else { row };
                 let cols = t.columns.len().max(t.rows[row].cells.len());
-                let mut new = Row { cells: (0..cols).map(|_| Cell { blocks: vec![Block::Paragraph(Paragraph::default())], ..Default::default() }).collect(), ..Default::default() };
+                let mut new = Row {
+                    cells: (0..cols).map(|_| Cell { blocks: vec![Block::Paragraph(Paragraph::default())], ..Default::default() }).collect(),
+                    ..Default::default()
+                };
                 // Inside a cell spanning down, the new row is covered there and the span grows.
                 if at > 0 && at < t.rows.len() {
                     for c in 0..cols {
@@ -1124,7 +1171,10 @@ impl WordView {
                 let width = t.columns.get(col).copied().unwrap_or(Emu::from_inches(1.0));
                 t.columns.insert(at.min(t.columns.len()), width);
                 for r in 0..t.rows.len() {
-                    let covered = at > 0 && at < t.rows[r].cells.len() && t.rows[r].cells[at].covered && t.owner(r, at).is_some_and(|(r0, c0)| r0 == r && c0 < at);
+                    let covered = at > 0
+                        && at < t.rows[r].cells.len()
+                        && t.rows[r].cells[at].covered
+                        && t.owner(r, at).is_some_and(|(r0, c0)| r0 == r && c0 < at);
                     if covered {
                         if let Some((r0, c0)) = t.owner(r, at) {
                             t.rows[r0].cells[c0].col_span += 1;
@@ -1185,13 +1235,13 @@ impl WordView {
                             if *r == r0 {
                                 v.push(("top", true));
                             }
-                            if *r + rs - 1 >= r1 {
+                            if *r + rs > r1 {
                                 v.push(("bottom", true));
                             }
                             if *c == c0 {
                                 v.push(("left", true));
                             }
-                            if *c + cs - 1 >= c1 {
+                            if *c + cs > c1 {
                                 v.push(("right", true));
                             }
                             v
@@ -1251,7 +1301,14 @@ impl WordView {
         let max_w = self.sections.first().map(|s| emu_px(s.section.text_width())).unwrap_or(600.0);
         let k = if width > max_w && width > 0.0 { max_w / width } else { 1.0 };
         let media = self.doc.add_media(content_type, bytes);
-        let img = Image { media, width: Emu::from_pixels(width * k), height: Emu::from_pixels(height * k), name: "Picture".into(), description: None, origin: Origin::default() };
+        let img = Image {
+            media,
+            width: Emu::from_pixels(width * k),
+            height: Emu::from_pixels(height * k),
+            name: "Picture".into(),
+            description: None,
+            origin: Origin::default(),
+        };
         let sel = self.sel.clone();
         let root = self.blocks_mut(self.story);
         let e = edit::insert_inline(root, &sel, Inline::Image(img));
@@ -1267,7 +1324,9 @@ impl WordView {
         let p = pos::para(self.blocks(self.story), &from.path)?;
         let (i, at) = text::inline_at(p, from.offset)?;
         match &p.content[i] {
-            Inline::Image(img) if at == from.offset && at + text::inline_len(&p.content[i]) == to.offset => Some((from.path.clone(), i, img)),
+            Inline::Image(img) if at == from.offset && at + text::inline_len(&p.content[i]) == to.offset => {
+                Some((from.path.clone(), i, img))
+            }
             _ => None,
         }
     }
@@ -1311,9 +1370,15 @@ impl WordView {
                     }
                 }
                 // srcRect goes before the stretch fill.
-                if let Some(i) = fill.children.iter().position(|n| matches!(n, office_core::xml::Node::Element(e) if e.is(ns::A, "srcRect"))) {
+                if let Some(i) =
+                    fill.children.iter().position(|n| matches!(n, office_core::xml::Node::Element(e) if e.is(ns::A, "srcRect")))
+                {
                     let node = fill.children.remove(i);
-                    let at = fill.children.iter().position(|n| matches!(n, office_core::xml::Node::Element(e) if e.is(ns::A, "stretch") || e.is(ns::A, "tile"))).unwrap_or(fill.children.len());
+                    let at = fill
+                        .children
+                        .iter()
+                        .position(|n| matches!(n, office_core::xml::Node::Element(e) if e.is(ns::A, "stretch") || e.is(ns::A, "tile")))
+                        .unwrap_or(fill.children.len());
                     fill.children.insert(at, node);
                 }
                 img.origin = Origin::new(r);
@@ -1424,12 +1489,10 @@ impl WordView {
 
     /// Inserts a page number field: `PAGE`, or `PAGE_X_OF_Y` for "1 of 3".
     pub fn insert_page_field(&mut self, field: &str) {
-        let simple = |instr: &str| {
-            Inline::Raw {
-                xml: Element::new(ns::W, "fldSimple")
-                    .with_attr(ns::W, "instr", format!(" {instr} "))
-                    .with_child(Element::new(ns::W, "r").with_child(Element::new(ns::W, "t").with_text("1"))),
-            }
+        let simple = |instr: &str| Inline::Raw {
+            xml: Element::new(ns::W, "fldSimple")
+                .with_attr(ns::W, "instr", format!(" {instr} "))
+                .with_child(Element::new(ns::W, "r").with_child(Element::new(ns::W, "t").with_text("1"))),
         };
         self.begin_group();
         let sel = self.sel.clone();
@@ -1449,8 +1512,16 @@ impl WordView {
     /// Makes a header or footer for section `si`, referenced as its default one.
     fn add_story(&mut self, si: usize, kind: StoryKind) -> Option<usize> {
         let (local, rel_kind, ty) = match kind {
-            StoryKind::Header => ("hdr", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header", "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"),
-            StoryKind::Footer => ("ftr", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer", "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"),
+            StoryKind::Header => (
+                "hdr",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
+            ),
+            StoryKind::Footer => (
+                "ftr",
+                "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml",
+            ),
         };
         let pkg = self.doc.package.as_mut()?;
         let main = pkg.main_part().ok()?;
@@ -1475,7 +1546,8 @@ impl WordView {
         };
         match block {
             None => {
-                let mut o = self.doc.origin.get().cloned().filter(|o| o.is(ns::W, "document")).unwrap_or_else(|| Element::new(ns::W, "document"));
+                let mut o =
+                    self.doc.origin.get().cloned().filter(|o| o.is(ns::W, "document")).unwrap_or_else(|| Element::new(ns::W, "document"));
                 with_ref(o.child_or_insert(ns::W, "body").child_or_insert(ns::W, "sectPr"));
                 self.doc.origin = Origin::new(o);
             }
@@ -1502,9 +1574,13 @@ impl WordView {
 /// A table change at the caret.
 #[derive(Clone, Debug, PartialEq)]
 pub enum TableOp {
-    InsertRow { below: bool },
+    InsertRow {
+        below: bool,
+    },
     DeleteRow,
-    InsertColumn { right: bool },
+    InsertColumn {
+        right: bool,
+    },
     DeleteColumn,
     /// A cell fill (`RRGGBB`), or none.
     Fill(Option<String>),
@@ -1598,11 +1674,16 @@ fn set_cell_borders(cell: &mut Cell, sides: &[(&str, bool)]) {
     for (side, on) in sides {
         borders.remove_children(ns::W, side);
         let el = if *on {
-            Element::new(ns::W, side).with_attr(ns::W, "val", "single").with_attr(ns::W, "sz", "4").with_attr(ns::W, "space", "0").with_attr(ns::W, "color", "000000")
+            Element::new(ns::W, side)
+                .with_attr(ns::W, "val", "single")
+                .with_attr(ns::W, "sz", "4")
+                .with_attr(ns::W, "space", "0")
+                .with_attr(ns::W, "color", "000000")
         } else {
             Element::new(ns::W, side).with_attr(ns::W, "val", "nil")
         };
-        borders.place(el, &[&["top"], &["start", "left"], &["bottom"], &["end", "right"], &["insideH"], &["insideV"], &["tl2br"], &["tr2bl"]]);
+        borders
+            .place(el, &[&["top"], &["start", "left"], &["bottom"], &["end", "right"], &["insideH"], &["insideV"], &["tl2br"], &["tr2bl"]]);
     }
     cell.origin = Origin::new(tc);
 }

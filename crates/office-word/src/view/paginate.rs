@@ -44,7 +44,14 @@ fn units(flow: &FlowLayout) -> Vec<Unit> {
             }
             BlockBox::Table(t) => {
                 for r in &t.rows {
-                    out.push(Unit { top: t.y + r.y, bottom: t.y + r.y + r.height, line: 0, lines: 1, keep: Keep::default(), break_after: false });
+                    out.push(Unit {
+                        top: t.y + r.y,
+                        bottom: t.y + r.y + r.height,
+                        line: 0,
+                        lines: 1,
+                        keep: Keep::default(),
+                        break_after: false,
+                    });
                 }
             }
             BlockBox::Empty { .. } => {}
@@ -109,7 +116,14 @@ fn story_height(view: &mut WordView, host: &mut dyn Measurer, story: Option<usiz
     let blocks = word(&view.doc).and_then(|wd| wd.headers.get(i)).map(|s| s.blocks.clone()).unwrap_or_default();
     let labels = Default::default();
     let mut ctx = office_engine::para::Ctx { host, measure: &mut view.measure, styles: &mut view.styles };
-    let mut r = super::resolve::WordResolver { doc: &view.doc, extras: &view.extras, story: &blocks, labels: &labels, fields: Some(super::resolve::PageFields { page: 1, pages: 1 }), specs: &mut view.specs };
+    let mut r = super::resolve::WordResolver {
+        doc: &view.doc,
+        extras: &view.extras,
+        story: &blocks,
+        labels: &labels,
+        fields: Some(super::resolve::PageFields { page: 1, pages: 1 }),
+        specs: &mut view.specs,
+    };
     office_engine::flow::layout(&mut ctx, &mut view.cache, &mut r, &blocks, &[], w).height
 }
 
@@ -124,7 +138,8 @@ pub(super) fn paginate(view: &mut WordView, host: &mut dyn Measurer) -> Vec<Page
         let section = view.sections[si].section.clone();
         let (w, h) = (emu_px(section.page_width), emu_px(section.page_height));
         // A section without its own headers uses the previous section's (Word's "link to previous").
-        let mut stories = [section_stories(&view.doc, &section, StoryKind::Header), section_stories(&view.doc, &section, StoryKind::Footer)];
+        let mut stories =
+            [section_stories(&view.doc, &section, StoryKind::Header), section_stories(&view.doc, &section, StoryKind::Footer)];
         for k in 0..2 {
             for (ty, i) in inherited[k].clone() {
                 if !stories[k].iter().any(|(t, _)| *t == ty) {
@@ -163,11 +178,22 @@ pub(super) fn paginate(view: &mut WordView, host: &mut dyn Measurer) -> Vec<Page
         let avail = (h - top_margin - bottom_margin).max(24.0);
         let mut make_page = |view: &mut WordView, host: &mut dyn Measurer, top: f64, bottom: f64, n: usize, pages: &mut Vec<Page>| {
             let number = pages.len() as u32 + 1;
-            let header = pick(&stories[0], n == 0, number % 2 == 0);
-            let footer = pick(&stories[1], n == 0, number % 2 == 0);
+            let header = pick(&stories[0], n == 0, number.is_multiple_of(2));
+            let footer = pick(&stories[1], n == 0, number.is_multiple_of(2));
             let hh = story_height(view, host, header, text_w);
             let body_y = emu_px(section.margin_top).max(if hh > 0.0 { emu_px(section.header) + hh } else { 0.0 });
-            pages.push(Page { section: si, number, width: w, height: h, top, bottom, body_x: emu_px(section.margin_left), body_y, header, footer });
+            pages.push(Page {
+                section: si,
+                number,
+                width: w,
+                height: h,
+                top,
+                bottom,
+                body_x: emu_px(section.margin_left),
+                body_y,
+                header,
+                footer,
+            });
         };
         while i < units.len() {
             let u = &units[i];
@@ -245,7 +271,8 @@ mod tests {
     #[test]
     fn headings_stay_with_the_next_paragraph() {
         let heading = Keep { with_next: true, ..Default::default() };
-        let units = vec![unit(0, 0, 1, Keep::default()), unit(1, 0, 1, heading), unit(2, 0, 3, Keep::default()), unit(2, 1, 3, Keep::default())];
+        let units =
+            vec![unit(0, 0, 1, Keep::default()), unit(1, 0, 1, heading), unit(2, 0, 3, Keep::default()), unit(2, 1, 3, Keep::default())];
         assert_eq!(adjust(&units, 2, 0), 1);
     }
 }

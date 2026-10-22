@@ -107,52 +107,54 @@ pub fn r(v: f64) -> f64 {
 
 /// Draws what a layer owns inside text: pictures and other objects in paragraphs.
 pub trait Objects {
-    /// Draws the object at inline `inline` of the paragraph at `para` into `out`, in the box at
-    /// (`x`, `y`), `w` by `h`.
-    fn object(&mut self, para: &crate::pos::Path, inline: u32, x: f64, y: f64, w: f64, h: f64, out: &mut Vec<Item>);
+    /// Draws the object at inline `inline` of the paragraph at `para` into `out`, in the box
+    /// `rect` (x, y, width, height).
+    fn object(&mut self, para: &crate::pos::Path, inline: u32, rect: Rect, out: &mut Vec<Item>);
+}
+
+/// A link's address for the text at an offset of a paragraph, if it's linked.
+pub type Links<'a> = &'a dyn Fn(&crate::pos::Path, u32) -> Option<String>;
+
+/// Where painting goes: the items drawn, and the layer's help with objects and links.
+pub struct Sink<'a> {
+    pub objects: &'a mut dyn Objects,
+    pub links: Links<'a>,
+    pub out: &'a mut Vec<Item>,
 }
 
 /// No objects to draw.
 pub struct NoObjects;
 
 impl Objects for NoObjects {
-    fn object(&mut self, _: &crate::pos::Path, _: u32, _: f64, _: f64, _: f64, _: f64, _: &mut Vec<Item>) {}
+    fn object(&mut self, _: &crate::pos::Path, _: u32, _: Rect, _: &mut Vec<Item>) {}
 }
 
 /// Paints a flow with its top left at (`x`, `y`), drawing only what's within `rows` (from the
 /// flow's top), so a page can paint its share of a flow cut across pages.
-pub fn paint_flow(ctx: &mut Ctx, flow: &FlowLayout, x: f64, y: f64, rows: (f64, f64), objects: &mut dyn Objects, links: &dyn Fn(&crate::pos::Path, u32) -> Option<String>, out: &mut Vec<Item>) {
+pub fn paint_flow(ctx: &mut Ctx, flow: &FlowLayout, x: f64, y: f64, rows: (f64, f64), sink: &mut Sink) {
     for b in &flow.blocks {
         match b {
-            BlockBox::Para(p) => paint_para(ctx, p, x, y, rows, objects, links, out),
-            BlockBox::Table(t) => paint_table(ctx, t, x, y, rows, objects, links, out),
+            BlockBox::Para(p) => paint_para(ctx, p, x, y, rows, sink),
+            BlockBox::Table(t) => paint_table(ctx, t, x, y, rows, sink),
             BlockBox::Empty { .. } => {}
         }
     }
 }
 
 /// Paints a paragraph's lines that fall within `rows`.
-pub fn paint_para(ctx: &mut Ctx, p: &ParaBox, x: f64, y: f64, rows: (f64, f64), objects: &mut dyn Objects, links: &dyn Fn(&crate::pos::Path, u32) -> Option<String>, out: &mut Vec<Item>) {
+pub fn paint_para(ctx: &mut Ctx, p: &ParaBox, x: f64, y: f64, rows: (f64, f64), sink: &mut Sink) {
     for line in &p.layout.lines {
         let top = p.y + line.top;
         if top + line.height <= rows.0 + 0.01 || top >= rows.1 - 0.01 {
             continue;
         }
-        paint_line(ctx, p, line, x, y + top, objects, links, out);
+        paint_line(ctx, p, line, x, y + top, sink);
     }
 }
 
 /// Paints one line with its top at `top`.
-pub fn paint_line(
-    ctx: &mut Ctx,
-    p: &ParaBox,
-    line: &crate::para::Line,
-    x: f64,
-    top: f64,
-    objects: &mut dyn Objects,
-    links: &dyn Fn(&crate::pos::Path, u32) -> Option<String>,
-    out: &mut Vec<Item>,
-) {
+pub fn paint_line(ctx: &mut Ctx, p: &ParaBox, line: &crate::para::Line, x: f64, top: f64, sink: &mut Sink) {
+    let Sink { objects, links, out } = sink;
     let baseline = top + line.baseline;
     for f in &line.frags {
         match &f.kind {
@@ -167,7 +169,15 @@ pub fn paint_line(
                 }
                 let style = ctx.styles.get(*s);
                 let shown = style.transform(text).into_owned();
-                out.push(Item::Text { x: r(x + f.x), y: r(baseline), w: r(f.width), s: s.0, text: shown, ws: r(f.space), link: links(&p.path, f.start) });
+                out.push(Item::Text {
+                    x: r(x + f.x),
+                    y: r(baseline),
+                    w: r(f.width),
+                    s: s.0,
+                    text: shown,
+                    ws: r(f.space),
+                    link: links(&p.path, f.start),
+                });
             }
             FragKind::Label { text, style } => {
                 out.push(Item::Text { x: r(x + f.x), y: r(baseline), w: r(f.width), s: style.0, text: text.clone(), ws: 0.0, link: None });
@@ -175,12 +185,22 @@ pub fn paint_line(
             FragKind::Atomic { text, style, .. } => {
                 out.push(Item::Text { x: r(x + f.x), y: r(baseline), w: r(f.width), s: style.0, text: text.clone(), ws: 0.0, link: None });
             }
-            FragKind::Object { inline, height } => objects.object(&p.path, *inline, r(x + f.x), r(baseline - height), r(f.width), r(*height), out),
+            FragKind::Object { inline, height } => {
+                objects.object(&p.path, *inline, (r(x + f.x), r(baseline - height), r(f.width), r(*height)), out)
+            }
             FragKind::Tab(s) => {
                 // Underlined or highlighted tabs show their line or color.
                 let style = ctx.styles.get(*s);
                 if style.underline.is_some() || style.highlight.is_some() {
-                    out.push(Item::Text { x: r(x + f.x), y: r(baseline), w: r(f.width), s: s.0, text: "\u{a0}".repeat(((f.width / 4.0).ceil() as usize).max(1)), ws: 0.0, link: None });
+                    out.push(Item::Text {
+                        x: r(x + f.x),
+                        y: r(baseline),
+                        w: r(f.width),
+                        s: s.0,
+                        text: "\u{a0}".repeat(((f.width / 4.0).ceil() as usize).max(1)),
+                        ws: 0.0,
+                        link: None,
+                    });
                 }
             }
         }
@@ -188,7 +208,7 @@ pub fn paint_line(
 }
 
 /// Paints a table's cells, fills and borders within `rows`.
-pub fn paint_table(ctx: &mut Ctx, t: &TableBox, x: f64, y: f64, rows: (f64, f64), objects: &mut dyn Objects, links: &dyn Fn(&crate::pos::Path, u32) -> Option<String>, out: &mut Vec<Item>) {
+pub fn paint_table(ctx: &mut Ctx, t: &TableBox, x: f64, y: f64, rows: (f64, f64), sink: &mut Sink) {
     let tx = x + t.x;
     let ty = y + t.y;
     for cell in &t.cells {
@@ -202,18 +222,32 @@ pub fn paint_table(ctx: &mut Ctx, t: &TableBox, x: f64, y: f64, rows: (f64, f64)
         let vis_top = top.max(rows.0) - t.y;
         let vis_bottom = bottom.min(rows.1) - t.y;
         if let Some(fill) = &cell.look.fill {
-            out.push(Item::Rect { x: r(cx), y: r(ty + vis_top), w: r(cell.width), h: r(vis_bottom - vis_top), fill: Some(fill.clone()) });
+            sink.out.push(Item::Rect {
+                x: r(cx),
+                y: r(ty + vis_top),
+                w: r(cell.width),
+                h: r(vis_bottom - vis_top),
+                fill: Some(fill.clone()),
+            });
         }
         let inner_x = cx + cell.look.margins[3];
         let inner_y = cy + cell.content_y;
         let inner_rows = (rows.0 - (t.y + cell.y + cell.content_y), rows.1 - (t.y + cell.y + cell.content_y));
-        paint_flow(ctx, &cell.content, inner_x, inner_y, inner_rows, objects, links, out);
+        paint_flow(ctx, &cell.content, inner_x, inner_y, inner_rows, sink);
         let [bt, br, bb, bl] = &cell.look.borders;
         let (x0, x1) = (cx, cx + cell.width);
         let (y0, y1) = (ty + vis_top, ty + vis_bottom);
         let mut line = |b: &Option<BorderLine>, x1: f64, y1: f64, x2: f64, y2: f64| {
             if let Some(b) = b {
-                out.push(Item::Line { x1: r(x1), y1: r(y1), x2: r(x2), y2: r(y2), color: b.color.clone(), w: r(b.width), dash: b.style });
+                sink.out.push(Item::Line {
+                    x1: r(x1),
+                    y1: r(y1),
+                    x2: r(x2),
+                    y2: r(y2),
+                    color: b.color.clone(),
+                    w: r(b.width),
+                    dash: b.style,
+                });
             }
         };
         // A border cut by a page break is drawn at the cut too, as Word does.

@@ -74,7 +74,7 @@ impl SpecCache {
     /// Starts a layout pass; specs no pass has used for a while are dropped.
     pub fn next_pass(&mut self) {
         self.pass += 1;
-        if self.pass % 16 == 0 {
+        if self.pass.is_multiple_of(16) {
             let keep = self.pass.saturating_sub(16);
             self.map.retain(|_, (_, _, p)| *p >= keep);
             self.tables.retain(|_, (_, p)| *p >= keep);
@@ -207,12 +207,12 @@ fn cell_parts(t: &Table, row: usize, col: usize) -> Vec<&'static str> {
         out.push("lastCol");
     }
     if h_band && row >= header_rows {
-        out.push(if (row - header_rows) % 2 == 0 { "band1Horz" } else { "band2Horz" });
+        out.push(if (row - header_rows).is_multiple_of(2) { "band1Horz" } else { "band2Horz" });
     }
     if v_band {
         let first = if first_col { 1 } else { 0 };
         if col >= first {
-            out.push(if (col - first) % 2 == 0 { "band1Vert" } else { "band2Vert" });
+            out.push(if (col - first).is_multiple_of(2) { "band1Vert" } else { "band2Vert" });
         }
     }
     out
@@ -403,7 +403,15 @@ impl WordResolver<'_> {
                     if let Some((instr, in_result, shown)) = &mut field {
                         if *in_result {
                             if let Some(v) = page_field(instr, self.fields) {
-                                let kind = if *shown { ItemKind::Hidden } else { ItemKind::Atomic { text: v, style: self.style(ctx, &self.run_props(p, &r.props, path), false), inline: i as u32 } };
+                                let kind = if *shown {
+                                    ItemKind::Hidden
+                                } else {
+                                    ItemKind::Atomic {
+                                        text: v,
+                                        style: self.style(ctx, &self.run_props(p, &r.props, path), false),
+                                        inline: i as u32,
+                                    }
+                                };
                                 *shown = true;
                                 items.push(Item { start, end, kind });
                                 continue;
@@ -426,9 +434,11 @@ impl WordResolver<'_> {
                     end,
                     kind: if *kind == office_core::model::BreakKind::Page { ItemKind::PageBreak } else { ItemKind::ColumnBreak },
                 }),
-                Inline::Image(img) => {
-                    items.push(Item { start, end, kind: ItemKind::Object { width: emu_px(img.width), height: emu_px(img.height), inline: i as u32 } })
-                }
+                Inline::Image(img) => items.push(Item {
+                    start,
+                    end,
+                    kind: ItemKind::Object { width: emu_px(img.width), height: emu_px(img.height), inline: i as u32 },
+                }),
                 Inline::Raw { xml } => {
                     let kind = match raw_show(xml) {
                         RawShow::FieldBegin => {
@@ -474,8 +484,16 @@ impl WordResolver<'_> {
                             if matches!(&field, Some((_, false, _))) {
                                 ItemKind::Hidden
                             } else {
-                                let rpr = xml.child(ns::W, "rPr").or_else(|| xml.descendant(ns::W, "rPr")).map(office_core::formats::docx::read_run_props).unwrap_or_default();
-                                ItemKind::Atomic { text: s, style: self.style(ctx, &self.run_props(p, &rpr, path), false), inline: i as u32 }
+                                let rpr = xml
+                                    .child(ns::W, "rPr")
+                                    .or_else(|| xml.descendant(ns::W, "rPr"))
+                                    .map(office_core::formats::docx::read_run_props)
+                                    .unwrap_or_default();
+                                ItemKind::Atomic {
+                                    text: s,
+                                    style: self.style(ctx, &self.run_props(p, &rpr, path), false),
+                                    inline: i as u32,
+                                }
                             }
                         }
                         RawShow::Hidden => ItemKind::Hidden,
@@ -553,7 +571,12 @@ impl WordResolver<'_> {
         let style = self.table_style(t);
         let ncols = t.columns.len().max(t.rows.iter().map(|r| r.cells.len()).max().unwrap_or(0)).max(1);
         let tbl_pr = t.origin.get().and_then(|o| o.child(ns::W, "tblPr"));
-        let indent = tbl_pr.and_then(|p| p.child(ns::W, "tblInd")).and_then(|i| i.attr_ns(ns::W, "w")).and_then(|v| v.parse::<i64>().ok()).map(super::extras::twips_px).unwrap_or(0.0);
+        let indent = tbl_pr
+            .and_then(|p| p.child(ns::W, "tblInd"))
+            .and_then(|i| i.attr_ns(ns::W, "w"))
+            .and_then(|v| v.parse::<i64>().ok())
+            .map(super::extras::twips_px)
+            .unwrap_or(0.0);
         let mut columns: Vec<f64> = (0..ncols).map(|c| t.columns.get(c).map(|e| emu_px(*e)).unwrap_or(0.0)).collect();
         let total: f64 = columns.iter().sum();
         let room = (width - indent).max(24.0);
@@ -564,10 +587,19 @@ impl WordResolver<'_> {
             let k = room / total;
             columns.iter_mut().for_each(|c| *c *= k);
         }
-        let default_margins = [style.margins[0].unwrap_or(0.0), style.margins[3].unwrap_or(7.2), style.margins[2].unwrap_or(0.0), style.margins[1].unwrap_or(7.2)];
+        let default_margins = [
+            style.margins[0].unwrap_or(0.0),
+            style.margins[3].unwrap_or(7.2),
+            style.margins[2].unwrap_or(0.0),
+            style.margins[1].unwrap_or(7.2),
+        ];
         let line = |b: &Option<Border>| -> Option<BorderLine> {
             let b = b.as_ref()?;
-            Some(BorderLine { width: b.width, color: b.color.as_ref().map(|c| format!("#{}", c.to_ascii_lowercase())).unwrap_or_else(|| "#000000".into()), style: b.style? })
+            Some(BorderLine {
+                width: b.width,
+                color: b.color.as_ref().map(|c| format!("#{}", c.to_ascii_lowercase())).unwrap_or_else(|| "#000000".into()),
+                style: b.style?,
+            })
         };
         let theme = self.theme();
         let rows = t.rows.len();
@@ -610,7 +642,14 @@ impl WordResolver<'_> {
                             .or_else(|| fill.map(|f| format!("#{}", f.to_ascii_lowercase())));
                         let mut margins = default_margins;
                         if let Some(m) = tc_pr.and_then(|p| p.child(ns::W, "tcMar")) {
-                            let get = |names: &[&str]| names.iter().find_map(|n| m.child(ns::W, n)).and_then(|e| e.attr_ns(ns::W, "w")).and_then(|v| v.parse::<i64>().ok()).map(super::extras::twips_px);
+                            let get = |names: &[&str]| {
+                                names
+                                    .iter()
+                                    .find_map(|n| m.child(ns::W, n))
+                                    .and_then(|e| e.attr_ns(ns::W, "w"))
+                                    .and_then(|v| v.parse::<i64>().ok())
+                                    .map(super::extras::twips_px)
+                            };
                             if let Some(v) = get(&["top"]) {
                                 margins[0] = v;
                             }
@@ -629,7 +668,12 @@ impl WordResolver<'_> {
                             Some("bottom") => 2,
                             _ => 0,
                         };
-                        CellLook { fill, borders: [line(&borders.top), line(&borders.right), line(&borders.bottom), line(&borders.left)], margins, valign }
+                        CellLook {
+                            fill,
+                            borders: [line(&borders.top), line(&borders.right), line(&borders.bottom), line(&borders.left)],
+                            margins,
+                            valign,
+                        }
                     })
                     .collect()
             })
@@ -639,7 +683,8 @@ impl WordResolver<'_> {
             .iter()
             .map(|row| {
                 let h = row.height.map(emu_px)?;
-                let exact = row.origin.get().and_then(|o| o.path(ns::W, &["trPr", "trHeight"])).and_then(|e| e.attr_ns(ns::W, "hRule")) == Some("exact");
+                let exact = row.origin.get().and_then(|o| o.path(ns::W, &["trPr", "trHeight"])).and_then(|e| e.attr_ns(ns::W, "hRule"))
+                    == Some("exact");
                 Some((h, exact))
             })
             .collect();

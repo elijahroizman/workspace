@@ -22,58 +22,152 @@ pub struct WordDoc {
 #[derive(Deserialize)]
 #[serde(tag = "cmd", rename_all = "camelCase", rename_all_fields = "camelCase")]
 enum Cmd {
-    Click { page: usize, x: f64, y: f64, extend: bool, count: u32 },
-    Drag { page: usize, x: f64, y: f64 },
-    Move { to: String, extend: bool },
+    Click {
+        page: usize,
+        x: f64,
+        y: f64,
+        extend: bool,
+        count: u32,
+    },
+    Drag {
+        page: usize,
+        x: f64,
+        y: f64,
+    },
+    Move {
+        to: String,
+        extend: bool,
+    },
     SelectAll,
-    InsertText { text: String },
-    Backspace { word: bool },
-    Delete { word: bool },
+    InsertText {
+        text: String,
+    },
+    Backspace {
+        word: bool,
+    },
+    Delete {
+        word: bool,
+    },
     Enter,
     LineBreak,
     PageBreak,
-    Tab { shift: bool },
-    Toggle { what: String },
-    Font { family: String },
-    Size { half_points: u32 },
-    Color { hex: String },
-    Highlight { name: String },
+    Tab {
+        shift: bool,
+    },
+    Toggle {
+        what: String,
+    },
+    Font {
+        family: String,
+    },
+    Size {
+        half_points: u32,
+    },
+    Color {
+        hex: String,
+    },
+    Highlight {
+        name: String,
+    },
     ClearFormatting,
-    Align { to: String },
-    Style { id: String },
-    LineSpacing { value: f64 },
-    List { kind: String },
-    Indent { delta: i32 },
+    Align {
+        to: String,
+    },
+    Style {
+        id: String,
+    },
+    LineSpacing {
+        value: f64,
+    },
+    List {
+        kind: String,
+    },
+    Indent {
+        delta: i32,
+    },
     Undo,
     Redo,
     BeginGroup,
     EndGroup,
-    Paste { text: String, json: Option<String> },
+    Paste {
+        text: String,
+        json: Option<String>,
+    },
     Cut,
     Copy,
-    SetLink { url: String },
+    SetLink {
+        url: String,
+    },
     RemoveLink,
-    Find { query: String, match_case: bool, whole_word: bool },
-    SelectMatch { index: usize },
-    ReplaceMatch { index: usize, text: String },
-    ReplaceAll { text: String },
-    GoTo { path: Vec<u32> },
-    InsertTable { rows: u32, cols: u32 },
-    Table { op: String, color: Option<String> },
-    ImageSize { width_emu: i64, height_emu: i64 },
-    CropImage { left: f64, top: f64, right: f64, bottom: f64, width_emu: i64, height_emu: i64 },
+    Find {
+        query: String,
+        match_case: bool,
+        whole_word: bool,
+    },
+    SelectMatch {
+        index: usize,
+    },
+    ReplaceMatch {
+        index: usize,
+        text: String,
+    },
+    ReplaceAll {
+        text: String,
+    },
+    GoTo {
+        path: Vec<u32>,
+    },
+    InsertTable {
+        rows: u32,
+        cols: u32,
+    },
+    Table {
+        op: String,
+        color: Option<String>,
+    },
+    ImageSize {
+        width_emu: i64,
+        height_emu: i64,
+    },
+    CropImage {
+        left: f64,
+        top: f64,
+        right: f64,
+        bottom: f64,
+        width_emu: i64,
+        height_emu: i64,
+    },
     ResetImageSize,
-    PageSetup { width_twips: Option<i64>, height_twips: Option<i64>, landscape: Option<bool>, top: Option<i64>, bottom: Option<i64>, left: Option<i64>, right: Option<i64> },
-    EditHeaderFooter { page: usize, which: String },
+    PageSetup {
+        width_twips: Option<i64>,
+        height_twips: Option<i64>,
+        landscape: Option<bool>,
+        top: Option<i64>,
+        bottom: Option<i64>,
+        left: Option<i64>,
+        right: Option<i64>,
+    },
+    EditHeaderFooter {
+        page: usize,
+        which: String,
+    },
     ExitHeaderFooter,
     RemoveHeaderFooter,
-    PageField { field: String },
+    PageField {
+        field: String,
+    },
     MarkSaved,
-    Select { anchor: (Vec<u32>, u32), focus: (Vec<u32>, u32) },
+    Select {
+        anchor: (Vec<u32>, u32),
+        focus: (Vec<u32>, u32),
+    },
     ClearFind,
     /// Highlights ranges of body text: each (id, path, start, end), offsets in UTF-16 units
     /// of the paragraph's text as `paragraphs()` gives it.
-    SetMarks { set: String, marks: Vec<(String, Vec<u32>, u32, u32)> },
+    SetMarks {
+        set: String,
+        marks: Vec<(String, Vec<u32>, u32, u32)>,
+    },
 }
 
 fn fnv(bytes: &[u8]) -> u64 {
@@ -185,7 +279,12 @@ impl WordDoc {
     }
 
     pub fn outline(&self) -> String {
-        let items: Vec<_> = self.view.outline().into_iter().map(|(text, depth, path)| serde_json::json!({ "text": text, "depth": depth, "path": path.0 })).collect();
+        let items: Vec<_> = self
+            .view
+            .outline()
+            .into_iter()
+            .map(|(text, depth, path)| serde_json::json!({ "text": text, "depth": depth, "path": path.0 }))
+            .collect();
         json(&items)
     }
 
@@ -221,7 +320,9 @@ impl WordDoc {
             let text = office_engine::pos::para(blocks, &p.path).map(|q| office_engine::text::flat(q).text).unwrap_or_default();
             serde_json::json!([p.path.0, utf16_offset(&text, p.offset)])
         };
-        json(&serde_json::json!({ "anchor": conv(&s.anchor), "focus": conv(&s.focus), "body": self.view.story() == office_word::view::StoryId::Body }))
+        json(
+            &serde_json::json!({ "anchor": conv(&s.anchor), "focus": conv(&s.focus), "body": self.view.story() == office_word::view::StoryId::Body }),
+        )
     }
 
     /// Whether a page has a header (`header`) or footer (`footer`).
@@ -416,7 +517,10 @@ impl WordDoc {
             }
             Cmd::Find { query, match_case, whole_word } => {
                 self.matches = v.find(&query, match_case, whole_word);
-                v.set_marks("search", self.matches.iter().map(|(p, a, b)| (String::new(), Pos::new(p.clone(), *a), Pos::new(p.clone(), *b))).collect());
+                v.set_marks(
+                    "search",
+                    self.matches.iter().map(|(p, a, b)| (String::new(), Pos::new(p.clone(), *a), Pos::new(p.clone(), *b))).collect(),
+                );
                 // The first match at or after the caret.
                 let caret = v.selection().start().clone();
                 let first = self.matches.iter().position(|(p, s, _)| Pos::new(p.clone(), *s) >= caret).unwrap_or(0);

@@ -20,5 +20,11 @@ fn main() {
     let t = Instant::now();
     let core = office_core::Compiler::new().write(&v.doc, office_core::Kind::Word).unwrap();
     let core_save = t.elapsed();
-    println!("open {open:?} layout {layout:?} save {save:?} (core only {core_save:?}) pages {} bytes {} -> {} / {}", v.page_count(), bytes.len(), out.len(), core.len());
+    println!(
+        "open {open:?} layout {layout:?} save {save:?} (core only {core_save:?}) pages {} bytes {} -> {} / {}",
+        v.page_count(),
+        bytes.len(),
+        out.len(),
+        core.len()
+    );
 }

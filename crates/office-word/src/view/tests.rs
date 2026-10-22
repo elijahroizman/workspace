@@ -33,7 +33,8 @@ fn opens_lays_out_and_paints() {
     // A4 at 96 px per inch.
     assert!((w - 793.7).abs() < 1.0 && (h - 1122.5).abs() < 1.0, "{w} x {h}");
     let page = v.paint(&mut host, 0);
-    let texts: Vec<&str> = page.items.iter().filter_map(|i| if let Item::Text { text, .. } = i { Some(text.as_str()) } else { None }).collect();
+    let texts: Vec<&str> =
+        page.items.iter().filter_map(|i| if let Item::Text { text, .. } = i { Some(text.as_str()) } else { None }).collect();
     assert_eq!(texts, vec!["Hello world", "Second paragraph"]);
     assert!(!v.new_styles().is_empty());
 }
@@ -237,7 +238,8 @@ fn copy_and_paste_keep_formatting() {
 #[test]
 fn incremental_layout_matches_full_layout() {
     let mut host = FixedMeasurer::default();
-    let lines: Vec<String> = (0..120).map(|i| format!("Paragraph {i} with some words to wrap across the line when it gets long enough")).collect();
+    let lines: Vec<String> =
+        (0..120).map(|i| format!("Paragraph {i} with some words to wrap across the line when it gets long enough")).collect();
     let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
     let mut v = WordView::open(&doc_bytes(&refs)).unwrap();
     v.layout(&mut host);
@@ -261,7 +263,7 @@ fn incremental_layout_matches_full_layout() {
         }
         v.set_selection(Selection::caret(at.clone()));
         match rand(9) {
-            0 | 1 | 2 => v.insert_text("typed text "),
+            0..=2 => v.insert_text("typed text "),
             3 => v.enter(),
             4 => v.backspace(false),
             5 => {

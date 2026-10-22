@@ -177,7 +177,9 @@ fn shading(el: Option<&Element>) -> Option<String> {
 }
 
 fn margins(el: &Element) -> [Option<f64>; 4] {
-    let m = |names: &[&str]| names.iter().find_map(|n| el.child(ns::W, n)).and_then(|e| e.attr_ns(ns::W, "w")).and_then(|v| v.parse::<i64>().ok()).map(twips_px);
+    let m = |names: &[&str]| {
+        names.iter().find_map(|n| el.child(ns::W, n)).and_then(|e| e.attr_ns(ns::W, "w")).and_then(|v| v.parse::<i64>().ok()).map(twips_px)
+    };
     [m(&["top"]), m(&["start", "left"]), m(&["bottom"]), m(&["end", "right"])]
 }
 
@@ -346,10 +348,14 @@ impl Extras {
                 abstracts.insert(id, levels);
             }
             for num in root.children_named(ns::W, "num") {
-                let (Some(id), Some(abs)) = (num.attr_ns(ns::W, "numId"), num.child(ns::W, "abstractNumId").and_then(val)) else { continue };
+                let (Some(id), Some(abs)) = (num.attr_ns(ns::W, "numId"), num.child(ns::W, "abstractNumId").and_then(val)) else {
+                    continue;
+                };
                 let mut levels = abstracts.get(abs).cloned().unwrap_or_else(|| vec![LevelLook::default(); 9]);
                 for o in num.children_named(ns::W, "lvlOverride") {
-                    let (Some(i), Some(l)) = (o.attr_ns(ns::W, "ilvl").and_then(|v| v.parse::<usize>().ok()).filter(|i| *i < 9), o.child(ns::W, "lvl")) else {
+                    let (Some(i), Some(l)) =
+                        (o.attr_ns(ns::W, "ilvl").and_then(|v| v.parse::<usize>().ok()).filter(|i| *i < 9), o.child(ns::W, "lvl"))
+                    else {
                         continue;
                     };
                     levels[i] = read_level(l);

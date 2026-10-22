@@ -12,7 +12,7 @@ use std::hash::{Hash, Hasher};
 
 use unicode_linebreak::{linebreaks, BreakOpportunity};
 
-use crate::measure::{FontId, Fnv, Measure, Measurer, Metrics};
+use crate::measure::{Fnv, FontId, Measure, Measurer, Metrics};
 use crate::style::TextStyle;
 
 /// A style's number in a [`Styles`] table.
@@ -87,9 +87,17 @@ pub enum ItemKind {
     ColumnBreak,
     /// A picture or other box sitting on the baseline. `inline` is its index in the model
     /// paragraph's content, for drawing it.
-    Object { width: f64, height: f64, inline: u32 },
+    Object {
+        width: f64,
+        height: f64,
+        inline: u32,
+    },
     /// Something drawn as text but edited as one character: a field's result.
-    Atomic { text: String, style: StyleId, inline: u32 },
+    Atomic {
+        text: String,
+        style: StyleId,
+        inline: u32,
+    },
     /// Kept in the text but not drawn (markup with nothing to show: a bookmark).
     Hidden,
 }
@@ -362,7 +370,8 @@ enum PieceKind {
 /// Lays `spec` out across `width` pixels.
 pub fn layout(ctx: &mut Ctx, spec: &ParaSpec, width: f64) -> ParaLayout {
     let pieces = pieces(ctx, spec);
-    let mut b = Builder { ctx, spec, width, lines: Vec::new(), frags: Vec::new(), x: 0.0, line_start: 0, top: 0.0, pending_tabs: Vec::new() };
+    let mut b =
+        Builder { ctx, spec, width, lines: Vec::new(), frags: Vec::new(), x: 0.0, line_start: 0, top: 0.0, pending_tabs: Vec::new() };
     b.start_line(true);
     let mut i = 0;
     while i < pieces.len() {
@@ -411,8 +420,10 @@ pub fn layout(ctx: &mut Ctx, spec: &ParaSpec, width: f64) -> ParaLayout {
 
 fn pieces(ctx: &mut Ctx, spec: &ParaSpec) -> Vec<Piece> {
     let text = spec.text.as_str();
-    let breaks: Vec<u32> =
-        linebreaks(text).filter(|(_, o)| *o == BreakOpportunity::Allowed || *o == BreakOpportunity::Mandatory).map(|(i, _)| i as u32).collect();
+    let breaks: Vec<u32> = linebreaks(text)
+        .filter(|(_, o)| *o == BreakOpportunity::Allowed || *o == BreakOpportunity::Mandatory)
+        .map(|(i, _)| i as u32)
+        .collect();
     let can_break = |at: u32| breaks.binary_search(&at).is_ok();
     let mut out = Vec::with_capacity(spec.items.len() * 4);
     for item in &spec.items {
@@ -435,7 +446,14 @@ fn pieces(ctx: &mut Ctx, spec: &ParaSpec) -> Vec<Piece> {
                     start = cut;
                 }
             }
-            ItemKind::Tab(style) => out.push(Piece { start: item.start, end: item.end, width: 0.0, trailing: 0.0, kind: PieceKind::Tab(*style), break_after: true }),
+            ItemKind::Tab(style) => out.push(Piece {
+                start: item.start,
+                end: item.end,
+                width: 0.0,
+                trailing: 0.0,
+                kind: PieceKind::Tab(*style),
+                break_after: true,
+            }),
             ItemKind::Break(style) => out.push(Piece {
                 start: item.start,
                 end: item.end,
@@ -446,7 +464,14 @@ fn pieces(ctx: &mut Ctx, spec: &ParaSpec) -> Vec<Piece> {
             }),
             ItemKind::PageBreak | ItemKind::ColumnBreak => {
                 let end = if item.kind == ItemKind::PageBreak { LineEnd::PageBreak } else { LineEnd::ColumnBreak };
-                out.push(Piece { start: item.start, end: item.end, width: 0.0, trailing: 0.0, kind: PieceKind::End(end, None), break_after: true })
+                out.push(Piece {
+                    start: item.start,
+                    end: item.end,
+                    width: 0.0,
+                    trailing: 0.0,
+                    kind: PieceKind::End(end, None),
+                    break_after: true,
+                })
             }
             ItemKind::Object { width, height, inline } => out.push(Piece {
                 start: item.start,
@@ -467,7 +492,14 @@ fn pieces(ctx: &mut Ctx, spec: &ParaSpec) -> Vec<Piece> {
                     break_after: can_break(item.end),
                 })
             }
-            ItemKind::Hidden => out.push(Piece { start: item.start, end: item.end, width: 0.0, trailing: 0.0, kind: PieceKind::Hidden, break_after: can_break(item.end) }),
+            ItemKind::Hidden => out.push(Piece {
+                start: item.start,
+                end: item.end,
+                width: 0.0,
+                trailing: 0.0,
+                kind: PieceKind::Hidden,
+                break_after: can_break(item.end),
+            }),
         }
     }
     let end = text.len() as u32;
@@ -576,7 +608,14 @@ impl Builder<'_, '_, '_> {
                 let at = p.start + i as u32;
                 let done = &self.spec.text[seg_start as usize..at as usize];
                 let dw = self.ctx.width(style, done);
-                self.place(&Piece { start: seg_start, end: at, width: dw, trailing: 0.0, kind: PieceKind::Text(style), break_after: false });
+                self.place(&Piece {
+                    start: seg_start,
+                    end: at,
+                    width: dw,
+                    trailing: 0.0,
+                    kind: PieceKind::Text(style),
+                    break_after: false,
+                });
                 self.finish_line(at, at, LineEnd::Wrap, None);
                 self.start_line(false);
                 seg_start = at;
@@ -880,7 +919,15 @@ pub fn next_boundary(text: &str, offset: u32) -> u32 {
 
 /// The word around `offset`: letters and digits, or a run of anything else that isn't space.
 pub fn word_at(text: &str, offset: u32) -> (u32, u32) {
-    let kind = |c: char| if c.is_alphanumeric() || c == '_' || c == '\'' || c == '’' { 1 } else if c.is_whitespace() { 0 } else { 2 };
+    let kind = |c: char| {
+        if c.is_alphanumeric() || c == '_' || c == '\'' || c == '’' {
+            1
+        } else if c.is_whitespace() {
+            0
+        } else {
+            2
+        }
+    };
     let at = (offset as usize).min(text.len());
     let after = text[at..].chars().next();
     let before = text[..at].chars().next_back();
@@ -902,7 +949,8 @@ pub fn word_move(text: &str, offset: u32, forward: bool) -> u32 {
     if forward {
         let rest = &text[at..];
         let skip_space: usize = rest.chars().take_while(|c| !c.is_alphanumeric()).map(char::len_utf8).sum();
-        let word: usize = rest[skip_space..].chars().take_while(|c| c.is_alphanumeric() || *c == '\'' || *c == '’').map(char::len_utf8).sum();
+        let word: usize =
+            rest[skip_space..].chars().take_while(|c| c.is_alphanumeric() || *c == '\'' || *c == '’').map(char::len_utf8).sum();
         (at + skip_space + word) as u32
     } else {
         let head = &text[..at];

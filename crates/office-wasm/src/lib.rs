@@ -35,7 +35,11 @@ impl Measurer for JsMeasurer<'_> {
 
     fn metrics(&mut self, font: &Font) -> Metrics {
         let m = self.0.metrics(&font.css());
-        Metrics { ascent: m.first().copied().unwrap_or(font.px() * 0.8), descent: m.get(1).copied().unwrap_or(font.px() * 0.2), gap: m.get(2).copied().unwrap_or(0.0) }
+        Metrics {
+            ascent: m.first().copied().unwrap_or(font.px() * 0.8),
+            descent: m.get(1).copied().unwrap_or(font.px() * 0.2),
+            gap: m.get(2).copied().unwrap_or(0.0),
+        }
     }
 }
 

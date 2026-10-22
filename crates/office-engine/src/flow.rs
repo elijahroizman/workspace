@@ -72,9 +72,12 @@ pub trait Resolver {
 /// Laid-out paragraphs: by spec (a layer hands back the same shared spec while a paragraph
 /// doesn't change, so most lookups are a pointer), and by what decided their layout (for a spec
 /// made again, or two paragraphs alike).
+/// A spec, its layout and the pass that last used them.
+type SpecLayout = (Arc<ParaSpec>, Arc<ParaLayout>, u32);
+
 #[derive(Default)]
 pub struct Cache {
-    by_spec: HashMap<(usize, u64), (Arc<ParaSpec>, Arc<ParaLayout>, u32)>,
+    by_spec: HashMap<(usize, u64), SpecLayout>,
     paras: HashMap<u64, (Arc<ParaLayout>, u32)>,
     generation: u32,
 }
@@ -87,7 +90,7 @@ impl Cache {
     /// Starts a layout pass; layouts no pass has used for a while are dropped.
     pub fn next_pass(&mut self) {
         self.generation += 1;
-        if self.generation % 8 == 0 {
+        if self.generation.is_multiple_of(8) {
             let keep = self.generation.saturating_sub(8);
             self.paras.retain(|_, (_, g)| *g >= keep);
             self.by_spec.retain(|_, (_, _, g)| *g >= keep);
@@ -132,7 +135,9 @@ pub enum BlockBox {
     Para(ParaBox),
     Table(TableBox),
     /// Markup with nothing to lay out.
-    Empty { path: Path },
+    Empty {
+        path: Path,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -191,12 +196,27 @@ pub struct FlowLayout {
 }
 
 /// Lays out `blocks` (at `container` in the story) across `width`.
-pub fn layout(ctx: &mut Ctx, cache: &mut Cache, resolver: &mut dyn Resolver, blocks: &[Block], container: &[u32], width: f64) -> FlowLayout {
+pub fn layout(
+    ctx: &mut Ctx,
+    cache: &mut Cache,
+    resolver: &mut dyn Resolver,
+    blocks: &[Block],
+    container: &[u32],
+    width: f64,
+) -> FlowLayout {
     layout_from(ctx, cache, resolver, blocks, container, 0, width)
 }
 
 /// Lays out `blocks`, the story's blocks from index `first` on (a Word section's share of the body).
-pub fn layout_from(ctx: &mut Ctx, cache: &mut Cache, resolver: &mut dyn Resolver, blocks: &[Block], container: &[u32], first: u32, width: f64) -> FlowLayout {
+pub fn layout_from(
+    ctx: &mut Ctx,
+    cache: &mut Cache,
+    resolver: &mut dyn Resolver,
+    blocks: &[Block],
+    container: &[u32],
+    first: u32,
+    width: f64,
+) -> FlowLayout {
     let mut out = Vec::with_capacity(blocks.len());
     for (i, block) in blocks.iter().enumerate() {
         let mut path = container.to_vec();
@@ -396,14 +416,7 @@ impl FlowLayout {
 
     /// How deep in the story this flow's blocks are, from their paths.
     fn depth(&self) -> usize {
-        self.blocks
-            .iter()
-            .find_map(|b| match b {
-                BlockBox::Para(p) => Some(p.path.0.len() - 1),
-                BlockBox::Table(t) => Some(t.path.0.len() - 1),
-                BlockBox::Empty { path } => Some(path.0.len() - 1),
-            })
-            .unwrap_or(0)
+        self.blocks.first().map(|b| b.path().0.len() - 1).unwrap_or(0)
     }
 }
 
@@ -427,7 +440,11 @@ mod tests {
         fn table(&mut self, _: &Path, t: &Table, _: f64) -> TableLook {
             TableLook {
                 columns: vec![50.0; t.columns.len()],
-                cells: t.rows.iter().map(|r| r.cells.iter().map(|_| CellLook { margins: [1.0, 2.0, 1.0, 2.0], ..Default::default() }).collect()).collect(),
+                cells: t
+                    .rows
+                    .iter()
+                    .map(|r| r.cells.iter().map(|_| CellLook { margins: [1.0, 2.0, 1.0, 2.0], ..Default::default() }).collect())
+                    .collect(),
                 ..Default::default()
             }
         }
@@ -438,7 +455,13 @@ mod tests {
         let mut host = FixedMeasurer::default();
         let mut measure = Measure::new();
         let mut styles = Styles::new();
-        let s = styles.add(&mut measure, TextStyle::from_props(&RunProps { size: Some(FontSize::from_points(7.5)), ..Default::default() }, 10.0, &|_| Rgba { rgb: Rgb::BLACK, alpha: 1.0 }));
+        let s = styles.add(
+            &mut measure,
+            TextStyle::from_props(&RunProps { size: Some(FontSize::from_points(7.5)), ..Default::default() }, 10.0, &|_| Rgba {
+                rgb: Rgb::BLACK,
+                alpha: 1.0,
+            }),
+        );
         let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &mut styles };
         let table = Table {
             columns: vec![Default::default(); 2],
