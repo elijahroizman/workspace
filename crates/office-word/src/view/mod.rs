@@ -204,6 +204,10 @@ pub struct Overlay {
     /// Marked text: (page, x, y, width, height, set, id).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub marks: Vec<(usize, f64, f64, f64, f64, String, String)>,
+    /// The paragraph holding the caret, one box per page it's on: (page, x, y, width, height).
+    /// For focus mode, which dims the others.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub paragraph: Vec<(usize, f64, f64, f64, f64)>,
 }
 
 impl WordView {
@@ -576,6 +580,19 @@ impl WordView {
             let mut rects = Vec::new();
             rects_for(&mark.from, &mark.to, true, &mut rects);
             out.marks.extend(rects.into_iter().map(|(p, x, y, w, h)| (p, x, y, w, h, mark.set.clone(), mark.id.clone())));
+        }
+        let len = pos::para(blocks, &sel.focus.path).map(text::len).unwrap_or(0);
+        let mut lines = Vec::new();
+        rects_for(&Pos::new(sel.focus.path.clone(), 0), &Pos::new(sel.focus.path.clone(), len), true, &mut lines);
+        for (page, x, y, w, h) in lines {
+            match out.paragraph.iter_mut().find(|b| b.0 == page) {
+                Some(b) => {
+                    let (x1, y1) = ((b.1 + b.3).max(x + w), (b.2 + b.4).max(y + h));
+                    (b.1, b.2) = (b.1.min(x), b.2.min(y));
+                    (b.3, b.4) = (x1 - b.1, y1 - b.2);
+                }
+                None => out.paragraph.push((page, x, y, w, h)),
+            }
         }
         if out.image.is_none() {
             if let Some(si) = section_of(&sel.focus.path) {

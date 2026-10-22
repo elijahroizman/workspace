@@ -61,7 +61,7 @@ src-tauri/
   src/files.rs            raw-bytes file reading and atomic saving
   src/menu.rs             the native menu bar
   linux/                  the .deb's install scripts and APT signing key
-crates/                   the office compiler, a Rust library for Word, PowerPoint, Excel and CSV (not used by the app yet; see office-compiler.md)
+crates/                   the office compiler and engine: Rust, compiled to WebAssembly for the Word, PowerPoint and Excel editors (see office-compiler.md and office-engine.md)
 ```
 
 ## The icon

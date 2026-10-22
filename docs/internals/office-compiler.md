@@ -1,8 +1,8 @@
 # The office compiler
 
-Status: work in progress. The shared core (`crates/office-core`) reads and writes all four formats, and the Word, PowerPoint and Excel layers are built on top of it. Nothing in the app uses the compiler yet.
+Status: in use. The shared core (`crates/office-core`) reads and writes all four formats, the Word, PowerPoint and Excel layers sit on top of it, and the app's Word, PowerPoint and Excel editors run on it through the [office engine](office-engine.md), compiled to WebAssembly.
 
-Today each Office format has its own JavaScript engine: docx-editor for Word, pptx-react-viewer and ooxml-ui for PowerPoint, and nothing for Excel. Each one parses the file its own way, keeps its own model of text and colors, and saves by patching the original zip. The office compiler replaces the parsing and saving under all of them with one Rust library that reads and writes Word (.docx), PowerPoint (.pptx), Excel (.xlsx) and CSV.
+Before it, each Office format had its own JavaScript engine: docx-editor for Word, pptx-react-viewer and ooxml-ui for PowerPoint, and nothing for Excel. Each one parsed the file its own way, kept its own model of text and colors, and saved by patching the original zip. The office compiler replaced the parsing and saving under all of them with one Rust library that reads and writes Word (.docx), PowerPoint (.pptx), Excel (.xlsx) and CSV.
 
 It works like a compiler: a **front end** for each format reads the file into one shared **model**, **passes** work on the model, and a **back end** writes it out again, in the same format or another one.
 
@@ -24,11 +24,11 @@ It works like a compiler: a **front end** for each format reads the file into on
 4. **No file system, no platform code.** The core takes bytes and returns bytes, so the same code runs in the Tauri app and, compiled to WebAssembly, in the browser version used for development.
 5. **Cross-format conversion falls out.** Because every format meets in one model, a Word table can become a CSV, a CSV can become a workbook, and a sheet can become a table on a slide.
 
-Not goals for the core: rendering, layout (line breaking, pagination), formula evaluation, or any UI. Those sit above it.
+Not goals for the core: rendering, layout (line breaking, pagination) or any UI. Those are the [office engine](office-engine.md)'s, above it.
 
-## What the current engines taught us
+## What the old engines taught us
 
-We read how the engines we ship handle these formats, and kept the ideas, not the code:
+We read how the engines we used to ship handled these formats, and kept the ideas, not the code:
 
 - **docx-editor** keeps a document model separate from its editing view and saves by updating the original package, which is why Word files survive a save. The compiler keeps the same split, and goes further by keeping unknown XML in place inside rewritten parts.
 - **pptx-react-viewer** turns each slide into a flat list of typed elements (text, shape, picture, table, group) with a position and size. The shared model's `Frame` is that idea, and Word's floating pictures and Excel's drawings use it too.
@@ -40,13 +40,15 @@ We read how the engines we ship handle these formats, and kept the ideas, not th
 ```
 crates/
   Cargo.toml             workspace (separate from src-tauri, which keeps its own lock file and target/)
-  office-core/           the shared compiler (this PR)
-  office-word/           Word-only layer
-  office-slides/         PowerPoint-only layer
-  office-sheets/         Excel-only layer
+  office-core/           the shared compiler
+  office-engine/         layout, drawing and editing shared by the three editors (see office-engine.md)
+  office-word/           Word-only layer, and its view
+  office-slides/         PowerPoint-only layer, and its view
+  office-sheets/         Excel-only layer, and its view
+  office-wasm/           the WebAssembly bindings the app loads
 ```
 
-`src-tauri` will depend on `office-core` and the layers by path once the editors start using them. Nothing in the app uses the compiler yet.
+The app loads `office-wasm`, built into `src/engine/wasm` by `scripts/engine.mjs`. `src-tauri` doesn't depend on the crates: the editors run them in the web view.
 
 ## The core, module by module
 
@@ -133,7 +135,7 @@ All done for the shared core:
 7. **Back ends.** Writing each format, lossless for untouched content, and fresh packages for new or converted documents.
 8. **Conversion and a command line.** Passes between kinds and `officec`.
 
-Then the three layers (done in this PR too). Next: WebAssembly bindings (the core already builds for `wasm32-unknown-unknown`) and moving the editors onto the compiler one at a time, Excel first since it has no engine today.
+Then the three layers, the shared engine and the WebAssembly bindings, and the Word, PowerPoint and Excel editors moved onto them (all done).
 
 ## Known gaps in the core
 

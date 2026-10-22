@@ -178,7 +178,7 @@ export function Pages({ engine, zoom, scroller }: Props) {
     const typewriter = !!document.querySelector('.app[data-typewriter]')
     // Only scroll when the caret is out of view: setting the scroll position lays the page out.
     if (typewriter) {
-      const want = top - height / 2
+      const want = top + h * zoom / 2 - height * 0.45
       if (Math.abs(want - scrollTop) > 2) sc.scrollTop = want
       return
     }
@@ -413,6 +413,10 @@ export function Pages({ engine, zoom, scroller }: Props) {
   const overlay = engine.overlay
   const place = (page: number, x: number, y: number, w: number, h: number) =>
     sizes[page] ? { left: pageLeft(page) + x * zoom, top: tops[page] + y * zoom, width: w * zoom, height: h * zoom } : { display: 'none' }
+  // Focus mode's dimming: every page veiled but for a band across the caret's paragraph (an empty
+  // paragraph has no text boxes, so the caret's line). Shown by CSS only while dimming is on.
+  const c = overlay.caret
+  const focusBoxes = overlay.paragraph?.length ? overlay.paragraph : c ? [[c[0], c[1], c[2], 1, c[3]] as const] : []
 
   return (
     <div className="docx-content-mount" ref={mountRef} style={{ height, minWidth: width }} onMouseDown={onMouseDown} onMouseOver={onMouseOver}>
@@ -422,6 +426,14 @@ export function Pages({ engine, zoom, scroller }: Props) {
         ))}
       </div>
       <div className="docx-overlay">
+        {sizes.map(([w, h], i) => {
+          const band = focusBoxes.find((b) => b[0] === i)
+          return (
+            <div key={`f${i}`} className={`wp-focus ${band ? '' : 'veiled'}`} style={place(i, 0, 0, w, h)}>
+              {band && <div className="wp-focus-band" style={{ top: (band[2] - 3) * zoom, height: (band[4] + 6) * zoom }} />}
+            </div>
+          )
+        })}
         {overlay.marks?.map((m, k) => {
           const style = engine.markStyles[m[5]]
           if (!style) return null

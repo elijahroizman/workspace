@@ -88,6 +88,29 @@
   cursor: pointer;
 }
 
+/* Focus mode's dimming (see Pages.tsx): a veil of paper over all but the caret's paragraph. */
+.wp-focus {
+  position: absolute;
+  display: none;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.app[data-focus-dim] .view[data-active='true'] .wp-focus {
+  display: block;
+}
+
+.wp-focus.veiled {
+  background: rgb(255 255 255 / 0.7);
+}
+
+.wp-focus-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  box-shadow: 0 0 0 100000px rgb(255 255 255 / 0.7);
+}
+
 .wp-sel {
   position: absolute;
   background: color-mix(in srgb, var(--ws-accent, #4f8cff) 28%, transparent);

@@ -48,6 +48,8 @@ export interface Overlay {
   image?: [number, number, number, number, number]
   /** (page, x, y, width, height, set, id) */
   marks?: [number, number, number, number, number, string, string][]
+  /** The paragraph holding the caret, one box per page: (page, x, y, width, height). */
+  paragraph?: [number, number, number, number, number][]
 }
 
 const EMPTY_STATE: WordState = {

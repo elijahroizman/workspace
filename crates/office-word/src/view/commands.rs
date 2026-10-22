@@ -418,6 +418,34 @@ impl WordView {
             self.history.seal();
         }
         self.apply_edit(e, if typing { Some("typing") } else { None });
+        if s == " " && sel.is_collapsed() {
+            self.list_autoformat();
+        }
+    }
+
+    /// `- `, `* `, `1. ` or `1) ` typed at the start of a paragraph starts a list, as in Word.
+    /// Undo takes it back to what was typed.
+    fn list_autoformat(&mut self) {
+        if self.story != StoryId::Body {
+            return;
+        }
+        let at = self.sel.focus.clone();
+        let Some(p) = pos::para(self.blocks(StoryId::Body), &at.path) else { return };
+        let kind = match text::flat(p).text.get(..at.offset as usize) {
+            Some("- " | "* ") => ListKind::Bullets,
+            Some("1. " | "1) ") => ListKind::Numbers,
+            _ => return,
+        };
+        if crate::list_of(&self.doc, p).is_some_and(|(n, _)| n != "0") {
+            return;
+        }
+        // One step for removing the marker and making the list (list's own group takes it in).
+        self.history.seal();
+        self.begin_group();
+        let marker = Selection { anchor: Pos::new(at.path.clone(), 0), focus: at };
+        let e = edit::delete(self.blocks_mut(StoryId::Body), &marker);
+        self.apply_edit(e, None);
+        self.list(Some(kind));
     }
 
     pub fn backspace(&mut self, word: bool) {

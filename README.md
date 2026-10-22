@@ -2,7 +2,7 @@
 
 # Workspace
 
-A small, fast app for the documents most people actually open: **Word, PowerPoint, PDF, Markdown, plain text and images**, each in a tab of one window. Optional plugins add **LaTeX** and extra fonts.
+A small, fast app for the documents most people actually open: **Word, PowerPoint, Excel, CSV, PDF, Markdown, plain text and images**, each in a tab of one window. Optional plugins add **LaTeX** and extra fonts.
 
 Runs on macOS (Apple silicon), Windows (x64) and Debian/Ubuntu (x64). Everything runs locally: no accounts, nothing uploaded, works offline.
 
@@ -81,4 +81,4 @@ Release builds are signed in GitHub Actions. Nothing secret lives in the reposit
 
 ## Thanks
 
-Workspace is built on open-source engines: [docx-editor](https://github.com/eigenpal/docx-editor), [pptx-react-viewer](https://github.com/ChristopherVR/ooxml), [PDFium](https://pdfium.googlesource.com/pdfium/) through [EmbedPDF](https://github.com/embedpdf/embed-pdf-viewer), [CodeMirror](https://codemirror.net), [markdown-it](https://github.com/markdown-it/markdown-it) and many more. **Settings › General › Open-source licenses** lists every one with its license. The theme picker is heavily inspired by [T3 Code](https://github.com/pingdotgg/t3code)'s.
+Word, PowerPoint and Excel files run on Workspace's own engine, written in Rust ([crates](crates)). Workspace is also built on open-source engines and fonts: [PDFium](https://pdfium.googlesource.com/pdfium/) through [EmbedPDF](https://github.com/embedpdf/embed-pdf-viewer), [CodeMirror](https://codemirror.net), [markdown-it](https://github.com/markdown-it/markdown-it), the Carlito, Caladea and Liberation fonts, and many more. **Settings › General › Open-source licenses** lists every one with its license. The theme picker is heavily inspired by [T3 Code](https://github.com/pingdotgg/t3code)'s.

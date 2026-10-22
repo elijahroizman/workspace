@@ -1,7 +1,7 @@
 name: Office compiler
 
-# Checks crates/ (the office compiler) on pull requests and on main. The app's own build doesn't
-# use it yet, so nothing else runs these tests. See docs/internals/office-compiler.md.
+# Checks the shared Office compiler and engine on pull requests and main.
+# The app compiles office-wasm during its build. See docs/internals/office-engine.md.
 on:
   pull_request:
     paths: ['crates/**', '.github/workflows/office-compiler.yml']

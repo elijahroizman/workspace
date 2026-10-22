@@ -101,6 +101,24 @@ fn caret_moves_and_overlay() {
 }
 
 #[test]
+fn focus_band_follows_the_caret_paragraph_across_pages() {
+    let mut host = FixedMeasurer::default();
+    let long = "A paragraph long enough to cross a page. ".repeat(400);
+    let mut v = WordView::open(&doc_bytes(&[&long, "Last paragraph"])).unwrap();
+    v.layout(&mut host);
+    let bands = v.overlay(&mut host).paragraph;
+    assert!(bands.len() > 1);
+    assert!(bands.iter().all(|b| b.3 > 0.0 && b.4 > 0.0));
+    v.set_selection(Selection::caret(Pos::new(Path::top(1), 0)));
+    let ov = v.overlay(&mut host);
+    assert_eq!(ov.paragraph.len(), 1);
+    let (page, _, y, _, h) = ov.paragraph[0];
+    let (caret_page, _, caret_y, _) = ov.caret.unwrap();
+    assert_eq!(page, caret_page);
+    assert!(caret_y >= y && caret_y <= y + h);
+}
+
+#[test]
 fn clicking_places_the_caret() {
     let mut host = FixedMeasurer::default();
     let mut v = WordView::open(&doc_bytes(&["Hello world"])).unwrap();
@@ -297,4 +315,32 @@ fn incremental_layout_matches_full_layout() {
             assert!(a == b, "page {page} differs after step {step}");
         }
     }
+}
+
+#[test]
+fn typing_a_list_marker_starts_a_list() {
+    let mut host = FixedMeasurer::default();
+    let mut v = WordView::open(&doc_bytes(&["", ""])).unwrap();
+    v.layout(&mut host);
+    v.set_selection(Selection::caret(Pos::new(Path::top(0), 0)));
+    for c in ["-", " ", "a"] {
+        v.insert_text(c);
+    }
+    assert_eq!(texts(&v)[0], "a");
+    assert_eq!(v.state().list.as_deref(), Some("bullet"));
+    v.undo();
+    v.undo();
+    assert_eq!(texts(&v)[0], "- ");
+    assert_eq!(v.state().list, None);
+    v.set_selection(Selection::caret(Pos::new(Path::top(1), 0)));
+    for c in ["1", ")", " "] {
+        v.insert_text(c);
+    }
+    assert_eq!(texts(&v)[1], "");
+    assert_eq!(v.state().list.as_deref(), Some("numbered"));
+    // Mid-paragraph, a dash and a space are only text.
+    v.insert_text("x");
+    v.insert_text("-");
+    v.insert_text(" ");
+    assert_eq!(texts(&v)[1], "x- ");
 }
