@@ -75,3 +75,5 @@ cp /tmp/icons/{32x32.png,128x128.png,128x128@2x.png,icon.icns,icon.ico,icon.png}
 ```
 
 `public/favicon.svg` is the same mark, full bleed for small sizes, used by the browser version.
+
+The runtime choices in Settings use `Logo` in `src/components/ui.tsx` as their source. After changing its artwork, run `node scripts/app-icons.mjs` to regenerate `src-tauri/icons/variants/*.png`. The script needs ImageMagick (`magick`) and the npm dependencies. These variants change the running app's icon; the bundled icon stays the default.

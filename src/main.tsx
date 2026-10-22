@@ -1,11 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { startAppIcon } from './lib/app-icon'
 import { startAppearance } from './state/appearance'
 import { getEditor, useWorkspace } from './state/workspace'
 import './styles/app.css'
 
 startAppearance()
+startAppIcon()
 
 // Development helper: http://localhost:1420/?open=/dev-samples/Handbook.pdf opens files without a dialog.
 // Also available in test builds (VITE_TEST_HOOKS=1 npm run build) for automated UI checks.

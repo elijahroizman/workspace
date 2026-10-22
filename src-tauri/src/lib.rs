@@ -3,6 +3,7 @@ mod defaults;
 mod files;
 mod fonts;
 mod history;
+mod icon;
 // Helpers below are called from the macOS launch path. Other targets still
 // compile them so the tests run, and nothing else references them.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -181,6 +182,7 @@ pub fn run() {
             menu::set_menu_shortcuts,
             open_dialog::pick_paths,
             set_window_chrome,
+            icon::set_app_icon,
             plugins::installed_plugins,
             plugins::install_plugin,
             plugins::remove_plugin,
