@@ -46,7 +46,9 @@ export function Pages({ engine, zoom, scroller }: Props) {
   }
   const height = y + 48
   const width = maxW * zoom + SIDE * 2
-  const pageLeft = (i: number) => Math.max(SIDE, (width - sizes[i][0] * zoom) / 2)
+  // Pages are centered in the mount's actual width, which can exceed its minimum width.
+  // CSS keeps overlays aligned during window and panel resizing without a layout read.
+  const pageX = (i: number, x: number) => `calc(50% + ${(x - sizes[i][0] / 2) * zoom}px)`
 
   // Draw the pages near the screen; drop far ones.
   const draw = () => {
@@ -99,7 +101,7 @@ export function Pages({ engine, zoom, scroller }: Props) {
     engine.pagePoint = pagePoint
     engine.toClient = (page, x, y) => {
       const r = mountRef.current!.getBoundingClientRect()
-      return { x: r.left + pageLeft(page) + x * zoom, y: r.top + (tops[page] ?? 0) + y * zoom }
+      return { x: r.left + (r.width - sizes[page][0] * zoom) / 2 + x * zoom, y: r.top + (tops[page] ?? 0) + y * zoom }
     }
     // Pages that no longer exist drop out of the bookkeeping.
     for (const [i] of painted.current) if (i >= sizes.length) painted.current.delete(i)
@@ -160,7 +162,7 @@ export function Pages({ engine, zoom, scroller }: Props) {
     const c = engine.overlay.caret
     if (!c || !sizes[c[0]]) return
     const [page, x, cy, h] = c
-    input.style.left = `${pageLeft(page) + x * zoom}px`
+    input.style.left = pageX(page, x)
     input.style.top = `${(tops[page] ?? 0) + cy * zoom}px`
     input.style.height = `${h * zoom}px`
     input.style.fontSize = `${Math.max(10, h * zoom * 0.75)}px`
@@ -412,7 +414,7 @@ export function Pages({ engine, zoom, scroller }: Props) {
   // ── Overlay: caret, selection, marks and the picture frame, in one layer over the pages.
   const overlay = engine.overlay
   const place = (page: number, x: number, y: number, w: number, h: number) =>
-    sizes[page] ? { left: pageLeft(page) + x * zoom, top: tops[page] + y * zoom, width: w * zoom, height: h * zoom } : { display: 'none' }
+    sizes[page] ? { left: pageX(page, x), top: tops[page] + y * zoom, width: w * zoom, height: h * zoom } : { display: 'none' }
   // Focus mode's dimming: every page veiled but for a band across the caret's paragraph (an empty
   // paragraph has no text boxes, so the caret's line). Shown by CSS only while dimming is on.
   const c = overlay.caret

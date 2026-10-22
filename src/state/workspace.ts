@@ -38,6 +38,10 @@ export interface RecentFile {
 /** What every editor exposes to the shell (save, find, zoom, print). */
 export interface EditorHandle {
   getBytes(): Promise<Uint8Array>
+  /** Commit pending input before taking the save snapshot. */
+  prepareSave?(): void
+  /** Content revision, excluding caret and selection changes. */
+  getRevision?(): number | string
   /** Called after a successful save so the editor can reset its own dirty state. */
   markSaved?(): void
   find?(): void
@@ -427,14 +431,16 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         path = await platform.pickSavePath(tab.title, tab.kind)
         if (!path) return false
       }
-      const editsBefore = edits.get(tab.id) ?? 0
       try {
+        editor.prepareSave?.()
+        const editsBefore = edits.get(tab.id) ?? 0
+        const revisionBefore = editor.getRevision?.()
         const bytes = await editor.getBytes()
         await platform.writeFile(path, bytes, { history: useSettings.getState().history, label: opts?.label })
-        editor.markSaved?.()
         const title = stripExtension(platform.basename(path))
         // An edit made while the file was being written isn't in it, so the tab stays unsaved.
-        const dirty = (edits.get(tab.id) ?? 0) !== editsBefore
+        const dirty = (edits.get(tab.id) ?? 0) !== editsBefore || editor.getRevision?.() !== revisionBefore || getEditor(tab.id) !== editor
+        if (!dirty) editor.markSaved?.()
         set({ tabs: get().tabs.map((t) => (t.id === tab.id ? { ...t, path, title, dirty } : t)) })
         addRecent(path, tab.kind)
         return true
@@ -448,7 +454,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     restoreVersion: async (id, bytes, label) => {
       const tab = get().tabs.find((t) => t.id === id)
       if (!tab?.path) return false
-      if (tab.dirty && !(await get().save(id))) return false
+      if (tab.dirty && (!(await get().save(id)) || get().tabs.find((t) => t.id === id)?.dirty)) return false
       try {
         await platform.writeFile(tab.path, bytes, { history: true, label })
       } catch (err) {
@@ -489,7 +495,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         get().activate(tab.id)
         const choice = await platform.askSaveChanges(tab.title)
         if (choice === 'cancel') return false
-        if (choice === 'save' && !(await get().save(tab.id))) return false
+        if (choice === 'save' && (!(await get().save(tab.id)) || get().tabs.find((t) => t.id === tab.id)?.dirty)) return false
       }
       const { tabs, activeId, split } = get()
       const index = tabs.findIndex((t) => t.id === tabId)

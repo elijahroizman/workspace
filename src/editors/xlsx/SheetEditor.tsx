@@ -48,22 +48,26 @@ const ZOOM_STEPS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
 export default function SheetEditor({ tab, active }: EditorProps) {
   const [engine, setEngine] = useState<SheetsEngine | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const name = useRef('')
+  name.current = tab.path ?? `${tab.title}.${tab.kind}`
   useEffect(() => {
     let live = true
     let opened: SheetsEngine | null = null
-    SheetsEngine.open(tab.bytes, tab.path ?? `${tab.title}.${tab.kind}`)
+    setEngine(null)
+    setError(null)
+    SheetsEngine.open(tab.bytes, name.current)
       .then((e) => {
         if (!live) return e.dispose()
         opened = e
         if (import.meta.env.DEV || import.meta.env.VITE_TEST_HOOKS) Object.assign(window, { __sheets: e })
         setEngine(e)
       })
-      .catch((e) => setError(String(e?.message ?? e)))
+      .catch((e) => { if (live) setError(String(e?.message ?? e)) })
     return () => {
       live = false
       opened?.dispose()
     }
-  }, [tab.bytes, tab.path, tab.title, tab.kind])
+  }, [tab.bytes, tab.kind])
   if (error) {
     return (
       <CenterState title="Couldn’t open this spreadsheet">
@@ -82,6 +86,7 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
   const sheet = st.sheet
   const markDirty = useWorkspace((s) => s.markDirty)
   const [editing, setEditing] = useState<string | null>(null)
+  const draft = useRef<{ text: string; original: string; sheet: number; row: number; col: number } | null>(null)
   const [zoom, setZoom] = useState(1)
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null)
   const [findOpen, setFindOpen] = useState<false | 'find' | 'replace'>(false)
@@ -90,19 +95,54 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
   const zoomRef = useRef(zoom)
   zoomRef.current = zoom
 
-  useEffect(() => markDirty(tab.id, st.dirty), [st.dirty, markDirty, tab.id])
+  useEffect(() => {
+    let revision = engine.revision
+    let dirty = engine.state.dirty
+    return engine.subscribe(() => {
+      if (engine.revision !== revision || engine.state.dirty !== dirty) {
+        revision = engine.revision
+        dirty = engine.state.dirty
+        markDirty(tab.id, dirty || !!(draft.current && draft.current.text !== draft.current.original))
+      }
+    })
+  }, [engine, markDirty, tab.id])
+
+  const edit = (text: string | null) => {
+    if (text === null) draft.current = null
+    else if (draft.current) draft.current.text = text
+    else {
+      const { sheet, focus: [row, col] } = engine.state
+      draft.current = { text, original: engine.cell?.input ?? '', sheet, row, col }
+    }
+    setEditing(text)
+    markDirty(tab.id, engine.state.dirty || !!(draft.current && draft.current.text !== draft.current.original))
+  }
+
+  const flushDraft = () => {
+    const d = draft.current
+    if (!d) return
+    draft.current = null
+    setEditing(null)
+    engine.run({ cmd: 'input', sheet: d.sheet, row: d.row, col: d.col, text: d.text })
+  }
 
   const range = engine.range
-  const run = <T = unknown,>(cmd: Record<string, unknown> & { cmd: string }) => engine.run<T>(cmd)
+  const run = <T = unknown,>(cmd: Record<string, unknown> & { cmd: string }) => {
+    flushDraft()
+    return engine.run<T>(cmd)
+  }
   const format = (patch: Record<string, unknown>) => run({ cmd: 'format', sheet, range, patch })
 
   /** Puts what was typed into the focused cell, then moves as Enter or Tab asks. */
   const commit = (text: string, move: 'down' | 'right' | 'up' | 'left' | 'none') => {
-    const [r, c] = st.focus
-    run({ cmd: 'input', sheet, row: r, col: c, text })
+    const d = draft.current
+    const [r, c] = d ? [d.row, d.col] : engine.state.focus
+    const targetSheet = d?.sheet ?? engine.state.sheet
+    draft.current = null
     setEditing(null)
+    engine.run({ cmd: 'input', sheet: targetSheet, row: r, col: c, text })
     const next: [number, number] = move === 'down' ? [r + 1, c] : move === 'up' ? [Math.max(0, r - 1), c] : move === 'right' ? [r, c + 1] : move === 'left' ? [r, Math.max(0, c - 1)] : [r, c]
-    run({ cmd: 'select', sheet, anchor: next, focus: next })
+    if (engine.state.sheet === targetSheet) engine.run({ cmd: 'select', sheet: targetSheet, anchor: next, focus: next })
   }
 
   const zoomStep = (dir: 'in' | 'out' | 'fit' | 'reset') => {
@@ -133,7 +173,10 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
   useEffect(
     () =>
       registerEditor(tab.id, {
-        getBytes: async () => engine.save(),
+        prepareSave: flushDraft,
+        getRevision: () => engine.revision,
+        getBytes: async () => { flushDraft(); return engine.save() },
+        busy: () => draft.current !== null,
         markSaved: () => {
           engine.run({ cmd: 'markSaved' })
           markDirty(tab.id, false)
@@ -169,7 +212,10 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
       ],
     })
 
-  const cellMenu = (x: number, y: number) =>
+  const cellMenu = (x: number, y: number) => {
+    const range = engine.range
+    const sheet = engine.state.sheet
+    const cell = engine.cell
     setMenu({
       x,
       y,
@@ -182,6 +228,7 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
         { label: 'Clear', icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: () => run({ cmd: 'clear', sheet, range }) },
       ],
     })
+  }
 
   const left = (
     <nav className="list" aria-label="Sheets">
@@ -349,14 +396,14 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
             aria-label="Cell contents"
             value={editing ?? cell?.input ?? ''}
             spellCheck={false}
-            onChange={(e) => setEditing(e.target.value)}
+            onChange={(e) => edit(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault()
                 commit(editing ?? cell?.input ?? '', 'down')
               } else if (e.key === 'Escape') {
                 e.preventDefault()
-                setEditing(null)
+                edit(null)
               } else if (e.key === 'Tab') {
                 e.preventDefault()
                 commit(editing ?? cell?.input ?? '', 'right')
@@ -366,7 +413,7 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
           />
         </div>
         <div className="sheet-grid">
-          <Grid engine={engine} zoom={zoom} active={active} editing={editing} onEdit={setEditing} onCommit={commit} onContextMenu={cellMenu} />
+          <Grid engine={engine} zoom={zoom} active={active} editing={editing} onEdit={edit} onCommit={commit} onContextMenu={cellMenu} />
         </div>
       </div>
       <FindBar

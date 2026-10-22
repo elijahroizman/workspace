@@ -391,7 +391,7 @@ async function confirmDiscardAll(): Promise<boolean> {
   for (const tab of useWorkspace.getState().tabs.filter((t) => t.dirty)) {
     useWorkspace.getState().activate(tab.id)
     const choice = await platform.askSaveChanges(tab.title)
-    if (choice === 'cancel' || (choice === 'save' && !(await useWorkspace.getState().save(tab.id)))) {
+    if (choice === 'cancel' || (choice === 'save' && (!(await useWorkspace.getState().save(tab.id)) || useWorkspace.getState().tabs.find((t) => t.id === tab.id)?.dirty))) {
       sessionFrozen = false
       return false
     }

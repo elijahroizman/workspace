@@ -101,7 +101,19 @@ function DeckEditor({ tab, active, engine }: EditorProps & { engine: SlidesEngin
   const copied = useRef<string | null>(null)
 
   // ── Unsaved changes follow the engine's history.
-  useEffect(() => markDirty(tab.id, st.dirty), [st.dirty, markDirty, tab.id])
+  useEffect(() => {
+    // Notes and transitions can change without invalidating a slide's drawing revision.
+    let revision = JSON.stringify(engine.slides)
+    let dirty = engine.state.dirty
+    return engine.subscribe(() => {
+      const next = JSON.stringify(engine.slides)
+      if (next !== revision || engine.state.dirty !== dirty) {
+        revision = next
+        dirty = engine.state.dirty
+        markDirty(tab.id, dirty)
+      }
+    })
+  }, [engine, markDirty, tab.id])
 
   // ── Slides picked in the sidebar, by id so they survive moves. The active slide is always picked.
   const [picked, setPicked] = useState<string[]>([])
@@ -425,6 +437,7 @@ function DeckEditor({ tab, active, engine }: EditorProps & { engine: SlidesEngin
   useEffect(
     () =>
       registerEditor(tab.id, {
+        getRevision: () => JSON.stringify(engine.slides),
         getBytes: async () => engine.save(),
         markSaved: () => {
           engine.run({ cmd: 'markSaved' })

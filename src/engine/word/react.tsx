@@ -4,6 +4,7 @@
 
 import type { ReactNode } from 'react'
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { CenterState } from '../../components/ui'
 import { pickImages } from '../../lib/platform'
 import type { WordEngine, WordState } from './engine'
 import { WordEngine as Engine } from './engine'
@@ -67,7 +68,7 @@ class SearchStore {
   wholeWord = false
   private listeners = new Set<() => void>()
   private version = 0
-  constructor(private engine: () => WordEngine | null) {}
+  constructor(private engine: () => WordEngine | null, private viewport: () => HTMLElement | null) {}
   subscribe = (f: () => void) => {
     this.listeners.add(f)
     return () => void this.listeners.delete(f)
@@ -103,6 +104,23 @@ class SearchStore {
     if (!e || !this.count) return
     this.activeIndex = ((i % this.count) + this.count) % this.count
     e.run({ cmd: 'selectMatch', index: this.activeIndex })
+    // Use layout coordinates: an offscreen page may not have any painted text yet.
+    const sc = this.viewport()
+    const rect = e.overlay.rects[0]
+    if (sc && rect && e.toClient) {
+      const [page, x, y, width, height] = rect
+      const start = e.toClient(page, x, y)
+      const end = e.toClient(page, x + width, y + height)
+      const view = sc.getBoundingClientRect()
+      const top = view.top + sc.clientTop + 24
+      const bottom = view.top + sc.clientTop + sc.clientHeight - 24
+      const left = view.left + sc.clientLeft + 24
+      const right = view.left + sc.clientLeft + sc.clientWidth - 24
+      if (start.y < top) sc.scrollTop += start.y - top
+      else if (end.y > bottom) sc.scrollTop += Math.min(end.y - bottom, start.y - top)
+      if (start.x < left) sc.scrollLeft += start.x - left
+      else if (end.x > right) sc.scrollLeft += Math.min(end.x - right, start.x - left)
+    }
     this.emit()
   }
   next() {
@@ -184,6 +202,7 @@ class LinkStore {
 
 interface Ctx {
   engine: WordEngine | null
+  error: string | null
   zoom: ZoomStore
   search: SearchStore
   link: LinkStore
@@ -220,11 +239,12 @@ function Root({
   children: ReactNode
 }) {
   const [engine, setEngine] = useState<WordEngine | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const engineRef = useRef<WordEngine | null>(null)
   const viewport = useRef<HTMLDivElement | null>(null)
   const stores = useMemo(() => {
     const get = () => engineRef.current
-    return { zoom: new ZoomStore(), search: new SearchStore(get), link: new LinkStore(get) }
+    return { zoom: new ZoomStore(), search: new SearchStore(get, () => viewport.current), link: new LinkStore(get) }
   }, [])
   const ready = useRef(onReady)
   ready.current = onReady
@@ -236,6 +256,8 @@ function Root({
   useEffect(() => {
     let live = true
     let opened: WordEngine | null = null
+    setEngine(null)
+    setError(null)
     Engine.open(document)
       .then((e) => {
         if (!live) return e.dispose()
@@ -245,7 +267,11 @@ function Root({
         ready.current?.(e)
         changed.current?.({ source: 'load', revision: e.state.dirty ? -1 : 0 })
       })
-      .catch((error) => failed.current?.(error))
+      .catch((error) => {
+        if (!live) return
+        setError(error instanceof Error ? error.message : String(error))
+        failed.current?.(error)
+      })
     return () => {
       live = false
       engineRef.current = null
@@ -265,7 +291,7 @@ function Root({
     })
   }, [engine])
 
-  const ctx = useMemo<Ctx>(() => ({ engine, ...stores, popups: popups ?? {}, viewport }), [engine, stores, popups])
+  const ctx = useMemo<Ctx>(() => ({ engine, error, ...stores, popups: popups ?? {}, viewport }), [engine, error, stores, popups])
   return <WordCtx.Provider value={ctx}>{children}</WordCtx.Provider>
 }
 
@@ -288,9 +314,18 @@ function Viewport({ className, children }: { className?: string; children: React
 }
 
 function Content() {
-  const { engine, zoom, viewport, popups } = useCtx()
+  const { engine, error, zoom, viewport, popups } = useCtx()
   const z = useSyncExternalStore(zoom.subscribe, zoom.get)
-  if (!engine) return null
+  if (error !== null) {
+    return (
+      <div role="alert" style={{ position: 'absolute', inset: 0 }}>
+        <CenterState title="Couldn't open this document">
+          <p className="muted">{error || 'The file could not be read. Try opening another DOCX file.'}</p>
+        </CenterState>
+      </div>
+    )
+  }
+  if (!engine) return <CenterState spinner />
   return (
     <>
       <Pages engine={engine} zoom={z} scroller={() => viewport.current} />

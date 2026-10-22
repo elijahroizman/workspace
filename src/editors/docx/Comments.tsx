@@ -66,6 +66,7 @@ export class CommentStore {
    */
   touched = false
   private version = 0
+  private editVersion = 0
   private listeners = new Set<() => void>()
   private loading: Promise<void> | null = null
 
@@ -76,12 +77,15 @@ export class CommentStore {
     return () => void this.listeners.delete(fn)
   }
   getVersion = () => this.version
+  /** Content edits only. Highlight relocation and selection do not change the saved comments. */
+  getEditVersion = () => this.editVersion
   private emit() {
     this.version++
     this.listeners.forEach((fn) => fn())
   }
   private edited(editor: Editor | null) {
     this.touched = true
+    this.editVersion++
     this.onEdit()
     if (editor) this.paint(editor)
     this.emit()

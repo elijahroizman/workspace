@@ -74,6 +74,148 @@ fn blank_deck() {
     assert!(texts(&v.paint(&mut host, 0).items).contains(&"Presentation title".to_string()));
 }
 
+// A red 1x1 PNG. Clipboard tests compare the actual bytes after a save and reopen.
+const CLIPBOARD_PNG: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+    0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63,
+    0xF8, 0xCF, 0xC0, 0xF0, 0x1F, 0x00, 0x05, 0x00, 0x01, 0xFF, 0x89, 0x99, 0x3D, 0x1D, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44,
+    0xAE, 0x42, 0x60, 0x82,
+];
+
+// A different, green 1x1 PNG for destination media with a conflicting id.
+const EXISTING_PNG: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
+    0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63,
+    0x60, 0xF8, 0xCF, 0xF0, 0x1F, 0x00, 0x04, 0x01, 0x01, 0xFF, 0x71, 0xEB, 0x47, 0xE5, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44,
+    0xAE, 0x42, 0x60, 0x82,
+];
+
+fn picture_ids(frames: &[Frame]) -> Vec<&str> {
+    frames
+        .iter()
+        .flat_map(|f| match &f.content {
+            FrameContent::Picture { image } => vec![image.media.as_str()],
+            FrameContent::Group { frames } => picture_ids(frames),
+            _ => Vec::new(),
+        })
+        .collect()
+}
+
+#[test]
+fn clipboard_pictures_transfer_to_an_independent_deck() {
+    let mut source = SlidesView::open(&deck(&[&[]])).unwrap();
+    source.insert_image(CLIPBOARD_PNG.to_vec(), "image/png", 1.0, 1.0, "Copied PNG");
+    let clipboard = source.copy_frames();
+    drop(source);
+    let mut target = SlidesView::open(&deck(&[&[]])).unwrap();
+    assert!(target.paste_frames(&clipboard));
+    let reopened = SlidesView::open(&target.save().unwrap()).unwrap();
+    let ids = picture_ids(&reopened.slides()[0].frames);
+    assert_eq!(ids.len(), 1);
+    assert_eq!(reopened.media(ids[0]).unwrap(), CLIPBOARD_PNG);
+    assert_eq!(reopened.media_type(ids[0]).as_deref(), Some("image/png"));
+}
+
+#[test]
+fn clipboard_pictures_remap_conflicts_and_nested_groups() {
+    let source_svg = br##"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><path fill="#f00" d="M0 0h1v1H0z"/></svg>"##;
+    let target_svg = br##"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><path fill="#0f0" d="M0 0h1v1H0z"/></svg>"##;
+    let mut host = FixedMeasurer::default();
+    for packaged_source in [false, true] {
+        for packaged_target in [false, true] {
+            let mut source = SlidesView::open(&deck(&[&[]])).unwrap();
+            let png = source.insert_image(CLIPBOARD_PNG.to_vec(), "image/png", 1.0, 1.0, "Copied PNG");
+            let svg = source.insert_image(source_svg.to_vec(), "image/svg+xml", 1.0, 1.0, "Copied SVG");
+            source.select_frames(vec![png]);
+            source.duplicate_frames();
+            let duplicate = source.selection().frames[0];
+            source.select_frames(vec![duplicate, svg]);
+            source.group(&mut host);
+            let inner = source.selection().frames[0];
+            let shape = source.insert_shape("rect");
+            source.select_frames(vec![inner, shape]);
+            source.group(&mut host);
+            let outer = source.selection().frames[0];
+            if packaged_source {
+                source = SlidesView::open(&source.save().unwrap()).unwrap();
+            }
+            source.select_frames(vec![png, outer]);
+            let clipboard = source.copy_frames();
+            drop(source);
+
+            let mut target = SlidesView::open(&deck(&[&[]])).unwrap();
+            target.insert_image(EXISTING_PNG.to_vec(), "image/png", 1.0, 1.0, "Existing PNG");
+            target.insert_image(target_svg.to_vec(), "image/svg+xml", 1.0, 1.0, "Existing SVG");
+            if packaged_target {
+                target = SlidesView::open(&target.save().unwrap()).unwrap();
+            }
+            let existing = target.slides()[0].frames.clone();
+            let old_ids = picture_ids(&existing);
+            assert!(target.paste_frames(&clipboard));
+            let pasted_ids = picture_ids(&target.slides()[0].frames[existing.len()..]);
+            assert_eq!(pasted_ids.len(), 3);
+            assert!(pasted_ids.iter().all(|id| !old_ids.contains(id)));
+            assert_eq!(pasted_ids[0], pasted_ids[2], "pictures sharing source media share imported media");
+            assert_eq!(target.doc.media.len(), 4, "each source image imports once");
+            assert!(target.undo());
+            assert_eq!(target.slides()[0].frames, existing);
+            assert!(target.redo());
+            let reopened = SlidesView::open(&target.save().unwrap()).unwrap();
+            let ids = picture_ids(&reopened.slides()[0].frames);
+            assert_eq!(ids.len(), 5);
+            for (id, bytes, content_type) in [
+                (ids[0], EXISTING_PNG, "image/png"),
+                (ids[1], target_svg.as_slice(), "image/svg+xml"),
+                (ids[2], CLIPBOARD_PNG, "image/png"),
+                (ids[3], source_svg.as_slice(), "image/svg+xml"),
+                (ids[4], CLIPBOARD_PNG, "image/png"),
+            ] {
+                assert_eq!(reopened.media(id).unwrap(), bytes);
+                assert_eq!(reopened.media_type(id).as_deref(), Some(content_type));
+            }
+        }
+    }
+}
+
+#[test]
+fn clipboard_with_missing_picture_media_is_rejected_without_changes() {
+    let mut source = SlidesView::open(&deck(&[&[]])).unwrap();
+    let first = source.insert_image(CLIPBOARD_PNG.to_vec(), "image/png", 1.0, 1.0, "First");
+    let second = source.insert_image(EXISTING_PNG.to_vec(), "image/png", 1.0, 1.0, "Second");
+    source.select_frames(vec![first, second]);
+    let mut clipboard: serde_json::Value = serde_json::from_str(&source.copy_frames()).unwrap();
+    clipboard["media"].as_object_mut().unwrap().remove("new:2");
+
+    let mut target = SlidesView::open(&deck(&[&["Existing text"]])).unwrap();
+    target.insert_image(EXISTING_PNG.to_vec(), "image/png", 1.0, 1.0, "Existing picture");
+    target.mark_saved();
+    let frames = target.slides()[0].frames.clone();
+    let media = target.doc.media.clone();
+    let selection = target.selection().clone();
+    assert!(!target.paste_frames(&clipboard.to_string()));
+    assert_eq!(target.slides()[0].frames, frames);
+    assert_eq!(target.doc.media, media);
+    assert_eq!(*target.selection(), selection);
+    assert!(!target.is_dirty());
+    assert!(target.save().is_ok());
+}
+
+#[test]
+fn legacy_frame_clipboards_accept_text_but_require_media_for_pictures() {
+    let mut source = SlidesView::open(&deck(&[&["Copied text"]])).unwrap();
+    let text = serde_json::to_string(&source.slides()[0].frames).unwrap();
+    let mut target = SlidesView::open(&deck(&[&[]])).unwrap();
+    assert!(target.paste_frames(&text));
+    let reopened = SlidesView::open(&target.save().unwrap()).unwrap();
+    assert_eq!(reopened.slides()[0].frames[0].paragraphs()[0].plain_text(), "Copied text");
+
+    source.insert_image(CLIPBOARD_PNG.to_vec(), "image/png", 1.0, 1.0, "Copied picture");
+    let picture = serde_json::to_string(&source.slides()[0].frames[1..]).unwrap();
+    target.insert_image(EXISTING_PNG.to_vec(), "image/png", 1.0, 1.0, "Unrelated picture with same media id");
+    assert!(!target.paste_frames(&picture));
+    assert_eq!(target.slides()[0].frames.len(), 2);
+}
+
 #[test]
 fn select_move_and_undo() {
     let mut host = FixedMeasurer::default();

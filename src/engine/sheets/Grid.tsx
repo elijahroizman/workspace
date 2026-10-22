@@ -110,6 +110,7 @@ export function Grid({ engine, zoom, active, editing, onEdit, onCommit, onContex
   }
 
   const select = (anchor: [number, number], focus: [number, number]) => {
+    if (editing !== null) onCommit(editing, 'none')
     const clamp = (p: [number, number]): [number, number] => [Math.max(0, Math.min(g.info.rows - 1, p[0])), Math.max(0, Math.min(g.info.cols - 1, p[1]))]
     engine.run({ cmd: 'select', sheet, anchor: clamp(anchor), focus: clamp(focus) })
     reveal(...clamp(focus))
@@ -123,7 +124,6 @@ export function Grid({ engine, zoom, active, editing, onEdit, onCommit, onContex
   const onCellsDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return
     e.preventDefault()
-    if (editing !== null) onCommit(editing, 'none')
     inputRef.current?.focus({ preventScroll: true })
     const at = cellAt(e)
     if (e.detail >= 2) {

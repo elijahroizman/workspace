@@ -5,7 +5,7 @@
 import type { WordEngine } from './engine'
 
 export interface ParagraphInfo {
-  paraId?: string
+  paraId: string
   text: string
   /** The paragraph's place in the body. */
   blockId: string
@@ -60,7 +60,8 @@ export function commentEditor(engine: WordEngine): CommentEditor {
   const paragraphs = () => {
     if (cache?.revision === engine.revision) return cache.paragraphs
     const list = (JSON.parse(engine.doc.paragraphs()) as { path: number[]; text: string; paraId?: string | null }[]).map((p) => ({
-      paraId: p.paraId ?? undefined,
+      // New paragraphs may not have an OOXML id yet. Use the same address everywhere.
+      paraId: p.paraId ?? `#${p.path.join('.')}`,
       text: p.text,
       blockId: p.path.join('.'),
     }))
@@ -80,7 +81,7 @@ export function commentEditor(engine: WordEngine): CommentEditor {
       if (q.type === 'selection') {
         const from = byPath(a[0])
         const to = byPath(b[0])
-        return from && to ? { from: { paraId: from.paraId ?? `#${from.blockId}` }, to: { paraId: to.paraId ?? `#${to.blockId}` } } : null
+        return from && to ? { from: { paraId: from.paraId }, to: { paraId: to.paraId } } : null
       }
       // The selected text, paragraphs on their own lines.
       const ia = list.findIndex((x) => x.blockId === a[0].join('.'))

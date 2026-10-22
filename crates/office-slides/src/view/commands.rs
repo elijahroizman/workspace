@@ -1,6 +1,8 @@
 //! Editing presentations: picking and arranging frames, formatting them, typing in them, slides
 //! and their notes and transitions, and undo.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use office_core::drawing::{Color, Fill, Line, Rgb, Xfrm};
 use office_core::model::{Block, Cell, Frame, FrameContent, Image, Origin, Paragraph, Row, RunProps, Slide, Strike, Table, TextBody};
 use office_core::units::{Angle, Emu, FontSize};
@@ -50,6 +52,22 @@ pub struct TextPatch {
     /// `#rrggbb` or `rrggbb`.
     pub color: Option<String>,
     pub align: Option<String>,
+}
+
+/// Frame media ids belong to the source deck. Carry the referenced bytes so paste can
+/// allocate ids in a different deck, including when that deck already uses the same ids.
+#[derive(Serialize, Deserialize)]
+struct FrameClipboard {
+    frames: Vec<Frame>,
+    #[serde(default)]
+    media: BTreeMap<String, ClipboardMedia>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClipboardMedia {
+    content_type: String,
+    bytes: Vec<u8>,
 }
 
 impl TextPatch {
@@ -531,17 +549,60 @@ impl SlidesView {
     /// The selected frames, for the clipboard (JSON).
     pub fn copy_frames(&self) -> String {
         let Some(s) = self.slides().get(self.sel.active) else { return "[]".into() };
-        let frames: Vec<&Frame> = s.frames.iter().filter(|f| self.sel.frames.contains(&f.id)).collect();
-        serde_json::to_string(&frames).unwrap_or_else(|_| "[]".into())
+        let mut frames: Vec<Frame> = s.frames.iter().filter(|f| self.sel.frames.contains(&f.id)).cloned().collect();
+        let mut ids = BTreeSet::new();
+        for f in &mut frames {
+            for_each_picture(f, &mut |image| {
+                ids.insert(image.media.clone());
+            });
+        }
+        let media: Option<BTreeMap<_, _>> = ids
+            .into_iter()
+            .map(|id| {
+                let bytes = self.media(&id)?;
+                let content_type = self.media_type(&id)?;
+                Some((id, ClipboardMedia { content_type, bytes }))
+            })
+            .collect();
+        let Some(media) = media else { return "[]".into() };
+        serde_json::to_string(&FrameClipboard { frames, media }).unwrap_or_else(|_| "[]".into())
     }
 
     /// Frames from the clipboard, put on the active slide and picked.
     pub fn paste_frames(&mut self, json: &str) -> bool {
-        let Ok(frames) = serde_json::from_str::<Vec<Frame>>(json) else { return false };
-        if frames.is_empty() {
+        let Ok(clipboard) = serde_json::from_str::<FrameClipboard>(json).or_else(|_| {
+            // Older clipboards can still paste shapes and text. Pictures need carried media:
+            // an id present in this deck may refer to an unrelated picture.
+            serde_json::from_str::<Vec<Frame>>(json).map(|frames| FrameClipboard { frames, media: BTreeMap::new() })
+        }) else {
+            return false;
+        };
+        let FrameClipboard { mut frames, mut media } = clipboard;
+        let active = self.sel.active;
+        if frames.is_empty() || self.slides().get(active).is_none() {
             return false;
         }
-        let active = self.sel.active;
+        let mut ids = BTreeSet::new();
+        for f in &mut frames {
+            for_each_picture(f, &mut |image| {
+                ids.insert(image.media.clone());
+            });
+        }
+        // Validate the whole payload before adding media or changing the slide.
+        if ids.iter().any(|id| !media.contains_key(id)) {
+            return false;
+        }
+        let remap: BTreeMap<_, _> = ids
+            .into_iter()
+            .map(|id| {
+                let picture = media.remove(&id).unwrap();
+                let imported = self.doc.add_media(&picture.content_type, picture.bytes);
+                (id, imported)
+            })
+            .collect();
+        for f in &mut frames {
+            for_each_picture(f, &mut |image| image.media = remap[&image.media].clone());
+        }
         let mut new_ids = Vec::new();
         self.change_slide(active, None, |s| {
             let mut next = free_id(&s.frames);
@@ -1605,6 +1666,15 @@ fn strip_ids(o: &Origin) -> Origin {
             Origin::new(el)
         }
         None => Origin::default(),
+    }
+}
+
+/// Every picture in a frame, including pictures inside nested groups.
+fn for_each_picture(f: &mut Frame, cb: &mut dyn FnMut(&mut Image)) {
+    match &mut f.content {
+        FrameContent::Picture { image } => cb(image),
+        FrameContent::Group { frames } => frames.iter_mut().for_each(|f| for_each_picture(f, cb)),
+        _ => {}
     }
 }
 

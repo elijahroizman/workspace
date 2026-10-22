@@ -118,6 +118,16 @@ function DocxWorkbench({ tab, active, comments, commentsChanged }: EditorProps &
   const host = useMemo(() => (editor ? commentEditor(editor) : null), [editor])
   const hostRef = useRef<CommentEditor | null>(host)
   hostRef.current = host
+  useEffect(() => {
+    if (!editor) return
+    let revision = editor.revision
+    return editor.subscribe(() => {
+      if (editor.revision !== revision) {
+        revision = editor.revision
+        useWorkspace.getState().markDirty(tab.id, editor.state.dirty || commentsChanged.current)
+      }
+    })
+  }, [editor, tab.id, commentsChanged])
   const zoomRef = useRef(zoom)
   zoomRef.current = zoom
   const stageRef = useRef<HTMLDivElement>(null)
@@ -138,6 +148,7 @@ function DocxWorkbench({ tab, active, comments, commentsChanged }: EditorProps &
   useEffect(
     () =>
       registerEditor(tab.id, {
+        getRevision: () => `${editorRef.current?.revision}:${comments.getEditVersion()}`,
         getBytes: async () => {
           const ed = editorRef.current
           const h = hostRef.current
