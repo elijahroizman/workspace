@@ -64,9 +64,10 @@ export interface Element {
   rotation: number
   flipHorizontal: boolean
   flipVertical: boolean
+  link?: { url?: string; anchor?: string; tooltip?: string }
   textStyle?: TextLook
   shapeStyle?: ShapeLook
-  table?: { rows: number; columns: number; header: boolean; banded: boolean; style: string | null }
+  table?: { rows: number; columns: number; header: boolean; banded: boolean; style: string | null; textStyle?: TextLook }
   text: string
   placeholder?: string
   children?: Element[]
@@ -116,6 +117,7 @@ export class SlidesEngine {
   height = 720
   slides: SlideInfo[] = []
   layouts: LayoutInfo[] = []
+  theme: { heading: string; body: string; colors: Record<string, string> }
   state: DeckState = { active: 0, frames: [], editing: null, canUndo: false, canRedo: false, dirty: false, boxes: [], text: null, restack: [] }
   /** The active slide's frames. */
   elements: Element[] = []
@@ -136,6 +138,7 @@ export class SlidesEngine {
     this.width = size.width
     this.height = size.height
     this.layouts = JSON.parse(doc.layouts())
+    this.theme = JSON.parse(doc.theme())
     this.stopFonts = onFontsChanged(() => {
       if (this.disposed) return
       this.doc.fontsChanged()

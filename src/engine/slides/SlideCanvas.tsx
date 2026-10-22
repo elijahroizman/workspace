@@ -67,7 +67,9 @@ export function SlideCanvas({ engine, scale, padding = 40, active, onContextMenu
   const stageH = Math.max(view.h, sh + padding * 2)
   const left = (stageW - sw) / 2
   const top = (stageH - sh) / 2
-  useEffect(() => onPixelScale?.(px), [px, onPixelScale])
+  useEffect(() => {
+    onPixelScale?.(px)
+  }, [px, onPixelScale])
 
   useEffect(() => {
     if (active) inputRef.current?.focus({ preventScroll: true })
@@ -93,7 +95,7 @@ export function SlideCanvas({ engine, scale, padding = 40, active, onContextMenu
     }
   })
 
-  const run = (cmd: Record<string, unknown> & { cmd: string }) => engine.run(cmd)
+  const run = <T,>(cmd: Record<string, unknown> & { cmd: string }) => engine.run<T>(cmd)
 
   // ── Pointer
   const onMouseDown = (e: React.MouseEvent) => {

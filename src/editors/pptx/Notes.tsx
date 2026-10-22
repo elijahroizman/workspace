@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Slide } from './types'
+import type { SlideInfo } from './types'
 
 /**
  * Speaker notes for the slide on screen, under the canvas as in PowerPoint. Typing is saved
  * shortly after it pauses (one undo step per pause) and when the box loses focus.
  */
-export function NotesPane({ slide, onChange }: { slide: Slide; onChange: (notes: string) => void }) {
+export function NotesPane({ slide, onChange }: { slide: SlideInfo; onChange: (notes: string) => void }) {
   const [text, setText] = useState(slide.notes ?? '')
   const pending = useRef<string | null>(null)
   const timer = useRef(0)
