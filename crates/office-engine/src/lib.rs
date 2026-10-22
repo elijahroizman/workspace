@@ -11,7 +11,9 @@
 //!
 //! See `docs/internals/office-engine.md` for the design.
 
+pub mod display;
 pub mod edit;
+pub mod flow;
 pub mod geometry;
 pub mod history;
 pub mod measure;
