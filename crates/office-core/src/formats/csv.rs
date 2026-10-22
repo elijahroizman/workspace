@@ -278,6 +278,9 @@ fn parse(text: &str, delimiter: char) -> Parsed {
 /// The delimiter that splits the first lines into the same number of fields most often:
 /// comma, semicolon (Excel in much of Europe), tab or pipe.
 fn sniff_delimiter(text: &str, tab_hint: bool) -> char {
+    if tab_hint {
+        return '\t';
+    }
     let sample: String = text.chars().take(64 * 1024).collect();
     let mut best = (if tab_hint { '\t' } else { ',' }, 0usize, 0usize);
     for d in [',', ';', '\t', '|'] {

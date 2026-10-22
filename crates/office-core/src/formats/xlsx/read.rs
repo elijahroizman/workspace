@@ -13,11 +13,21 @@ pub fn read(pkg: Package) -> Result<Document> {
     doc.properties = Properties::read(&pkg)?;
     doc.theme = read_theme(&pkg, &main)?;
 
-    let strings = match pkg.related(&main, kind::SHARED_STRINGS)?.into_iter().next() {
+    let strings: Vec<Value> = match pkg.related(&main, kind::SHARED_STRINGS)?.into_iter().next() {
         Some((_, part)) if pkg.has(&part) => shared_strings(&pkg, &part)?.iter().map(read_string).collect(),
         _ => Vec::new(),
     };
 
+    // Only duplicate modeled values need a cell origin to retain their original SST index.
+    let mut plain = std::collections::HashSet::new();
+    let mut rich = std::collections::HashSet::new();
+    let duplicate: Vec<bool> = strings
+        .iter()
+        .map(|v| match v {
+            Value::Text(text) => !plain.insert(text.as_str()),
+            value => !rich.insert(super::write::string_key(value)),
+        })
+        .collect();
     let mut sheets = Vec::new();
     for s in workbook.root.path(ns::X, &["sheets"]).into_iter().flat_map(|l| l.children_named(ns::X, "sheet")) {
         let name = s.attr("name").unwrap_or("").to_string();
@@ -30,7 +40,7 @@ pub fn read(pkg: Package) -> Result<Document> {
         if !pkg.has(&part) {
             continue;
         }
-        let mut sheet = read_sheet(&pkg, &part, &strings)?;
+        let mut sheet = read_sheet(&pkg, &part, &strings, &duplicate)?;
         sheet.name = name;
         sheet.hidden = matches!(s.attr("state"), Some("hidden" | "veryHidden"));
         sheets.push(sheet);
@@ -57,7 +67,7 @@ pub(super) fn shared_strings(pkg: &Package, part: &str) -> Result<Vec<Element>> 
 /// Reads a worksheet a row at a time, so a sheet with millions of cells never becomes one big
 /// tree. Rows and cells keep an origin only when they have markup the writer couldn't make
 /// again from the model (Excel's row attributes, a shared formula, an inline string).
-fn read_sheet(pkg: &Package, part: &str, strings: &[Value]) -> Result<Sheet> {
+fn read_sheet(pkg: &Package, part: &str, strings: &[Value], duplicate: &[bool]) -> Result<Sheet> {
     let bad = |message: String| Error::Xml { part: part.to_string(), message };
     let hollow = stream::parse_hollow(pkg.part(part)?, Some("sheetData")).map_err(bad)?;
     let root = &hollow.doc.root;
@@ -77,7 +87,7 @@ fn read_sheet(pkg: &Package, part: &str, strings: &[Value]) -> Result<Sheet> {
             for c in row.children_named(ns::X, "c") {
                 let col = c.attr("r").and_then(CellRef::parse).map(|r| r.col).unwrap_or(next_col);
                 next_col = col + 1;
-                cells.push(read_cell(c, col, strings)?);
+                cells.push(read_cell(c, col, strings, duplicate)?);
             }
             let origin = if row_needs_origin(&row) { shell(&row, |e| e.is(ns::X, "c")) } else { Origin::default() };
             rows.push(SheetRow { index, cells, origin });
@@ -132,7 +142,7 @@ fn cell_needs_origin(c: &Element) -> bool {
     !(plain_attrs && plain_type && plain_children)
 }
 
-fn read_cell(c: &Element, col: u32, strings: &[Value]) -> Result<SheetCell, String> {
+fn read_cell(c: &Element, col: u32, strings: &[Value], duplicate: &[bool]) -> Result<SheetCell, String> {
     // An empty `v` (a formula nobody has calculated yet) is no value.
     let v = c.child(ns::X, "v").map(Element::text).filter(|v| !v.is_empty());
     let value = match (c.attr("t").unwrap_or("n"), v) {
@@ -160,6 +170,13 @@ fn read_cell(c: &Element, col: u32, strings: &[Value]) -> Result<SheetCell, Stri
         formula,
         style: c.attr("s").and_then(|s| s.parse().ok()),
         // The origin keeps `v`, so the writer can tell an uncalculated formula's empty value.
-        origin: if cell_needs_origin(c) { shell(c, |e| e.is(ns::X, "is")) } else { Origin::default() },
+        origin: if cell_needs_origin(c)
+            || (c.attr("t") == Some("s")
+                && c.child(ns::X, "v").and_then(|v| v.text().trim().parse::<usize>().ok()).and_then(|i| duplicate.get(i)) == Some(&true))
+        {
+            Origin::new(c.clone())
+        } else {
+            Origin::default()
+        },
     })
 }
