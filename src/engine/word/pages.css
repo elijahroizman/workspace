@@ -1,0 +1,246 @@
+/* The Word page view (src/engine/word/Pages.tsx). Class names follow the ones the app's other
+   styles and features (print, focus mode, typewriter scrolling) already use. */
+
+.docx-content-mount {
+  position: relative;
+  margin: 0 auto;
+  cursor: text;
+}
+
+.docx-pages {
+  position: absolute;
+  inset: 0;
+}
+
+.docx-page {
+  position: absolute;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 4px 14px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.docx-page-scale {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+
+.docx-page-content,
+.docx-page-overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.docx-page-overlay {
+  pointer-events: none;
+}
+
+/* Painted items (src/engine/paint.ts). */
+.docx-page-content > *,
+.docx-page-content .gr > * {
+  position: absolute;
+}
+
+.docx-page-content span {
+  white-space: pre;
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
+}
+
+.docx-page-content .gr {
+  transform-origin: 50% 50%;
+}
+
+.docx-page-content .gr.clip {
+  overflow: hidden;
+}
+
+/* Headers and footers are pale while the body is edited, as in Word. */
+.docx-page-content .gr.dim {
+  opacity: 0.5;
+}
+
+.docx-page-content .im {
+  overflow: hidden;
+}
+
+.docx-page-content .im img {
+  position: absolute;
+  max-width: none;
+  user-select: none;
+}
+
+.docx-page-content .im.missing {
+  background: repeating-linear-gradient(45deg, #eee 0 6px, #f6f6f6 6px 12px);
+}
+
+.docx-page-content svg.pa {
+  overflow: visible;
+  width: 1px;
+  height: 1px;
+}
+
+/* Links read as text until ⌘ (Ctrl on Windows) is held. */
+.docx-stage.follow-links .docx-page-content .ln {
+  cursor: pointer;
+}
+
+.wp-sel {
+  position: absolute;
+  background: color-mix(in srgb, var(--ws-accent, #4f8cff) 28%, transparent);
+  mix-blend-mode: multiply;
+}
+
+.wp-mark {
+  position: absolute;
+  mix-blend-mode: multiply;
+}
+
+.wp-caret {
+  position: absolute;
+  width: 1.5px;
+  margin-left: -0.75px;
+  background: var(--fg-on-page, #111);
+  animation: wp-blink 1.05s steps(1) infinite;
+}
+
+/* No blinking while the caret moves: each change remounts it. */
+@keyframes wp-blink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.docx-stage:not(:focus-within) .wp-caret {
+  display: none;
+}
+
+/* The text field that takes the keyboard sits at the caret, invisible, except while an input
+   method composes (Japanese, Chinese, Korean), when the composition shows there. */
+.wp-input {
+  position: absolute;
+  width: 2px;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  opacity: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  white-space: pre;
+  z-index: 2;
+}
+
+.wp-input.composing {
+  width: auto;
+  min-width: 2px;
+  opacity: 1;
+  color: #111;
+  background: #fff;
+  box-shadow: 0 1px 0 var(--ws-accent, #4f8cff);
+  field-sizing: content;
+}
+
+/* A selected picture: its frame and corner handles. */
+.wp-image-frame {
+  position: absolute;
+  border: 1.5px solid var(--ws-accent, #4f8cff);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.wp-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--ws-accent, #4f8cff);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  pointer-events: auto;
+}
+
+.wp-handle::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
+}
+
+.wp-handle.nw {
+  left: -6px;
+  top: -6px;
+  cursor: nwse-resize;
+}
+.wp-handle.ne {
+  right: -6px;
+  top: -6px;
+  cursor: nesw-resize;
+}
+.wp-handle.sw {
+  left: -6px;
+  bottom: -6px;
+  cursor: nesw-resize;
+}
+.wp-handle.se {
+  right: -6px;
+  bottom: -6px;
+  cursor: nwse-resize;
+}
+
+.docx-stage.cropping .wp-image-frame {
+  visibility: hidden;
+}
+
+/* The link popover, placed by the editor under the selected words. */
+.docx-hyperlink-popup {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+}
+
+.docx-hyperlink-popup[data-mode='editing'] {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.docx-hyperlink-popup__fields {
+  display: flex;
+  flex-direction: column;
+}
+
+.docx-hyperlink-popup__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.docx-hyperlink-popup__url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docx-hyperlink-popup__action {
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+}
+
+@media print {
+  .docx-page-overlay,
+  .wp-input,
+  .wp-image-frame {
+    display: none;
+  }
+}

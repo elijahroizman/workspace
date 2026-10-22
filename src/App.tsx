@@ -537,7 +537,7 @@ export default function App() {
         return
       }
       // Editor shortcuts are for the document, not a field beside it (speaker notes, a comment box).
-      if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select')) return
+      if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select') && !e.target.closest('[data-engine-input]')) return
       const editor = getEditor(ws.activeId)
       // An engine shortcut still on its own keys: the engine does it.
       if (def && engineKeysOf(def) !== keys) {

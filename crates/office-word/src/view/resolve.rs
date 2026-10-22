@@ -57,6 +57,9 @@ pub struct WordResolver<'a> {
     pub fields: Option<PageFields>,
 }
 
+/// Word's font when nothing names one.
+pub const DEFAULT_FONT: &str = "Times New Roman";
+
 /// The default Word font size when nothing says (10 pt: Word's own default).
 const DEFAULT_PX: f64 = 10.0 * 96.0 / 72.0;
 
@@ -67,7 +70,14 @@ impl<'a> WordResolver<'a> {
 
     fn style(&self, ctx: &mut Ctx, props: &RunProps, link: bool) -> StyleId {
         let theme = self.theme();
-        let mut s = TextStyle::from_props(props, DEFAULT_PX, &|c| paint_color(theme, c));
+        // With no font named anywhere (styles, defaults, theme), Word uses Times New Roman.
+        let mut s = if props.font.is_none() {
+            let mut p = props.clone();
+            p.font = Some(DEFAULT_FONT.into());
+            TextStyle::from_props(&p, DEFAULT_PX, &|c| paint_color(theme, c))
+        } else {
+            TextStyle::from_props(props, DEFAULT_PX, &|c| paint_color(theme, c))
+        };
         s.link = link;
         ctx.styles.add(ctx.measure, s)
     }
@@ -439,6 +449,7 @@ impl Resolver for WordResolver<'_> {
             default_tab: self.extras.default_tab,
             label,
             mark,
+            line_gap: true,
         };
         let keep = Keep {
             with_next: extras.keep_next.unwrap_or(false),

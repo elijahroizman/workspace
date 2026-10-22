@@ -1,4 +1,4 @@
-import type { Editor, HighlightRange } from '@docx-editor.dev/react'
+import type { CommentEditor as Editor, HighlightRange } from '../../engine/word/comments'
 import { Check, MessageSquarePlus, RotateCcw, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Button, Hint, IconButton, Section, TextField } from '../../components/ui'
@@ -203,7 +203,7 @@ export class CommentStore {
 
   /** Which of several copies of the selected words is the selected one: the one under the selection's first line. */
   private pickOccurrence(editor: Editor, base: Anchor, starts: number[]) {
-    const rect = window.getSelection()?.rangeCount ? window.getSelection()!.getRangeAt(0).getClientRects()[0] : null
+    const rect = editor.selectionRect()
     const ranges = starts.flatMap((start) => {
       const m = this.matchFor(editor, { ...base, start })
       return m ? [{ blockId: m.blockId, start, length: base.text.length }] : []

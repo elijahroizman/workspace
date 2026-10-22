@@ -156,6 +156,8 @@ pub struct ParaSpec {
     pub label: Option<Label>,
     /// The paragraph mark's style: how tall an empty paragraph is.
     pub mark: StyleId,
+    /// Single spacing includes the font's line gap (Word's does; PowerPoint's doesn't).
+    pub line_gap: bool,
 }
 
 impl ParaSpec {
@@ -192,6 +194,7 @@ impl ParaSpec {
             default_tab: 48.0,
             label: None,
             mark: style,
+            line_gap: true,
         }
     }
 
@@ -223,7 +226,7 @@ impl ParaSpec {
             (t.pos.to_bits(), t.kind as u8).hash(&mut h);
         }
         self.label.as_ref().map(|l| (&l.text, l.style)).hash(&mut h);
-        self.mark.hash(&mut h);
+        (self.mark, self.line_gap).hash(&mut h);
         h.finish()
     }
 
@@ -317,9 +320,9 @@ impl Ctx<'_> {
         if s.baseline.is_some() {
             // Raised or lowered text sits inside the line its full size would make.
             let scale = 1.0 / crate::style::SCRIPT_SCALE;
-            let full = Metrics { ascent: m.ascent * scale, descent: m.descent * scale };
-            let lifted = Metrics { ascent: m.ascent + shift, descent: m.descent - shift };
-            (Metrics { ascent: full.ascent.max(lifted.ascent), descent: full.descent.max(lifted.descent) }, shift)
+            let full = Metrics { ascent: m.ascent * scale, descent: m.descent * scale, gap: m.gap * scale };
+            let lifted = Metrics { ascent: m.ascent + shift, descent: m.descent - shift, gap: m.gap };
+            (Metrics { ascent: full.ascent.max(lifted.ascent), descent: full.descent.max(lifted.descent), gap: m.gap * scale }, shift)
         } else {
             (m, 0.0)
         }
@@ -687,6 +690,7 @@ impl Builder<'_, '_, '_> {
         // Height: the tallest text and objects on the line, then line spacing.
         let mut ascent: f64 = 0.0;
         let mut descent: f64 = 0.0;
+        let mut gap: f64 = 0.0;
         let mut any = false;
         for f in &frags {
             match &f.kind {
@@ -694,6 +698,7 @@ impl Builder<'_, '_, '_> {
                     let (m, _) = self.ctx.metrics(*s);
                     ascent = ascent.max(m.ascent);
                     descent = descent.max(m.descent);
+                    gap = gap.max(m.gap);
                     any = true;
                 }
                 FragKind::Object { height, .. } => {
@@ -708,8 +713,10 @@ impl Builder<'_, '_, '_> {
                 ascent = m.ascent;
             }
             descent = descent.max(m.descent);
+            gap = gap.max(m.gap);
         }
-        let natural = ascent + descent;
+        // The line gap goes above the text, as Word puts it.
+        let natural = ascent + descent + if self.spec.line_gap { gap } else { 0.0 };
         let (height, baseline) = match self.spec.spacing {
             Spacing::Multiple(m) => {
                 let h = natural * m;

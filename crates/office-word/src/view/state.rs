@@ -158,7 +158,7 @@ impl WordView {
             let first = f(&runs[0]);
             runs.iter().all(|r| f(r) == first).then_some(first).flatten()
         };
-        st.font = same(&|r| r.font.clone()).or_else(|| (runs.len() == 1).then(|| "Calibri".to_string()).filter(|_| runs[0].font.is_none()));
+        st.font = same(&|r| Some(r.font.clone().unwrap_or_else(|| super::resolve::DEFAULT_FONT.to_string())));
         st.size = same(&|r| r.size.map(|s| s.half_points().to_string())).and_then(|s| s.parse().ok()).or_else(|| runs[0].size.is_none().then_some(20));
         st.color = same(&|r| {
             r.color.as_ref().map(|c| super::resolve::paint_color(self.doc.theme.as_ref(), c).rgb.hex())

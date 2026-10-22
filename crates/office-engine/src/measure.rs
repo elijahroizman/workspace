@@ -34,11 +34,13 @@ impl Font {
     }
 }
 
-/// How far a font reaches above and below the baseline, in pixels.
+/// How far a font reaches above and below the baseline, and the extra space it asks for
+/// between lines (its line gap), in pixels.
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct Metrics {
     pub ascent: f64,
     pub descent: f64,
+    pub gap: f64,
 }
 
 impl Metrics {
@@ -104,6 +106,12 @@ impl Measure {
         m
     }
 
+    /// Forgets every measurement (a font finished loading, so text measures differently now).
+    pub fn clear(&mut self) {
+        self.widths.clear();
+        self.metrics.iter_mut().for_each(|m| *m = None);
+    }
+
     pub fn width(&mut self, host: &mut dyn Measurer, id: FontId, text: &str) -> f64 {
         if text.is_empty() {
             return 0.0;
@@ -164,7 +172,7 @@ impl Measurer for FixedMeasurer {
     }
 
     fn metrics(&mut self, font: &Font) -> Metrics {
-        Metrics { ascent: self.ascent * font.px(), descent: self.descent * font.px() }
+        Metrics { ascent: self.ascent * font.px(), descent: self.descent * font.px(), gap: 0.0 }
     }
 }
 

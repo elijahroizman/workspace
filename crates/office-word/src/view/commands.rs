@@ -53,6 +53,16 @@ impl WordView {
         self.story
     }
 
+    /// The body's blocks.
+    pub fn body(&self) -> &[Block] {
+        self.blocks(StoryId::Body)
+    }
+
+    /// The blocks of the story the caret is in.
+    pub fn current_blocks(&self) -> &[Block] {
+        self.blocks(self.story)
+    }
+
     pub fn set_selection(&mut self, sel: Selection) {
         self.sel = self.clamp(sel);
         self.pending = None;
@@ -950,7 +960,7 @@ impl WordView {
             let Some(id) = &p.props.style else { continue };
             let Some(style) = w.styles.get(id) else { continue };
             let name = style.name.to_ascii_lowercase();
-            let level = name.strip_prefix("heading ").and_then(|n| n.trim().parse::<u8>().ok()).or_else(|| (name == "title").then_some(1));
+            let level = name.strip_prefix("heading ").and_then(|n| n.trim().parse::<u8>().ok());
             if let Some(level) = level {
                 out.push((p.plain_text().trim().to_string(), level.saturating_sub(1), Path::top(i as u32)));
             }

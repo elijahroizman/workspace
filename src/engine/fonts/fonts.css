@@ -1,0 +1,163 @@
+/* Open-licensed fonts with the metrics of Office's defaults (Calibri, Cambria, Arial, Times New Roman,
+   Courier New), so documents lay out the same where those aren't installed. The engine measures
+   and the page draws with the same faces. Licenses sit beside the files. */
+
+@font-face {
+  font-family: 'Carlito';
+  src: url('./Carlito-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Carlito';
+  src: url('./Carlito-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Carlito';
+  src: url('./Carlito-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Carlito';
+  src: url('./Carlito-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Caladea';
+  src: url('./Caladea-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Caladea';
+  src: url('./Caladea-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Caladea';
+  src: url('./Caladea-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Caladea';
+  src: url('./Caladea-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Liberation Sans';
+  src: url('./LiberationSans-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Liberation Sans';
+  src: url('./LiberationSans-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Liberation Sans';
+  src: url('./LiberationSans-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Liberation Sans';
+  src: url('./LiberationSans-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Liberation Serif';
+  src: url('./LiberationSerif-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Liberation Serif';
+  src: url('./LiberationSerif-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Liberation Serif';
+  src: url('./LiberationSerif-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Liberation Serif';
+  src: url('./LiberationSerif-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Liberation Mono';
+  src: url('./LiberationMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Liberation Mono';
+  src: url('./LiberationMono-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Liberation Mono';
+  src: url('./LiberationMono-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Liberation Mono';
+  src: url('./LiberationMono-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}

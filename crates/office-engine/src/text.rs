@@ -110,13 +110,52 @@ fn link_inside(p: &Paragraph, offset: u32) -> Option<office_core::model::Link> {
     None
 }
 
+/// The formatting text typed at `offset` takes: the text before it's, except right after a link,
+/// where it's the text's before the link (typing after a link isn't part of it and shouldn't
+/// look like it either).
+pub fn typing_props(p: &Paragraph, offset: u32) -> RunProps {
+    let mut at = 0;
+    let mut last_plain: Option<&Run> = None;
+    let mut before: Option<&Run> = None;
+    for inline in &p.content {
+        let n = inline_len(inline);
+        if at >= offset {
+            break;
+        }
+        if let Inline::Text(r) = inline {
+            if at + n >= offset {
+                before = Some(r);
+            }
+            if r.link.is_none() && at + n <= offset {
+                last_plain = Some(r);
+            }
+        }
+        at += n;
+    }
+    match before {
+        Some(r) if r.link.is_some() && at == offset => match last_plain {
+            Some(plain) => plain.props.clone(),
+            None => {
+                let mut props = r.props.clone();
+                props.color = None;
+                props.underline = None;
+                if props.style.as_deref() == Some("Hyperlink") {
+                    props.style = None;
+                }
+                props
+            }
+        },
+        _ => props_at(p, offset),
+    }
+}
+
 /// Inserts `text` at `offset`. With `props`, the new text has that formatting; without, the
-/// formatting of the text before it.
+/// formatting typing there gets (see [`typing_props`]).
 pub fn insert_text(p: &mut Paragraph, offset: u32, text: &str, props: Option<&RunProps>) {
     if text.is_empty() {
         return;
     }
-    let props = props.cloned().unwrap_or_else(|| props_at(p, offset));
+    let props = props.cloned().unwrap_or_else(|| typing_props(p, offset));
     let link = link_inside(p, offset);
     // Extend the run the text lands in or at the end of, when it looks the same.
     let mut at = 0;
@@ -343,9 +382,13 @@ mod tests {
     fn typing_after_a_link_leaves_it() {
         let mut p = para(&[("see ", false)]);
         p.content.push(Inline::Text(Run { text: "here".into(), link: Some(office_core::model::Link { url: Some("https://x".into()), ..Default::default() }), ..Default::default() }));
+        if let Some(Inline::Text(r)) = p.content.last_mut() {
+            r.props.color = Some(office_core::drawing::Color::rgb(office_core::drawing::Rgb(5, 99, 193)));
+        }
         insert_text(&mut p, 8, "!", None);
         assert_eq!(p.runs().last().unwrap().text, "!");
         assert!(p.runs().last().unwrap().link.is_none());
+        assert!(p.runs().last().unwrap().props.color.is_none(), "takes the look of the text before the link");
         insert_text(&mut p, 6, "e", None);
         assert_eq!(p.runs().nth(1).unwrap().text, "heere");
     }

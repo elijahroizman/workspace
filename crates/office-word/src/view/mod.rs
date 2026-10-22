@@ -26,7 +26,7 @@ use serde::Serialize;
 
 use crate::sections::Section;
 use crate::{word, StoryKind, Words};
-pub use commands::{Move, Toggle};
+pub use commands::{image_size, BorderScope, Move, TableOp, Toggle};
 use extras::Extras;
 use resolve::{emu_px, PageFields, WordResolver};
 pub use state::*;
@@ -103,6 +103,21 @@ pub struct WordView {
     pub(crate) stale: bool,
     /// Styles the host has been sent.
     pub(crate) styles_sent: usize,
+    /// Goes up whenever the document (or how it's laid out) changes, so the host knows to draw
+    /// its pages again; moving the caret doesn't change it.
+    pub(crate) revision: u64,
+    /// Ranges of body text highlighted over the page: find's matches, comments' text.
+    pub(crate) marks: Vec<Mark>,
+}
+
+/// A highlighted range of body text, in a named set.
+#[derive(Clone, Debug)]
+pub struct Mark {
+    pub set: String,
+    /// What it's for (a comment's id), for telling which mark is under the pointer.
+    pub id: String,
+    pub from: Pos,
+    pub to: Pos,
 }
 
 /// One page drawn: its size and items.
@@ -124,6 +139,9 @@ pub struct Overlay {
     /// A selected picture: (page, x, y, width, height).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image: Option<(usize, f64, f64, f64, f64)>,
+    /// Marked text: (page, x, y, width, height, set, id).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub marks: Vec<(usize, f64, f64, f64, f64, String, String)>,
 }
 
 impl WordView {
@@ -167,6 +185,8 @@ impl WordView {
             saved: 0,
             stale: true,
             styles_sent: 0,
+            revision: 0,
+            marks: Vec::new(),
         };
         if let Some(start) = pos::story_start(v.blocks(StoryId::Body)) {
             v.sel = Selection::caret(start);
@@ -202,6 +222,7 @@ impl WordView {
 
     pub(crate) fn blocks_mut(&mut self, story: StoryId) -> &mut Vec<Block> {
         self.stale = true;
+        self.revision += 1;
         match story {
             StoryId::Body => match &mut self.doc.body {
                 Body::Flow { blocks } => blocks,
@@ -219,6 +240,7 @@ impl WordView {
             return;
         }
         self.stale = false;
+        self.revision += 1;
         self.cache.next_pass();
         self.labels = body_labels(&self.doc);
         let sections = crate::sections(&self.doc);
@@ -241,6 +263,29 @@ impl WordView {
         }
         self.sections = flows;
         self.pages = paginate::paginate(self, host);
+    }
+
+    /// See [`WordView::revision`]'s field.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    /// Replaces the marks in set `set`.
+    pub fn set_marks(&mut self, set: &str, marks: Vec<(String, Pos, Pos)>) {
+        self.marks.retain(|m| m.set != set);
+        let blocks = self.blocks(StoryId::Body).to_vec();
+        for (id, from, to) in marks {
+            if pos::para(&blocks, &from.path).is_some() && pos::para(&blocks, &to.path).is_some() {
+                self.marks.push(Mark { set: set.to_string(), id, from, to });
+            }
+        }
+    }
+
+    /// A font finished loading: measure everything again.
+    pub fn fonts_changed(&mut self) {
+        self.measure.clear();
+        self.cache.clear();
+        self.stale = true;
     }
 
     pub fn page_count(&self) -> usize {
@@ -389,6 +434,21 @@ impl WordView {
                         }
                     }
                 }
+                for mark in self.marks.clone() {
+                    for path in pos::paras_between(&blocks, &mark.from.path, &mark.to.path) {
+                        let Some(si) = self.sections.iter().position(|s| path.0[0] >= s.first && path.0[0] <= s.last) else { continue };
+                        let Some((pb, dx, dy)) = self.sections[si].flow.find(&path) else { continue };
+                        let pb = pb.clone();
+                        let len = text::len(pos::para(&blocks, &path).unwrap_or(&Paragraph::default()));
+                        let a = if path == mark.from.path { mark.from.offset } else { 0 };
+                        let b = if path == mark.to.path { mark.to.offset } else { len };
+                        let mut ctx = Ctx { host, measure: &mut self.measure, styles: &mut self.styles };
+                        for (x, y, w, h) in display::selection_rects(&mut ctx, &pb, dx, dy, a, b, false) {
+                            let (page, px, py) = self.to_page(si, x, y);
+                            out.marks.push((page, px, py, w, h, mark.set.clone(), mark.id.clone()));
+                        }
+                    }
+                }
                 if out.image.is_none() {
                     if let Some((pb, _, dx, dy)) = self.body_box(&self.sel.focus.path).map(|(pb, page, dx, dy)| (pb.clone(), page, dx, dy)) {
                         let si = self.sections.iter().position(|s| self.sel.focus.path.0[0] >= s.first && self.sel.focus.path.0[0] <= s.last).unwrap_or(0);
@@ -483,6 +543,11 @@ impl WordView {
     /// The page the caret is on.
     pub fn caret_page(&mut self, host: &mut dyn Measurer) -> usize {
         self.overlay(host).caret.map(|c| c.0).or_else(|| self.selected_image_box(host).map(|b| b.0)).unwrap_or(0)
+    }
+
+    /// Whether a page shows a header or footer of this kind.
+    pub fn page_has_story(&self, page: usize, kind: StoryKind) -> bool {
+        self.pages.get(page).is_some_and(|p| if kind == StoryKind::Header { p.header.is_some() } else { p.footer.is_some() })
     }
 
     /// Whether a point on a page is in its header or footer area (above the body or below it).
