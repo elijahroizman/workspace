@@ -294,7 +294,7 @@ pub struct ParaLayout {
 pub struct Ctx<'a> {
     pub host: &'a mut dyn Measurer,
     pub measure: &'a mut Measure,
-    pub styles: &'a Styles,
+    pub styles: &'a mut Styles,
 }
 
 impl Ctx<'_> {
@@ -948,8 +948,8 @@ mod tests {
 
     #[test]
     fn wraps_at_spaces() {
-        let (mut host, mut measure, styles, s) = setup();
-        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &styles };
+        let (mut host, mut measure, mut styles, s) = setup();
+        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &mut styles };
         let spec = ParaSpec::plain("aaaa bbbb cccc dddd", s);
         // 4 letters = 20 px, a space 2.5: two words fit in 45 px.
         let l = layout(&mut ctx, &spec, 45.0);
@@ -963,8 +963,8 @@ mod tests {
 
     #[test]
     fn breaks_long_words_between_characters() {
-        let (mut host, mut measure, styles, s) = setup();
-        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &styles };
+        let (mut host, mut measure, mut styles, s) = setup();
+        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &mut styles };
         let spec = ParaSpec::plain("abcdefghij", s);
         let l = layout(&mut ctx, &spec, 22.0);
         assert_eq!(lines_text(&spec, &l), vec!["abcd", "efgh", "ij"]);
@@ -972,8 +972,8 @@ mod tests {
 
     #[test]
     fn line_breaks_and_empty_paragraphs() {
-        let (mut host, mut measure, styles, s) = setup();
-        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &styles };
+        let (mut host, mut measure, mut styles, s) = setup();
+        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &mut styles };
         let spec = ParaSpec::plain("one\ntwo", s);
         let l = layout(&mut ctx, &spec, 500.0);
         assert_eq!(lines_text(&spec, &l), vec!["one\n", "two"]);
@@ -985,8 +985,8 @@ mod tests {
 
     #[test]
     fn alignment_and_justification() {
-        let (mut host, mut measure, styles, s) = setup();
-        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &styles };
+        let (mut host, mut measure, mut styles, s) = setup();
+        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &mut styles };
         let mut spec = ParaSpec::plain("ab cd", s);
         spec.align = Align::Right;
         let l = layout(&mut ctx, &spec, 100.0);
@@ -1008,8 +1008,8 @@ mod tests {
 
     #[test]
     fn tabs_and_labels() {
-        let (mut host, mut measure, styles, s) = setup();
-        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &styles };
+        let (mut host, mut measure, mut styles, s) = setup();
+        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &mut styles };
         let mut spec = ParaSpec::plain("a\tb", s);
         spec.default_tab = 48.0;
         let l = layout(&mut ctx, &spec, 500.0);
@@ -1032,8 +1032,8 @@ mod tests {
 
     #[test]
     fn spacing() {
-        let (mut host, mut measure, styles, s) = setup();
-        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &styles };
+        let (mut host, mut measure, mut styles, s) = setup();
+        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &mut styles };
         let mut spec = ParaSpec::plain("x", s);
         spec.spacing = Spacing::Multiple(2.0);
         let l = layout(&mut ctx, &spec, 100.0);
@@ -1046,8 +1046,8 @@ mod tests {
 
     #[test]
     fn objects_sit_on_the_baseline() {
-        let (mut host, mut measure, styles, s) = setup();
-        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &styles };
+        let (mut host, mut measure, mut styles, s) = setup();
+        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &mut styles };
         let mut spec = ParaSpec::plain("a\u{FFFC}b", s);
         spec.items = vec![
             Item { start: 0, end: 1, kind: ItemKind::Text(s) },
@@ -1062,8 +1062,8 @@ mod tests {
 
     #[test]
     fn carets_and_hits() {
-        let (mut host, mut measure, styles, s) = setup();
-        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &styles };
+        let (mut host, mut measure, mut styles, s) = setup();
+        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &mut styles };
         let spec = ParaSpec::plain("aaaa bbbb cccc", s);
         let l = layout(&mut ctx, &spec, 45.0);
         // Offset 10 is where line two starts.

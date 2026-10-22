@@ -16,6 +16,7 @@ pub mod revisions;
 pub mod sections;
 pub mod stories;
 pub mod styles;
+pub mod view;
 
 use office_core::formats::docx::{default_styles, val};
 use office_core::model::{Block, Body, Document, Inline, Kind, Origin, ParaProps, Paragraph, Run, RunProps};

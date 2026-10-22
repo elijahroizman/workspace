@@ -172,10 +172,16 @@ pub struct FlowLayout {
 
 /// Lays out `blocks` (at `container` in the story) across `width`.
 pub fn layout(ctx: &mut Ctx, cache: &mut Cache, resolver: &mut dyn Resolver, blocks: &[Block], container: &[u32], width: f64) -> FlowLayout {
+    layout_from(ctx, cache, resolver, blocks, container, 0, width)
+}
+
+/// Lays out `blocks`, the story's blocks from index `first` on (a Word section's share of the body).
+pub fn layout_from(ctx: &mut Ctx, cache: &mut Cache, resolver: &mut dyn Resolver, blocks: &[Block], container: &[u32], first: u32, width: f64) -> FlowLayout {
     let mut out = Vec::with_capacity(blocks.len());
     let mut y = 0.0;
     let mut prev_after = 0.0;
     for (i, block) in blocks.iter().enumerate() {
+        let i = i + first as usize;
         let mut path = container.to_vec();
         path.push(i as u32);
         let path = Path(path);
@@ -294,7 +300,8 @@ impl FlowLayout {
     fn find_from(&self, path: &Path, dx: f64, dy: f64) -> Option<(&ParaBox, f64, f64)> {
         let depth = self.depth();
         let index = *path.0.get(depth)? as usize;
-        match self.blocks.get(index)? {
+        let first = self.first_index();
+        match self.blocks.get(index.checked_sub(first)?)? {
             BlockBox::Para(p) if p.path == *path => Some((p, dx, dy)),
             BlockBox::Table(t) => {
                 let (r, c) = (*path.0.get(depth + 1)?, *path.0.get(depth + 2)?);
@@ -303,6 +310,19 @@ impl FlowLayout {
             }
             _ => None,
         }
+    }
+
+    /// The story index of this flow's first block.
+    fn first_index(&self) -> usize {
+        let depth = self.depth();
+        self.blocks
+            .first()
+            .map(|b| match b {
+                BlockBox::Para(p) => p.path.0[depth] as usize,
+                BlockBox::Table(t) => t.path.0[depth] as usize,
+                BlockBox::Empty { path } => path.0[depth] as usize,
+            })
+            .unwrap_or(0)
     }
 
     /// How deep in the story this flow's blocks are, from their paths.
@@ -350,7 +370,7 @@ mod tests {
         let mut measure = Measure::new();
         let mut styles = Styles::new();
         let s = styles.add(&mut measure, TextStyle::from_props(&RunProps { size: Some(FontSize::from_points(7.5)), ..Default::default() }, 10.0, &|_| Rgba { rgb: Rgb::BLACK, alpha: 1.0 }));
-        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &styles };
+        let mut ctx = Ctx { host: &mut host, measure: &mut measure, styles: &mut styles };
         let table = Table {
             columns: vec![Default::default(); 2],
             rows: vec![
