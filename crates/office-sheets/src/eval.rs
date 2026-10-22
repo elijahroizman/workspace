@@ -1081,12 +1081,12 @@ mod tests {
         let cells = (1..=130).map(|row| format!("A{row}")).collect::<Vec<_>>().join("+");
         assert_eq!(ev(&cells), V::Num(15.0));
 
-        let ones = std::iter::repeat("1").take(200).collect::<Vec<_>>().join("+");
+        let ones = std::iter::repeat_n("1", 200).collect::<Vec<_>>().join("+");
         assert_eq!(ev(&ones), V::Num(200.0));
         let triangle = (1..=200).map(|n| n.to_string()).collect::<Vec<_>>().join("+");
         assert_eq!(ev(&triangle), V::Num((200 * 201 / 2) as f64));
 
-        let cat = std::iter::repeat("\"ab\"").take(130).collect::<Vec<_>>().join("&");
+        let cat = std::iter::repeat_n("\"ab\"", 130).collect::<Vec<_>>().join("&");
         assert_eq!(ev(&cat), V::Text("ab".repeat(130)));
     }
 
@@ -1137,7 +1137,7 @@ mod tests {
         assert_eq!(eval(&parse("1/0+NOW()+NOW()").unwrap(), &mut clock), V::Err("#DIV/0!"));
         assert_eq!(clock.0.get(), 0, "nothing after the failing left operand runs");
 
-        let mut chain = std::iter::repeat("1").take(100).collect::<Vec<_>>().join("+");
+        let mut chain = std::iter::repeat_n("1", 100).collect::<Vec<_>>().join("+");
         chain.push_str("+1/0+NOW()");
         assert_eq!(eval(&parse(&chain).unwrap(), &mut clock), V::Err("#DIV/0!"));
         assert_eq!(clock.0.get(), 0);

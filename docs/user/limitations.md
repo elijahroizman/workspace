@@ -6,3 +6,4 @@
 - **LaTeX:** needs TeX on the computer. A new, unsaved document can't use other files. Clicking in the PDF doesn't jump to the source (no SyncTeX yet). On Windows, installing and removing TeX are still being tested.
 - **Word:** there's no spell check yet.
 - **Excel:** charts, pictures, conditional formatting and data validation aren't shown, but they're kept when the file is saved. About eighty of the common functions are worked out; a formula using another one shows `#NAME?` until Excel recalculates it. A CSV file is saved with its values only, so formatting made in Workspace is lost when it's closed.
+- Inserting or deleting rows and columns updates formulas in the edited sheet. References to those cells from other sheets, and defined names, need manual updates.

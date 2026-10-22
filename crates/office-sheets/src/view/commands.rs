@@ -918,11 +918,20 @@ fn write_coords(start: &RefPart, end: Option<&RefPart>) -> String {
     }
 }
 
+/// The sheet being shifted, and where rows or columns were inserted or deleted.
+struct FormulaShift<'a> {
+    sheet_name: &'a str,
+    axis: Axis,
+    at: u32,
+    n: i64,
+}
+
 /// Moves references in `src` for a row or column insert (`n > 0`) or delete (`n < 0`) at `at`.
 /// Absolute references move when the cell they name moves. A reference on another sheet stays.
 /// Same rules as Excel: a range grows when rows are inserted inside it and shrinks when rows
 /// are deleted from it.
 fn adjust_formula(src: &str, sheet_name: &str, axis: Axis, at: u32, n: i64) -> String {
+    let shift = FormulaShift { sheet_name, axis, at, n };
     let b = src.as_bytes();
     let mut out = String::with_capacity(src.len());
     let mut i = 0;
@@ -962,7 +971,7 @@ fn adjust_formula(src: &str, sheet_name: &str, axis: Axis, at: u32, n: i64) -> S
             '\'' => {
                 if let Some((sheet, coord)) = quoted_sheet(src, i) {
                     if let Some((r, len)) = parse_ref(src, coord, Some(sheet)) {
-                        rewrite(&mut out, src, i, coord, coord + len, r, sheet_name, axis, at, n);
+                        rewrite(&mut out, src, i, coord, coord + len, r, &shift);
                         i = coord + len;
                         continue;
                     }
@@ -975,13 +984,13 @@ fn adjust_formula(src: &str, sheet_name: &str, axis: Axis, at: u32, n: i64) -> S
                 if word_end > i && b.get(word_end) == Some(&b'!') {
                     let sheet = src[i..word_end].to_string();
                     if let Some((r, len)) = parse_ref(src, word_end + 1, Some(sheet)) {
-                        rewrite(&mut out, src, i, word_end + 1, word_end + 1 + len, r, sheet_name, axis, at, n);
+                        rewrite(&mut out, src, i, word_end + 1, word_end + 1 + len, r, &shift);
                         i = word_end + 1 + len;
                         continue;
                     }
                 }
                 if let Some((r, len)) = parse_ref(src, i, None) {
-                    rewrite(&mut out, src, i, i, i + len, r, sheet_name, axis, at, n);
+                    rewrite(&mut out, src, i, i, i + len, r, &shift);
                     i += len;
                     continue;
                 }
@@ -991,7 +1000,7 @@ fn adjust_formula(src: &str, sheet_name: &str, axis: Axis, at: u32, n: i64) -> S
             }
             '0'..='9' | '.' => {
                 if let Some((r, len)) = parse_ref(src, i, None) {
-                    rewrite(&mut out, src, i, i, i + len, r, sheet_name, axis, at, n);
+                    rewrite(&mut out, src, i, i, i + len, r, &shift);
                     i += len;
                 } else {
                     out.push(c);
@@ -1045,24 +1054,13 @@ fn scan_word(src: &str, i: usize) -> usize {
     j
 }
 
-fn rewrite(
-    out: &mut String,
-    src: &str,
-    start: usize,
-    coord: usize,
-    end: usize,
-    reference: Reference,
-    sheet_name: &str,
-    axis: Axis,
-    at: u32,
-    n: i64,
-) {
-    let same_sheet = reference.sheet.as_ref().map(|s| s.eq_ignore_ascii_case(sheet_name)).unwrap_or(true);
+fn rewrite(out: &mut String, src: &str, start: usize, coord: usize, end: usize, reference: Reference, shift: &FormulaShift<'_>) {
+    let same_sheet = reference.sheet.as_ref().map(|s| s.eq_ignore_ascii_case(shift.sheet_name)).unwrap_or(true);
     if !same_sheet {
         out.push_str(&src[start..end]);
         return;
     }
-    let Some((a, b)) = shift_ends(reference.start, reference.end, axis, at, n) else {
+    let Some((a, b)) = shift_ends(reference.start, reference.end, shift.axis, shift.at, shift.n) else {
         out.push_str("#REF!");
         return;
     };

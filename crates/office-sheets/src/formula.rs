@@ -772,7 +772,7 @@ mod tests {
         let sum = (1..=terms).map(|n| n.to_string()).collect::<Vec<_>>().join("+");
         let expr = parse(&sum).unwrap();
         assert_eq!(add_links(&expr), terms - 1);
-        let cat = std::iter::repeat("\"x\"").take(terms).collect::<Vec<_>>().join("&");
+        let cat = std::iter::repeat_n("\"x\"", terms).collect::<Vec<_>>().join("&");
         assert!(matches!(parse(&cat).unwrap(), Expr::Binary(Op::Concat, _, _)));
     }
 
