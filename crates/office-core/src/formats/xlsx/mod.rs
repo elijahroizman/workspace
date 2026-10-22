@@ -9,3 +9,7 @@ mod write;
 pub use props::{escape, read_color, read_run_props, unescape, INDEXED, THEME_INDEX};
 pub use read::read;
 pub use write::{color as write_color, write};
+
+pub(crate) fn generated_sheet_names(sheets: &[crate::model::Sheet]) -> crate::Result<Vec<String>> {
+    write::sheet_names(sheets, true)
+}

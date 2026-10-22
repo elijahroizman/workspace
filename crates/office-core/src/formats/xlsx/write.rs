@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::props::escape;
 use crate::drawing::Theme;
@@ -63,7 +63,7 @@ struct Strings {
 }
 
 /// What makes two strings the same string: their text and, for rich text, each run's formatting.
-fn string_key(value: &Value) -> String {
+pub(super) fn string_key(value: &Value) -> String {
     match value {
         Value::Rich(runs) => format!("{:?}", runs.iter().map(|r| (&r.text, &r.props)).collect::<Vec<_>>()),
         v => format!("t:{}", v.display()),
@@ -197,6 +197,7 @@ pub fn write(doc: &Document) -> Result<Package> {
     };
     let same = doc.kind == Kind::Sheets && doc.package.is_some();
     let pkg = if same { doc.package.clone().unwrap() } else { scaffold(doc.theme.as_ref().unwrap_or(&Theme::office()))? };
+    let names = sheet_names(sheets, doc.kind != Kind::Sheets)?;
     let mut out = Out::new(doc, pkg, same, "xl/media");
     let main = out.pkg.main_part()?;
     let mut workbook = out.pkg.xml(&main)?;
@@ -209,6 +210,15 @@ pub fn write(doc: &Document) -> Result<Package> {
     // the table is only needed if some sheet will be written.
     let untouched: Vec<bool> = sheets.iter().map(|s| same && s.untouched() && s.part.as_deref().is_some_and(|p| out.pkg.has(p))).collect();
     let any_written = untouched.contains(&false);
+    // Remove stale calculation dependencies through the context that will write the rels.
+    if any_written {
+        for rel in ctx.rels.of_kind("calcChain").cloned().collect::<Vec<_>>() {
+            if let Some(part) = out.pkg.target(&main, &rel) {
+                out.pkg.remove(&part);
+            }
+            ctx.rels.remove(&rel.id);
+        }
+    }
     let mut strings = match &sst_part {
         Some(p) if same && any_written => Strings::from_table(super::read::shared_strings(&out.pkg, p)?),
         _ => Strings::default(),
@@ -226,29 +236,55 @@ pub fn write(doc: &Document) -> Result<Package> {
 
     let old_list = workbook.root.child(ns::X, "sheets").cloned();
     let old_sheets: Vec<&Element> = old_list.iter().flat_map(|l| l.children_named(ns::X, "sheet")).collect();
-    let mut next_id = old_sheets.iter().filter_map(|s| s.attr("sheetId")?.parse::<u32>().ok()).max().unwrap_or(0) + 1;
+    let worksheet_names: HashSet<_> = names.iter().map(|n| n.to_lowercase()).collect();
+    for chart in old_sheets.iter().filter(|s| rel_attr(s, "id").and_then(|id| ctx.rels.get(id)).is_some_and(|r| !r.is(kind::WORKSHEET))) {
+        if chart.attr("name").is_some_and(|name| worksheet_names.contains(&name.to_lowercase())) {
+            return Err(Error::Invalid("worksheet name duplicates a chart sheet".into()));
+        }
+    }
+    let mut used_ids: HashSet<u32> = old_sheets.iter().filter_map(|s| s.attr("sheetId")?.parse().ok()).collect();
+    let mut next_id = 1u32;
+    let mut written = HashSet::new();
     let mut list = old_list.clone().unwrap_or_else(|| Element::new(ns::X, "sheets"));
     let mut entries = Vec::new();
-    for (sheet, untouched) in sheets.iter().zip(untouched) {
-        let part = match sheet.part.as_deref().filter(|p| same && out.pkg.has(p)) {
+    for ((sheet, untouched), name) in sheets.iter().zip(untouched).zip(names) {
+        let original = sheet.part.as_deref().filter(|p| same && out.pkg.has(p));
+        let copy_of = original.filter(|p| written.contains(*p));
+        let part = match original.filter(|_| copy_of.is_none()) {
             Some(p) => p.to_string(),
-            None => out.pkg.unused_name("xl/worksheets/sheet{}.xml"),
+            None => {
+                let part = out.pkg.unused_name("xl/worksheets/sheet{}.xml");
+                if let Some(source) = copy_of {
+                    let source_pkg = doc.package.as_ref().unwrap();
+                    out.pkg.put(&part, source_pkg.part(source)?.to_vec(), types::XLSX_SHEET);
+                    let rels = source_pkg.rels(source)?;
+                    out.pkg.put_rels(&part, &rels);
+                }
+                part
+            }
         };
         if !untouched {
             write_sheet(sheet, &part, &mut strings, same, &mut out)?;
         }
+        written.insert(part.clone());
         let rid = ctx.relate(kind::WORKSHEET, &part);
-        let mut el = old_sheets.iter().find(|s| rel_attr(s, "id") == Some(rid.as_str())).map(|e| (*e).clone()).unwrap_or_else(|| {
+        let existing = old_sheets.iter().find(|s| rel_attr(s, "id") == Some(rid.as_str())).map(|e| (*e).clone());
+        let mut el = if let Some(existing) = existing {
+            existing
+        } else {
+            while used_ids.contains(&next_id) {
+                next_id = next_id.checked_add(1).ok_or_else(|| Error::Invalid("no worksheet ids remain".into()))?;
+            }
             let id = next_id;
-            next_id += 1;
+            used_ids.insert(id);
             Element::new(ns::X, "sheet").with_attr("", "name", "").with_attr("", "sheetId", id.to_string()).with_attr(
                 ns::R,
                 "id",
                 rid.clone(),
             )
-        });
-        if el.attr("name") != Some(sheet.name.as_str()) {
-            el.set_attr("", "name", &sheet.name);
+        };
+        if el.attr("name") != Some(name.as_str()) {
+            el.set_attr("", "name", &name);
         }
         let hidden_now = matches!(el.attr("state"), Some("hidden" | "veryHidden"));
         if hidden_now != sheet.hidden {
@@ -323,6 +359,111 @@ pub fn write(doc: &Document) -> Result<Package> {
     ctx.finish(&mut out.pkg);
     doc.properties.write(&mut out.pkg)?;
     Ok(std::mem::take(&mut out.pkg))
+}
+
+/// Excel sheet names, either validated or made from generated labels such as CSV filenames.
+pub(super) fn sheet_names(sheets: &[Sheet], generated: bool) -> Result<Vec<String>> {
+    let mut used = HashSet::new();
+    let mut names = Vec::with_capacity(sheets.len());
+    for sheet in sheets {
+        let mut name = if generated {
+            sheet
+                .name
+                .chars()
+                .map(|c| if ":\\/?*[]".contains(c) { '_' } else { c })
+                .collect::<String>()
+                .trim_matches('\'')
+                .chars()
+                .take(31)
+                .collect::<String>()
+                .trim_end_matches('\'')
+                .to_string()
+        } else {
+            sheet.name.clone()
+        };
+        if generated {
+            if name.is_empty() || name.eq_ignore_ascii_case("History") {
+                name = "Sheet".into();
+            }
+            let base = name.clone();
+            let mut suffix = 2usize;
+            while used.contains(&name.to_lowercase()) {
+                let tail = format!(" ({suffix})");
+                name = base.chars().take(31usize.saturating_sub(tail.len())).collect::<String>() + &tail;
+                suffix += 1;
+            }
+        }
+        if name.is_empty()
+            || name.chars().count() > 31
+            || name.chars().any(|c| ":\\/?*[]".contains(c))
+            || name.starts_with('\'')
+            || name.ends_with('\'')
+            || name.eq_ignore_ascii_case("History")
+            || !used.insert(name.to_lowercase())
+        {
+            return Err(Error::Invalid(format!("invalid or duplicate worksheet name {:?}", sheet.name)));
+        }
+        names.push(name);
+    }
+    Ok(names)
+}
+
+/// The ISO calendar date and optional time accepted by SpreadsheetML's date cells.
+fn valid_iso_date(text: &str) -> bool {
+    let b = text.as_bytes();
+    let number = |s: &[u8]| s.iter().try_fold(0u32, |n, &c| c.is_ascii_digit().then(|| n * 10 + (c - b'0') as u32));
+    if b.len() < 10 || b[4] != b'-' || b[7] != b'-' {
+        return false;
+    }
+    let (Some(year), Some(month), Some(day)) = (number(&b[..4]), number(&b[5..7]), number(&b[8..10])) else {
+        return false;
+    };
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let days = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            if leap {
+                29
+            } else {
+                28
+            }
+        }
+        _ => return false,
+    };
+    if year == 0 || day == 0 || day > days {
+        return false;
+    }
+    if b.len() == 10 {
+        return true;
+    }
+    if b.len() < 19 || b[10] != b'T' || b[13] != b':' || b[16] != b':' {
+        return false;
+    }
+    let (Some(h), Some(m), Some(s)) = (number(&b[11..13]), number(&b[14..16]), number(&b[17..19])) else {
+        return false;
+    };
+    if h > 23 || m > 59 || s > 59 {
+        return false;
+    }
+    let mut tail = &b[19..];
+    if tail.first() == Some(&b'.') {
+        tail = &tail[1..];
+        let digits = tail.iter().take_while(|c| c.is_ascii_digit()).count();
+        if digits == 0 {
+            return false;
+        }
+        tail = &tail[digits..];
+    }
+    match tail {
+        [] | [b'Z'] => true,
+        [b'+' | b'-', h1, h2, b':', m1, m2] => {
+            matches!(number(&[*h1, *h2]), Some(0..=14))
+                && matches!(number(&[*m1, *m2]), Some(0..=59))
+                && (&tail[1..3] != b"14" || &tail[4..] == b"00")
+        }
+        _ => false,
+    }
 }
 
 /// Points what refers to sheets by position (sheet-scoped names, the active and first tabs)
@@ -432,15 +573,6 @@ fn write_sheet(sheet: &Sheet, part: &str, strings: &mut Strings, same: bool, out
         let margins = [("left", "0.7"), ("right", "0.7"), ("top", "0.75"), ("bottom", "0.75"), ("header", "0.3"), ("footer", "0.3")];
         root.place(margins.iter().fold(Element::new(ns::X, "pageMargins"), |el, (k, v)| el.with_attr("", k, *v)), WORKSHEET);
     }
-    // Excel's calculation chain lists formula cells; once cells change it may be wrong, and
-    // Excel rebuilds a missing one.
-    if let Some((_, chain)) = out.pkg.related(&out.pkg.main_part()?, "calcChain")?.into_iter().next() {
-        out.pkg.remove(&chain);
-        let main = out.pkg.main_part()?;
-        let mut rels = out.pkg.rels(&main)?;
-        rels.0.retain(|r| !r.is("calcChain"));
-        out.pkg.put_rels(&main, &rels);
-    }
     out.pkg.put(part, splice(root, &rows), types::XLSX_SHEET);
     Ok(())
 }
@@ -451,6 +583,13 @@ fn write_cell(cell: &SheetCell, at: CellRef, strings: &mut Strings) -> Element {
     let inline = origin.as_ref().and_then(|o| o.attr("t")) == Some("inlineStr");
     // Strict files' ISO dates, which the model holds as their text.
     let iso_date = origin.as_ref().and_then(|o| o.attr("t")) == Some("d");
+    let old_inline = origin.as_ref().and_then(|o| o.child(ns::X, "is")).filter(|is| super::props::read_string(is) == cell.value).cloned();
+    let old_index = origin
+        .as_ref()
+        .filter(|o| o.attr("t") == Some("s"))
+        .and_then(|o| o.child(ns::X, "v"))
+        .and_then(|v| v.text().trim().parse::<usize>().ok())
+        .filter(|&i| strings.items.get(i).is_some_and(|si| super::props::read_string(si) == cell.value));
     let empty_v = origin.as_ref().and_then(|o| o.child(ns::X, "v")).is_some_and(|v| v.text().is_empty());
     let mut c = origin.unwrap_or_else(|| Element::new(ns::X, "c"));
     c.children.retain(|n| !matches!(n, Node::Element(e) if e.is(ns::X, "f") || e.is(ns::X, "v") || e.is(ns::X, "is")));
@@ -481,9 +620,21 @@ fn write_cell(cell: &SheetCell, at: CellRef, strings: &mut Strings) -> Element {
         Value::Error(e) => (Some("e"), Some(v(e.clone()))),
         // A formula's text result is a plain string, not a shared one.
         Value::Text(s) if has_formula => (Some("str"), Some(v(escape(s)))),
-        Value::Text(s) if iso_date => (Some("d"), Some(v(s.clone()))),
-        value @ (Value::Text(_) | Value::Rich(_)) if inline => (Some("inlineStr"), Some(string_item("is", value))),
-        value @ (Value::Text(_) | Value::Rich(_)) => (Some("s"), Some(v(strings.add(value).to_string()))),
+        Value::Text(s) if iso_date && valid_iso_date(s) => (Some("d"), Some(v(s.clone()))),
+        value @ (Value::Text(_) | Value::Rich(_)) if inline => {
+            (Some("inlineStr"), Some(old_inline.unwrap_or_else(|| string_item("is", value))))
+        }
+        value @ (Value::Text(_) | Value::Rich(_)) => (
+            Some("s"),
+            Some(v(match old_index {
+                Some(i) => {
+                    strings.uses += 1;
+                    i
+                }
+                None => strings.add(value),
+            }
+            .to_string())),
+        ),
     };
     // No type is a number; some writers say so with t="n".
     if t != c.attr("t").filter(|t| *t != "n") {
