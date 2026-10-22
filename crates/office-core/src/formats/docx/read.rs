@@ -6,6 +6,16 @@ use crate::units::Emu;
 use crate::xml::{ns, Element};
 use crate::Result;
 
+/// A run keeps its own origin for the Word layer; its hyperlink wrapper is shared here.
+/// Keeping the run origin alive also prevents its allocation address from being reused.
+#[derive(Clone, Debug, Default)]
+pub(super) struct Hyperlinks(std::collections::HashMap<usize, (Origin, Origin)>);
+
+pub(super) fn hyperlink_origin<'a>(doc: &'a Document, run: &Run) -> Option<&'a Element> {
+    let key = std::sync::Arc::as_ptr(run.origin.0.as_ref()?) as usize;
+    doc.extensions.get::<Hyperlinks>()?.0.get(&key)?.1.get()
+}
+
 pub fn read(pkg: Package) -> Result<Document> {
     let main = pkg.main_part()?;
     let xml = pkg.xml(&main)?;
@@ -82,8 +92,19 @@ fn read_paragraph(p: &Element, rels: &PartRels, doc: &mut Document) -> Paragraph
                 anchor: child.attr_ns(ns::W, "anchor").map(str::to_string),
                 tooltip: child.attr_ns(ns::W, "tooltip").map(str::to_string),
             };
+            let wrapper = shell(child, |_| true);
+            if doc.extensions.get::<Hyperlinks>().is_none() {
+                doc.extensions.insert(Hyperlinks::default());
+            }
             for r in child.elements() {
+                let start = content.len();
                 read_run(r, Some(&link), rels, doc, &mut content);
+                for inline in &content[start..] {
+                    if let Inline::Text(run) = inline {
+                        let key = std::sync::Arc::as_ptr(run.origin.0.as_ref().unwrap()) as usize;
+                        doc.extensions.get_mut::<Hyperlinks>().unwrap().0.insert(key, (run.origin.clone(), wrapper.clone()));
+                    }
+                }
             }
         } else {
             // Bookmarks, fields, tracked changes, comment marks, equations, content controls…
@@ -225,8 +246,13 @@ fn read_table(tbl: &Element, rels: &PartRels, doc: &mut Document) -> Table {
     let mut continues: Vec<Vec<bool>> = Vec::new();
     for tr in tbl.children_named(ns::W, "tr") {
         let trpr = tr.child(ns::W, "trPr");
-        let mut cells = Vec::new();
-        let mut cont = Vec::new();
+        let omitted = |local: &str| {
+            trpr.and_then(|pr| pr.child(ns::W, local)).and_then(val).and_then(|v| v.parse::<usize>().ok()).unwrap_or(0).min(MAX_ROW_SLOTS)
+        };
+        let before = omitted("gridBefore");
+        let after = omitted("gridAfter");
+        let mut cells = vec![Cell::default(); before];
+        let mut cont = vec![false; before];
         for tc in tr.children_named(ns::W, "tc") {
             let tcpr = tc.child(ns::W, "tcPr");
             // Each grid slot under a span gets a cell. Word makes at most 63 columns, so spans
@@ -258,6 +284,9 @@ fn read_table(tbl: &Element, rels: &PartRels, doc: &mut Document) -> Table {
                 cont.push(continued);
             }
         }
+        let after = after.min(MAX_ROW_SLOTS.saturating_sub(cells.len()));
+        cells.resize(cells.len() + after, Cell::default());
+        cont.resize(cells.len(), false);
         rows.push(Row {
             cells,
             height: trpr

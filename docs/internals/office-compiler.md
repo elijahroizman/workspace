@@ -141,7 +141,7 @@ These are the core's own, not the layers':
 
 - **Big workbooks** are read and written a few hundred kilobytes of rows at a time (`xml::stream`), cells keep an origin only when they have markup the writer couldn't make again, and saving skips sheets whose fingerprint shows nobody touched them. A million cells read in about 2 s and write in about 2 s in a release build; most of that is allocating and freeing each batch's XML tree, which interning element names would cut further.
 - **Excel's phonetic guides** (`rPh`, for Japanese) survive on strings that don't change; a string whose text changes is written without them.
-- **Word runs split by a page break** are written back as separate runs, and a changed hyperlink is written with `w:history`. Both mean the same to Word.
+- **Word runs split by a page break** are written back as separate runs. Hyperlink edits preserve the original wrapper and its attributes; only new hyperlinks default to `w:history="1"`.
 - **Characters XML can't hold** (control characters other than tab and line breaks) are dropped from Word and PowerPoint text. Excel keeps them with its `_xHHHH_` escape.
 - **Converting between kinds** lays slides out simply: each page's paragraphs in text boxes, then each table and picture below, carried onto more slides when they don't fit (tables split by rows, repeating a header row; pictures shrink to fit). Heights are estimated from type sizes, not measured, since the core does no text layout. Numbers in converted sheets show without their number format unless the Excel layer formats them.
 

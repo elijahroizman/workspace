@@ -18,6 +18,7 @@ struct Ctx<'a, 'b> {
     theme: Theme,
     /// The next `wp:docPr` id for a new picture; they must be unique in the document.
     next_pic: u32,
+    used_pics: Option<std::collections::HashSet<u32>>,
 }
 
 pub fn write(doc: &Document) -> Result<Package> {
@@ -40,8 +41,7 @@ pub fn write(doc: &Document) -> Result<Package> {
         }
         r
     });
-    let next_pic = max_doc_pr(&source.root) + 1;
-    let mut ctx = Ctx { rels: PartCtx::load(&out.pkg, &main)?, out: &mut out, theme, next_pic };
+    let mut ctx = Ctx { rels: PartCtx::load(&out.pkg, &main)?, out: &mut out, theme, next_pic: 1, used_pics: None };
 
     let mut els = Vec::new();
     for b in blocks {
@@ -64,11 +64,8 @@ pub fn write(doc: &Document) -> Result<Package> {
 pub fn write_blocks(doc: &Document, pkg: &mut Package, part: &str, blocks: &[Block]) -> Result<Vec<Element>> {
     let same = doc.kind == Kind::Word && doc.package.is_some();
     let mut out = Out::new(doc, std::mem::take(pkg), same, "word/media");
-    // Picture ids are unique across the document; start past the document's and this part's.
-    let main = out.pkg.main_part()?;
-    let used = [main.as_str(), part].iter().filter_map(|p| out.pkg.xml(p).ok()).map(|d| max_doc_pr(&d.root)).max().unwrap_or(0);
     let theme = doc.theme.clone().unwrap_or_else(Theme::office);
-    let mut ctx = Ctx { rels: PartCtx::load(&out.pkg, part)?, out: &mut out, theme, next_pic: used.max(1000) + 1 };
+    let mut ctx = Ctx { rels: PartCtx::load(&out.pkg, part)?, out: &mut out, theme, next_pic: 1, used_pics: None };
     let mut els = Vec::new();
     for b in blocks {
         write_block(b, &mut ctx, &mut els)?;
@@ -79,9 +76,37 @@ pub fn write_blocks(doc: &Document, pkg: &mut Package, part: &str, blocks: &[Blo
     Ok(els)
 }
 
-fn max_doc_pr(el: &Element) -> u32 {
-    let own = if el.is(ns::WP, "docPr") { el.attr("id").and_then(|i| i.parse().ok()).unwrap_or(0) } else { 0 };
-    el.elements().map(max_doc_pr).fold(own, u32::max)
+fn collect_doc_pr(el: &Element, used: &mut std::collections::HashSet<u32>) {
+    if el.is(ns::WP, "docPr") {
+        if let Some(id) = el.attr("id").and_then(|i| i.parse().ok()) {
+            used.insert(id);
+        }
+    }
+    for child in el.elements() {
+        collect_doc_pr(child, used);
+    }
+}
+
+impl Ctx<'_, '_> {
+    /// Scan only when a picture needs a new id. Saving existing pictures needs no allocation.
+    fn picture_id(&mut self) -> Result<u32> {
+        if self.used_pics.is_none() {
+            let mut used = std::collections::HashSet::new();
+            for part in self.out.pkg.part_names().filter(|p| p.starts_with("word/") && p.ends_with(".xml")) {
+                if let Ok(xml) = self.out.pkg.xml(part) {
+                    collect_doc_pr(&xml.root, &mut used);
+                }
+            }
+            self.used_pics = Some(used);
+        }
+        let used = self.used_pics.as_mut().unwrap();
+        while used.contains(&self.next_pic) {
+            self.next_pic = self.next_pic.checked_add(1).ok_or_else(|| Error::Invalid("no picture ids remain".into()))?;
+        }
+        let id = self.next_pic;
+        used.insert(id);
+        Ok(id)
+    }
 }
 
 /// Raw markup from PowerPoint or Excel means nothing in Word.
@@ -122,17 +147,24 @@ fn write_paragraph(p: &Paragraph, ctx: &mut Ctx) -> Result<Element> {
 
     // Runs that share a link go in one w:hyperlink.
     let mut link: Option<(Link, Element)> = None;
+    let mut link_origin: Option<&Element> = None;
+    let doc = ctx.out.doc;
     for inline in &p.content {
         let run_link = match inline {
             Inline::Text(r) => r.link.clone(),
             _ => None,
         };
-        if link.as_ref().map(|(l, _)| l) != run_link.as_ref() {
+        let wrapper = match inline {
+            Inline::Text(r) => super::read::hyperlink_origin(doc, r),
+            _ => None,
+        };
+        if link.as_ref().map(|(l, _)| l) != run_link.as_ref() || wrapper.map(std::ptr::from_ref) != link_origin.map(std::ptr::from_ref) {
             if let Some((_, h)) = link.take() {
                 el.push(h);
             }
+            link_origin = wrapper;
             if let Some(l) = run_link {
-                let h = hyperlink(&l, &mut ctx.rels);
+                let h = hyperlink(&l, wrapper, &mut ctx.rels);
                 link = Some((l, h));
             }
         }
@@ -162,18 +194,27 @@ fn write_paragraph(p: &Paragraph, ctx: &mut Ctx) -> Result<Element> {
     Ok(el)
 }
 
-fn hyperlink(l: &Link, rels: &mut PartCtx) -> Element {
-    let mut h = Element::new(ns::W, "hyperlink");
-    if let Some(url) = &l.url {
-        h.set_attr(ns::R, "id", rels.link(url));
+fn hyperlink(l: &Link, origin: Option<&Element>, rels: &mut PartCtx) -> Element {
+    let mut h = origin.cloned().unwrap_or_else(|| Element::new(ns::W, "hyperlink"));
+    h.children.clear();
+    let current_url = h.attr_ns(ns::R, "id").and_then(|id| rels.url(id));
+    if current_url != l.url.as_deref() {
+        h.remove_attr(ns::R, "id");
+        if let Some(url) = &l.url {
+            h.set_attr(ns::R, "id", rels.link(url));
+        }
     }
-    if let Some(a) = &l.anchor {
-        h.set_attr(ns::W, "anchor", a);
+    for (name, value) in [("anchor", &l.anchor), ("tooltip", &l.tooltip)] {
+        if h.attr_ns(ns::W, name) != value.as_deref() {
+            h.remove_attr(ns::W, name);
+            if let Some(value) = value {
+                h.set_attr(ns::W, name, value);
+            }
+        }
     }
-    if let Some(t) = &l.tooltip {
-        h.set_attr(ns::W, "tooltip", t);
+    if origin.is_none() {
+        h.set_attr(ns::W, "history", "1");
     }
-    h.set_attr(ns::W, "history", "1");
     h
 }
 
@@ -251,8 +292,7 @@ fn write_image(image: &Image, ctx: &mut Ctx) -> Result<Element> {
             return Ok(r);
         }
     }
-    let id = ctx.next_pic;
-    ctx.next_pic += 1;
+    let id = ctx.picture_id()?;
     let name = if image.name.is_empty() { format!("Picture {id}") } else { image.name.clone() };
     let mut doc_pr = Element::new(ns::WP, "docPr").with_attr("", "id", id.to_string()).with_attr("", "name", &name);
     if let Some(d) = &image.description {
@@ -386,8 +426,32 @@ fn write_table(table: &Table, ctx: &mut Ctx) -> Result<Element> {
                 tr.children.insert(at, trpr);
             }
         }
-        let mut c = 0;
-        while c < row.cells.len() {
+        let omitted = |local: &str| {
+            tr.child(ns::W, "trPr")
+                .and_then(|pr| pr.child(ns::W, local))
+                .and_then(val)
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(0)
+                .min(row.cells.len())
+        };
+        let old_before = omitted("gridBefore");
+        let old_after = omitted("gridAfter");
+        // Materialize omitted slots if the caller put content or formatting in them.
+        let empty = crate::model::Cell::default();
+        let before = row.cells.iter().take(old_before).take_while(|cell| **cell == empty).count();
+        let after = row.cells.iter().rev().take(old_after).take_while(|cell| **cell == empty).count();
+        for (name, old, new) in [("gridBefore", old_before, before), ("gridAfter", old_after, after)] {
+            if old != new {
+                let pr = tr.child_or_insert(ns::W, "trPr");
+                pr.remove_children(ns::W, name);
+                if new > 0 {
+                    pr.push(Element::new(ns::W, name).with_attr(ns::W, "val", new.to_string()));
+                }
+            }
+        }
+        let mut c = before;
+        let end = row.cells.len().saturating_sub(after);
+        while c < end {
             let cell = &row.cells[c];
             // Word stores no cell under a column span: skip what a cell to the left covers.
             let (or, oc) = table.owner(r, c).unwrap_or((r, c));
