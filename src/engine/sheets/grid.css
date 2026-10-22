@@ -1,0 +1,177 @@
+/* The spreadsheet grid (src/engine/sheets/Grid.tsx). */
+
+.sg-scroller {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  background: var(--canvas);
+}
+
+.sg-space {
+  position: relative;
+}
+
+.sg-corner,
+.sg-colheads,
+.sg-rowheads {
+  background: var(--raised);
+  color: var(--fg-muted);
+  font: 11.5px var(--font-ui);
+  user-select: none;
+}
+
+.sg-corner {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  width: 46px;
+  height: 22px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.sg-colheads {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 22px;
+  margin-top: -22px;
+  margin-left: 46px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sg-rowheads {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  width: 46px;
+  border-right: 1px solid var(--line);
+}
+
+.sg-colhead,
+.sg-rowhead {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  cursor: default;
+}
+
+.sg-colhead {
+  top: 0;
+  height: 22px;
+  border-right: 1px solid var(--line-soft, var(--line));
+}
+
+.sg-rowhead {
+  left: 0;
+  width: 46px;
+  border-bottom: 1px solid var(--line-soft, var(--line));
+}
+
+.sg-colhead.on,
+.sg-rowhead.on {
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+
+.sg-edge {
+  position: absolute;
+}
+
+.sg-colhead .sg-edge {
+  right: -4px;
+  top: 0;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+.sg-rowhead .sg-edge {
+  bottom: -4px;
+  left: 0;
+  height: 8px;
+  width: 100%;
+  cursor: row-resize;
+  z-index: 1;
+}
+
+.sg-body {
+  position: absolute;
+  left: 46px;
+  top: 22px;
+  background: #fff;
+  cursor: cell;
+  overflow: hidden;
+}
+
+.sg-cells {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.sg-cells > *,
+.sg-cells .gr > * {
+  position: absolute;
+}
+
+.sg-cells .gr.clip {
+  overflow: hidden;
+}
+
+.sg-cells span {
+  white-space: pre;
+}
+
+.sg-sel {
+  position: absolute;
+  background: color-mix(in srgb, var(--accent, #4f8cff) 12%, transparent);
+  border: 1px solid var(--accent, #4f8cff);
+  pointer-events: none;
+}
+
+.sg-cur {
+  position: absolute;
+  border: 2px solid var(--accent, #4f8cff);
+  margin: -1px 0 0 -1px;
+  pointer-events: none;
+}
+
+.sg-resize-guide {
+  position: absolute;
+  background: var(--accent, #4f8cff);
+}
+
+.sg-input {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  resize: none;
+  overflow: hidden;
+  outline: none;
+}
+
+.sg-editor {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  padding: 1px 3px;
+  border: 2px solid var(--accent, #4f8cff);
+  margin: -1px 0 0 -1px;
+  background: #fff;
+  color: #111;
+  font-family: 'Calibri', 'Carlito', sans-serif;
+  resize: none;
+  outline: none;
+  overflow: hidden;
+  field-sizing: content;
+  white-space: pre;
+}

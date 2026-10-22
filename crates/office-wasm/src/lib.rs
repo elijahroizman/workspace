@@ -7,9 +7,11 @@
 use office_engine::measure::{Font, Measurer, Metrics};
 use wasm_bindgen::prelude::*;
 
+mod sheets;
 mod slides;
 mod word;
 
+pub use sheets::SheetsDoc;
 pub use slides::SlidesDoc;
 pub use word::WordDoc;
 

@@ -30,6 +30,7 @@ pub mod eval;
 pub mod formula;
 pub mod numfmt;
 pub mod styles;
+pub mod view;
 
 use std::collections::{HashMap, HashSet};
 

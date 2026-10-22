@@ -111,6 +111,7 @@ name = "office-sheets"
 version = "0.1.0"
 dependencies = [
  "office-core",
+ "office-engine",
  "serde",
 ]
 
@@ -130,6 +131,8 @@ version = "0.1.0"
 dependencies = [
  "office-core",
  "office-engine",
+ "office-sheets",
+ "office-slides",
  "office-word",
  "serde",
  "serde_json",

@@ -53,6 +53,8 @@ const EDITOR_LOADERS: Record<string, () => Promise<EditorModule>> = {
   pdf: () => import('./editors/pdf/PdfEditor'),
   docx: () => import('./editors/docx/DocxEditor'),
   pptx: () => import('./editors/pptx/PptxEditor'),
+  xlsx: () => import('./editors/xlsx/SheetEditor'),
+  csv: () => import('./editors/xlsx/SheetEditor'),
 }
 const loadedEditors: Record<string, ComponentType<EditorProps>> = {}
 const loadEditor = (kind: string) =>
@@ -70,7 +72,7 @@ const editorFor = (kind: DocKind): ComponentType<EditorProps> => loadedEditors[k
 function preloadOfficeEditors() {
   const idle = (f: () => void) => (typeof window.requestIdleCallback === 'function' ? window.requestIdleCallback(f, { timeout: 3000 }) : globalThis.setTimeout(f, 1500))
   idle(() => {
-    for (const kind of ['docx', 'pptx']) void loadEditor(kind).catch(() => {})
+    for (const kind of ['docx', 'pptx', 'xlsx']) void loadEditor(kind).catch(() => {})
     void import('./engine/preload').then((m) => m.preloadEngine()).catch(() => {})
   })
 }

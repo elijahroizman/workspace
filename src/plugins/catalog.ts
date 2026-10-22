@@ -8,7 +8,7 @@
 // and plugins/README.md). LaTeX is the only one.
 
 import type { ComponentType } from 'react'
-import { FileCode2, FileText, FileType2, Image as ImageIcon, NotepadText, Presentation, Sigma } from 'lucide-react'
+import { FileCode2, FileSpreadsheet, FileText, FileType2, Image as ImageIcon, NotepadText, Presentation, Sheet, Sigma } from 'lucide-react'
 import latex from '../../plugins/latex/plugin.json'
 
 export interface KindInfo {
@@ -57,9 +57,9 @@ export const PLUGINS: PluginInfo[] = [
   {
     id: 'office',
     name: 'Office',
-    description: 'Word documents and PowerPoint presentations. Excel workbooks are coming.',
-    homepage: 'https://github.com/eigenpal/docx-editor',
-    license: 'Apache-2.0',
+    description: 'Word documents, PowerPoint presentations, Excel workbooks and CSV files, on Workspace’s own engine.',
+    homepage: 'https://github.com/elijahroizman/workspace',
+    license: 'OFL-1.1',
     source: { type: 'builtin' },
     kinds: [
       {
@@ -85,6 +85,29 @@ export const PLUGINS: PluginInfo[] = [
         untitled: 'Untitled Presentation',
         create: { title: 'New presentation', hint: 'PowerPoint (.pptx)' },
         panels: { left: true, right: true },
+      },
+      {
+        id: 'xlsx',
+        prose: 'Excel',
+        label: 'Excel Workbook',
+        short: 'Workbook',
+        extensions: ['xlsx', 'xlsm'],
+        color: 'var(--kind-xlsx)',
+        icon: FileSpreadsheet,
+        untitled: 'Untitled Workbook',
+        create: { title: 'New workbook', hint: 'Excel (.xlsx)' },
+        panels: { left: true, right: true },
+      },
+      {
+        id: 'csv',
+        prose: 'CSV',
+        label: 'CSV File',
+        short: 'CSV',
+        extensions: ['csv', 'tsv'],
+        color: 'var(--kind-xlsx)',
+        icon: Sheet,
+        untitled: 'Untitled',
+        panels: { left: false, right: true },
       },
     ],
   },

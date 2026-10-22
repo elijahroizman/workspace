@@ -8,3 +8,4 @@ publish.workspace = true
 [dependencies]
 office-core.workspace = true
 serde.workspace = true
+office-engine.workspace = true
