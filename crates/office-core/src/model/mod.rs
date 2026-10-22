@@ -17,7 +17,10 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-pub use chart::{make_ref, parse_ref, quote_sheet, ref_cells, ref_numbers, ref_texts, rename_in_ref, AnchorPoint, Chart, ChartAnchor, ChartGrouping, ChartKind, ChartSeries, ChartSource, LegendPosition, SeriesCache};
+pub use chart::{
+    make_ref, parse_ref, quote_sheet, ref_cells, ref_numbers, ref_texts, rename_in_ref, AnchorPoint, Chart, ChartAnchor, ChartGrouping,
+    ChartKind, ChartSeries, ChartSource, LegendPosition, SeriesCache,
+};
 pub use sheet::{format_number, CellRef, Range, Sheet, SheetCell, SheetRow, Value};
 pub use slide::{Frame, FrameContent, Placeholder, Slide, SlideSize, TextBody};
 pub use table::{Cell, Row, Table};

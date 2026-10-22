@@ -56,7 +56,9 @@ fn a_chart_from_a_block_of_cells() {
     // Read back: the same chart, which saves again without changes.
     let mut back = SheetsView::open(&bytes, "book.xlsx").unwrap();
     let c2 = back.sheets()[0].charts[0].clone();
-    let refs = |c: &office_core::model::Chart| c.series.iter().map(|s| (s.name_ref.clone(), s.categories.clone(), s.values.clone())).collect::<Vec<_>>();
+    let refs = |c: &office_core::model::Chart| {
+        c.series.iter().map(|s| (s.name_ref.clone(), s.categories.clone(), s.values.clone())).collect::<Vec<_>>()
+    };
     assert_eq!(refs(&c2), refs(&v.sheets()[0].charts[0]));
     assert_eq!(c2.series[1].cache.values, [Some(4.0), Some(5.0), Some(7.0)]);
     assert_eq!(c2.anchor, v.sheets()[0].charts[0].anchor);
@@ -137,7 +139,15 @@ fn other_apps_charts_survive() {
         eprintln!("{}: {count} charts", path.display());
         for (i, s) in v.sheets().to_vec().iter().enumerate() {
             for c in v.charts(i) {
-                eprintln!("  {} {:?} {:?} {} series, {} categories, {:?}", s.name, c.kind, c.title, c.series.len(), c.categories.len(), c.range);
+                eprintln!(
+                    "  {} {:?} {:?} {} series, {} categories, {:?}",
+                    s.name,
+                    c.kind,
+                    c.title,
+                    c.series.len(),
+                    c.categories.len(),
+                    c.range
+                );
             }
         }
         let pkg = Package::read(&bytes).unwrap();

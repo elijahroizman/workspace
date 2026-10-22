@@ -1,11 +1,11 @@
 //! Charts in the view: what each one shows (worked out from the cells now), where it sits in
 //! grid pixels, and the commands that make, change, move and delete them.
 
-use office_core::model::{
-    make_ref, parse_ref, ref_cells, rename_in_ref, AnchorPoint, Chart, ChartAnchor, ChartGrouping, ChartKind, ChartSeries, LegendPosition, Range,
-    Sheet, Value,
-};
 use office_core::model::CellRef;
+use office_core::model::{
+    make_ref, parse_ref, ref_cells, rename_in_ref, AnchorPoint, Chart, ChartAnchor, ChartGrouping, ChartKind, ChartSeries, LegendPosition,
+    Range, Sheet, Value,
+};
 use serde::{Deserialize, Serialize};
 
 use super::{CStep, Grid, SheetsView};
@@ -108,7 +108,10 @@ impl SheetsView {
         let theme = doc.theme.clone();
         let accent = |i: usize| {
             let rgb = theme.as_ref().and_then(|t| t.scheme_color(&format!("accent{}", i % 6 + 1)));
-            format!("#{}", rgb.map(|c| c.hex()).unwrap_or_else(|| ["4472C4", "ED7D31", "A5A5A5", "FFC000", "5B9BD5", "70AD47"][i % 6].into()))
+            format!(
+                "#{}",
+                rgb.map(|c| c.hex()).unwrap_or_else(|| ["4472C4", "ED7D31", "A5A5A5", "FFC000", "5B9BD5", "70AD47"][i % 6].into())
+            )
         };
         let palette: Vec<String> = (0..6).map(accent).collect();
         let css = |c: &str| {
@@ -129,11 +132,14 @@ impl SheetsView {
                     .iter()
                     .enumerate()
                     .map(|(i, ser)| {
-                        let (name, cats, xs, values) = office_core::formats::xlsx::chart::series_values(ser, sheets, scatter);
+                        let data = office_core::formats::xlsx::chart::series_values(ser, sheets, scatter);
+                        let (name, cats, xs, values) = (data.name, data.cat_text, data.cat_numbers, data.values);
                         // Labels as the cells show them: dates as dates, numbers in their format.
-                        let shown = ser.categories.as_deref().and_then(|f| ref_cells(sheets, f)).map(|(si, cells)| {
-                            cells.iter().map(|&at| crate::display(doc, si, at)).collect::<Vec<_>>()
-                        });
+                        let shown = ser
+                            .categories
+                            .as_deref()
+                            .and_then(|f| ref_cells(sheets, f))
+                            .map(|(si, cells)| cells.iter().map(|&at| crate::display(doc, si, at)).collect::<Vec<_>>());
                         if categories.is_empty() {
                             categories = shown.unwrap_or(cats);
                         }
@@ -237,7 +243,9 @@ impl SheetsView {
             }
         } else if patch.kind.is_some_and(|k| (k == ChartKind::Scatter) != (old.kind == ChartKind::Scatter)) {
             // Between scatter and the rest, x values and categories trade places: plot the same cells again.
-            if let Some((data_sheet, range)) = data_block(&old).and_then(|(n, r)| Some((self.sheets().iter().position(|s| s.name.eq_ignore_ascii_case(&n))?, r))) {
+            if let Some((data_sheet, range)) =
+                data_block(&old).and_then(|(n, r)| Some((self.sheets().iter().position(|s| s.name.eq_ignore_ascii_case(&n))?, r)))
+            {
                 if let Some((series, _)) = self.series_for(data_sheet, range, chart.kind) {
                     chart.series = series;
                 }
@@ -286,7 +294,8 @@ impl SheetsView {
         let s = self.sheets().get(sheet)?;
         let doc = &self.doc;
         let number = |r: u32, c: u32| matches!(s.value(CellRef::new(r, c)), Value::Number(_));
-        let date = |r: u32, c: u32| number(r, c) && crate::numfmt::is_date_format(&crate::format_of(doc, sheet, CellRef::new(r, c)).number_format);
+        let date =
+            |r: u32, c: u32| number(r, c) && crate::numfmt::is_date_format(&crate::format_of(doc, sheet, CellRef::new(r, c)).number_format);
         let text = |r: u32, c: u32| matches!(s.value(CellRef::new(r, c)), Value::Text(_) | Value::Rich(_));
         let (r0, r1, c0, c1) = (range.start.row, range.end.row, range.start.col, range.end.col);
         let header = r1 > r0 && (c0..=c1).all(|c| !number(r0, c) || date(r0, c)) && (c0..=c1).any(|c| text(r0, c) || date(r0, c));
@@ -330,7 +339,9 @@ impl SheetsView {
             }
         }
         let title = match series.as_slice() {
-            [one] => one.name_ref.as_deref().and_then(parse_ref).map(|(_, r)| crate::display(doc, sheet, r.start)).filter(|t| !t.is_empty()),
+            [one] => {
+                one.name_ref.as_deref().and_then(parse_ref).map(|(_, r)| crate::display(doc, sheet, r.start)).filter(|t| !t.is_empty())
+            }
             _ => None,
         };
         Some((series, title))

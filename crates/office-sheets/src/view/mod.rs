@@ -257,7 +257,8 @@ impl SheetsView {
         let used = s.used_range();
         let merges_end = s.merges.iter().map(|m| (m.end.row, m.end.col)).fold((0, 0), |a, b| (a.0.max(b.0), a.1.max(b.1)));
         // Room for the charts too.
-        let charts_end = s.charts.iter().map(|c| c.anchor.to.unwrap_or(c.anchor.from)).fold((0, 0), |a, p| (a.0.max(p.row), a.1.max(p.col)));
+        let charts_end =
+            s.charts.iter().map(|c| c.anchor.to.unwrap_or(c.anchor.from)).fold((0, 0), |a, p| (a.0.max(p.row), a.1.max(p.col)));
         let rows = used.map(|u| u.end.row + 1).unwrap_or(0).max(merges_end.0 + 1).max(charts_end.0 + 1) + 200;
         let cols = used.map(|u| u.end.col + 1).unwrap_or(0).max(merges_end.1 + 1).max(charts_end.1 + 1).max(26) + 26;
         let origin = s.origin.get();

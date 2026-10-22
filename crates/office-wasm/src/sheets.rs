@@ -1,7 +1,7 @@
 //! Workbooks and CSV files.
 
-use office_core::model::{CellRef, Kind, Range};
 use office_core::model::ChartKind;
+use office_core::model::{CellRef, Kind, Range};
 use office_sheets::view::{ChartPatch, FormatPatch, SheetsView};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;

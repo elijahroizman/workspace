@@ -144,8 +144,10 @@ fn auto_title(series: &[ChartSeries]) -> Option<String> {
 fn title_text(t: &Element) -> Option<String> {
     let tx = t.child(ns::C, "tx")?;
     if let Some(rich) = tx.child(ns::C, "rich") {
-        let paras: Vec<String> =
-            rich.children_named(ns::A, "p").map(|p| p.elements().filter(|r| r.is(ns::A, "r") || r.is(ns::A, "fld")).map(|r| r.text()).collect()).collect();
+        let paras: Vec<String> = rich
+            .children_named(ns::A, "p")
+            .map(|p| p.elements().filter(|r| r.is(ns::A, "r") || r.is(ns::A, "fld")).map(|r| r.text()).collect())
+            .collect();
         let text = paras.join(" ").trim().to_string();
         return (!text.is_empty()).then_some(text);
     }
@@ -153,7 +155,8 @@ fn title_text(t: &Element) -> Option<String> {
 }
 
 fn cache_texts(r: &Element) -> Vec<String> {
-    let Some(cache) = r.child(ns::C, "strCache").or_else(|| r.child(ns::C, "numCache")).or_else(|| r.child(ns::C, "multiLvlStrCache")) else {
+    let Some(cache) = r.child(ns::C, "strCache").or_else(|| r.child(ns::C, "numCache")).or_else(|| r.child(ns::C, "multiLvlStrCache"))
+    else {
         return Vec::new();
     };
     let cache = cache.child(ns::C, "lvl").unwrap_or(cache);
@@ -166,7 +169,11 @@ fn points(cache: &Element, count: Option<usize>) -> Vec<String> {
         .children_named(ns::C, "pt")
         .filter_map(|p| Some((p.attr("idx")?.parse().ok()?, p.child(ns::C, "v").map(Element::text).unwrap_or_default())))
         .collect();
-    let n = count.or_else(|| val(cache, "ptCount").and_then(|v| v.parse().ok())).unwrap_or(0).max(pts.iter().map(|(i, _)| i + 1).max().unwrap_or(0)).min(100_000);
+    let n = count
+        .or_else(|| val(cache, "ptCount").and_then(|v| v.parse().ok()))
+        .unwrap_or(0)
+        .max(pts.iter().map(|(i, _)| i + 1).max().unwrap_or(0))
+        .min(100_000);
     let mut out = vec![String::new(); n];
     for (i, v) in pts {
         if i < n {
@@ -239,11 +246,8 @@ pub(super) enum DrawingLink {
 /// Writes a sheet's charts into its drawing (made if it hasn't one), when they've changed.
 /// `same` says the package being written is the one the sheet was read from.
 pub(super) fn write_charts(sheet: &Sheet, sheet_part: &str, sheets: &[Sheet], same: bool, pkg: &mut Package) -> Result<DrawingLink> {
-    let existing = if same && pkg.has(sheet_part) {
-        pkg.related(sheet_part, kind::DRAWING)?.into_iter().find(|(_, p)| pkg.has(p))
-    } else {
-        None
-    };
+    let existing =
+        if same && pkg.has(sheet_part) { pkg.related(sheet_part, kind::DRAWING)?.into_iter().find(|(_, p)| pkg.has(p)) } else { None };
     let charts: Vec<&Chart> = sheet.charts.iter().filter(|c| c.kind != ChartKind::Other || (same && c.source.is_some())).collect();
     let Some((drawing_rel, drawing)) = existing else {
         if charts.is_empty() {
@@ -273,7 +277,8 @@ pub(super) fn write_charts(sheet: &Sheet, sheet_part: &str, sheets: &[Sheet], sa
     // The chart parts the drawing shows now, in order.
     let shown: Vec<Option<String>> = doc.root.elements().map(|a| chart_part_of(a, &rels)).collect();
     drop(rels);
-    let kept: HashSet<&str> = charts.iter().filter_map(|c| c.source.as_ref().filter(|s| s.drawing == drawing).map(|s| s.part.as_str())).collect();
+    let kept: HashSet<&str> =
+        charts.iter().filter_map(|c| c.source.as_ref().filter(|s| s.drawing == drawing).map(|s| s.part.as_str())).collect();
     let in_drawing: Vec<&str> = shown.iter().flatten().map(String::as_str).collect();
     let unchanged = charts.iter().all(|c| c.untouched() && c.source.as_ref().is_some_and(|s| s.drawing == drawing))
         && in_drawing.len() == charts.len()
@@ -407,7 +412,11 @@ fn new_anchor(chart: &Chart, rid: &str, id: u32) -> Element {
         .with_attr("", "macro", "")
         .with_child(
             xdr("nvGraphicFramePr")
-                .with_child(xdr("cNvPr").with_attr("", "id", id.to_string()).with_attr("", "name", format!("Chart {}", id.saturating_sub(1))))
+                .with_child(xdr("cNvPr").with_attr("", "id", id.to_string()).with_attr(
+                    "",
+                    "name",
+                    format!("Chart {}", id.saturating_sub(1)),
+                ))
                 .with_child(xdr("cNvGraphicFramePr")),
         )
         .with_child(
@@ -415,7 +424,9 @@ fn new_anchor(chart: &Chart, rid: &str, id: u32) -> Element {
                 .with_child(Element::new(ns::A, "off").with_attr("", "x", "0").with_attr("", "y", "0"))
                 .with_child(Element::new(ns::A, "ext").with_attr("", "cx", "0").with_attr("", "cy", "0")),
         )
-        .with_child(Element::new(ns::A, "graphic").with_child(Element::new(ns::A, "graphicData").with_attr("", "uri", CHART_URI).with_child(c)));
+        .with_child(
+            Element::new(ns::A, "graphic").with_child(Element::new(ns::A, "graphicData").with_attr("", "uri", CHART_URI).with_child(c)),
+        );
     xdr("twoCellAnchor")
         .with_attr("", "editAs", "oneCell")
         .with_child(point("from", &from))
@@ -485,15 +496,21 @@ fn str_data(local: &str, f: Option<&str>, texts: &[String]) -> Element {
 }
 
 /// What a series shows now: its name, categories (text, or numbers for a scatter chart's x) and values.
-struct Data {
-    name: Option<String>,
-    cat_text: Vec<String>,
-    cat_numbers: Option<Vec<Option<f64>>>,
-    values: Vec<Option<f64>>,
+pub struct SeriesData {
+    pub name: Option<String>,
+    pub cat_text: Vec<String>,
+    pub cat_numbers: Option<Vec<Option<f64>>>,
+    pub values: Vec<Option<f64>>,
 }
 
-fn series_data(s: &ChartSeries, sheets: &[Sheet], scatter: bool) -> Data {
-    let name = s.name_ref.as_deref().and_then(|f| ref_texts(sheets, f)).and_then(|t| t.into_iter().next()).or_else(|| s.name.clone()).or_else(|| s.cache.name.clone());
+fn series_data(s: &ChartSeries, sheets: &[Sheet], scatter: bool) -> SeriesData {
+    let name = s
+        .name_ref
+        .as_deref()
+        .and_then(|f| ref_texts(sheets, f))
+        .and_then(|t| t.into_iter().next())
+        .or_else(|| s.name.clone())
+        .or_else(|| s.cache.name.clone());
     let cat_text = s.categories.as_deref().and_then(|f| ref_texts(sheets, f)).unwrap_or_else(|| s.cache.categories.clone());
     let numeric = s.categories.as_deref().and_then(|f| ref_numbers(sheets, f));
     let cat_numbers = match numeric {
@@ -502,7 +519,7 @@ fn series_data(s: &ChartSeries, sheets: &[Sheet], scatter: bool) -> Data {
         _ => None,
     };
     let values = ref_numbers(sheets, &s.values).unwrap_or_else(|| s.cache.values.clone());
-    Data { name, cat_text, cat_numbers, values }
+    SeriesData { name, cat_text, cat_numbers, values }
 }
 
 const AX_CAT: &str = "500000001";
@@ -518,13 +535,11 @@ pub fn chart_space(chart: &Chart, sheets: &[Sheet]) -> Element {
     let mut ch = c("chart");
     if let Some(title) = chart.title.as_deref().filter(|t| !t.trim().is_empty()) {
         let size = |e: Element| e.with_attr("", "sz", "1400").with_attr("", "b", "0");
-        let p = Element::new(ns::A, "p")
-            .with_child(Element::new(ns::A, "pPr").with_child(size(Element::new(ns::A, "defRPr"))))
-            .with_child(
-                Element::new(ns::A, "r")
-                    .with_child(size(Element::new(ns::A, "rPr").with_attr("", "lang", "en-US")))
-                    .with_child(Element::new(ns::A, "t").with_text(title)),
-            );
+        let p = Element::new(ns::A, "p").with_child(Element::new(ns::A, "pPr").with_child(size(Element::new(ns::A, "defRPr")))).with_child(
+            Element::new(ns::A, "r")
+                .with_child(size(Element::new(ns::A, "rPr").with_attr("", "lang", "en-US")))
+                .with_child(Element::new(ns::A, "t").with_text(title)),
+        );
         let rich = c("rich").with_child(Element::new(ns::A, "bodyPr")).with_child(Element::new(ns::A, "lstStyle")).with_child(p);
         ch.push(c("title").with_child(c("tx").with_child(rich)).with_child(cv("overlay", "0")));
         ch.push(cv("autoTitleDeleted", "0"));
@@ -566,7 +581,9 @@ pub fn chart_space(chart: &Chart, sheets: &[Sheet]) -> Element {
         let mut ser = c("ser").with_child(cv("idx", i.to_string())).with_child(cv("order", i.to_string()));
         match (&s.name_ref, &d.name) {
             (Some(f), name) => {
-                ser.push(c("tx").with_child(c("strRef").with_child(c("f").with_text(f.clone())).with_child(str_cache(&[name.clone().unwrap_or_default()]))));
+                ser.push(c("tx").with_child(
+                    c("strRef").with_child(c("f").with_text(f.clone())).with_child(str_cache(&[name.clone().unwrap_or_default()])),
+                ));
             }
             (None, Some(name)) => {
                 ser.push(c("tx").with_child(c("v").with_text(name.clone())));
@@ -576,8 +593,16 @@ pub fn chart_space(chart: &Chart, sheets: &[Sheet]) -> Element {
         let line_like = matches!(kind, ChartKind::Line | ChartKind::Scatter);
         if let Some(color) = &s.color {
             if line_like {
-                let ln = Element::new(ns::A, "ln").with_attr("", "w", "28575").with_attr("", "cap", "rnd").with_child(solid(color)).with_child(Element::new(ns::A, "round"));
-                ser.push(c("spPr").with_child(if scatter { Element::new(ns::A, "ln").with_attr("", "w", "19050").with_child(Element::new(ns::A, "noFill")) } else { ln }));
+                let ln = Element::new(ns::A, "ln")
+                    .with_attr("", "w", "28575")
+                    .with_attr("", "cap", "rnd")
+                    .with_child(solid(color))
+                    .with_child(Element::new(ns::A, "round"));
+                ser.push(c("spPr").with_child(if scatter {
+                    Element::new(ns::A, "ln").with_attr("", "w", "19050").with_child(Element::new(ns::A, "noFill"))
+                } else {
+                    ln
+                }));
             } else {
                 ser.push(c("spPr").with_child(solid(color)));
             }
@@ -637,13 +662,16 @@ pub fn chart_space(chart: &Chart, sheets: &[Sheet]) -> Element {
         plot.push(group);
         let (cat_pos, val_pos) = if kind == ChartKind::Bar { ("l", "b") } else { ("b", "l") };
         let gridlines = || {
-            c("majorGridlines").with_child(
-                c("spPr").with_child(Element::new(ns::A, "ln").with_attr("", "w", "9525").with_child(solid("D9D9D9"))),
-            )
+            c("majorGridlines")
+                .with_child(c("spPr").with_child(Element::new(ns::A, "ln").with_attr("", "w", "9525").with_child(solid("D9D9D9"))))
         };
         let axis_line = || c("spPr").with_child(Element::new(ns::A, "ln").with_attr("", "w", "9525").with_child(solid("BFBFBF")));
-        let num_fmt = |code: &str| c("numFmt").with_attr("", "formatCode", code).with_attr("", "sourceLinked", if code == "General" { "1" } else { "0" });
-        let ticks = |e: Element| e.with_child(cv("majorTickMark", "none")).with_child(cv("minorTickMark", "none")).with_child(cv("tickLblPos", "nextTo"));
+        let num_fmt = |code: &str| {
+            c("numFmt").with_attr("", "formatCode", code).with_attr("", "sourceLinked", if code == "General" { "1" } else { "0" })
+        };
+        let ticks = |e: Element| {
+            e.with_child(cv("majorTickMark", "none")).with_child(cv("minorTickMark", "none")).with_child(cv("tickLblPos", "nextTo"))
+        };
         let first = if scatter {
             ticks(
                 c("valAx")
@@ -712,9 +740,8 @@ pub fn chart_space(chart: &Chart, sheets: &[Sheet]) -> Element {
 }
 
 /// The series a chart would show, worked out from the sheets' values now (or the file's caches).
-pub fn series_values(s: &ChartSeries, sheets: &[Sheet], scatter: bool) -> (Option<String>, Vec<String>, Option<Vec<Option<f64>>>, Vec<Option<f64>>) {
-    let d = series_data(s, sheets, scatter);
-    (d.name, d.cat_text, d.cat_numbers, d.values)
+pub fn series_values(s: &ChartSeries, sheets: &[Sheet], scatter: bool) -> SeriesData {
+    series_data(s, sheets, scatter)
 }
 
 /// The cache a file would get for a series (for tests and the view's fallback).

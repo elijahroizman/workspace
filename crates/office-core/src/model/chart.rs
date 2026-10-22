@@ -134,7 +134,11 @@ impl Chart {
     pub fn content_untouched(&self) -> bool {
         self.source.as_ref().is_some_and(|s| {
             let r = &s.read_as;
-            r.kind == self.kind && r.grouping == self.grouping && r.title == self.title && r.legend == self.legend && r.series == self.series
+            r.kind == self.kind
+                && r.grouping == self.grouping
+                && r.title == self.title
+                && r.legend == self.legend
+                && r.series == self.series
         })
     }
 
@@ -200,7 +204,8 @@ pub fn ref_cells(sheets: &[Sheet], f: &str) -> Option<(usize, Vec<CellRef>)> {
     let used = sheets[sheet].used_range();
     let last_row = used.map(|u| u.end.row).unwrap_or(0).min(range.end.row);
     let last_col = used.map(|u| u.end.col).unwrap_or(0).min(range.end.col);
-    let (r1, c1) = (if range.rows() > 10_000 { last_row } else { range.end.row }, if range.cols() > 1_000 { last_col } else { range.end.col });
+    let (r1, c1) =
+        (if range.rows() > 10_000 { last_row } else { range.end.row }, if range.cols() > 1_000 { last_col } else { range.end.col });
     let mut cells = Vec::new();
     for r in range.start.row..=r1.max(range.start.row) {
         for c in range.start.col..=c1.max(range.start.col) {
