@@ -1,25 +1,3 @@
-import { blankDocumentBytes, chromeProbeForSlot, commandForSlot, commandForSlotValue } from '@docx-editor.dev/core/editor'
-import '@docx-editor.dev/core/styles/editor.css'
-import { packagedFonts } from '@docx-editor.dev/fonts'
-import type { Editor, TextMatch } from '@docx-editor.dev/react'
-import {
-  DocxEditor,
-  ImageInsertTrigger,
-  useDocumentOutline,
-  useDocumentSearch,
-  useDocxEditor,
-  useEditorCommand,
-  useEditorEvent,
-  useEditorState,
-  useEditorValueCommand,
-  useFontFamily,
-  useFonts,
-  useHeaderFooterState,
-  useHyperlinkPopup,
-  usePageSetup,
-  useParagraphStyle,
-  useZoom,
-} from '@docx-editor.dev/react'
 import {
   AlignCenter,
   AlignJustify,
@@ -55,51 +33,49 @@ import {
   Undo2,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { use, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { EditorProps } from '../../App'
 import type { Rect } from '../../components/CropOverlay'
-import { CropOverlay, rectOf } from '../../components/CropOverlay'
+import { CropOverlay } from '../../components/CropOverlay'
 import { FindBar, InspectorHeader, Workbench, formatZoom } from '../../components/Workbench'
 import { Button, ColorField, IconButton, NumberField, Section, Segmented, SelectField, TableSizePicker, ToolButton } from '../../components/ui'
+import type { CommentEditor } from '../../engine/word/comments'
+import { commentEditor } from '../../engine/word/comments'
+import type { WordEngine } from '../../engine/word/engine'
+import { itemsHtml } from '../../engine/paint'
+import {
+  DocxEditor,
+  ImageInsertTrigger,
+  slotCommand,
+  useDocumentOutline,
+  useDocumentSearch,
+  useDocxEditor,
+  useEditorCommand,
+  useEditorEvent,
+  useEditorState,
+  useEditorValueCommand,
+  useFontFamily,
+  useHeaderFooterState,
+  useHyperlinkPopup,
+  usePageSetup,
+  useParagraphStyle,
+  useWordSelector,
+  useZoom,
+} from '../../engine/word/react'
 import { usePinchZoom } from '../../lib/pinch'
 import { isMac, openExternal, shortcut } from '../../lib/platform'
 import { withKeys } from '../../state/shortcuts'
 import { registerEditor, useWorkspace } from '../../state/workspace'
 import { CommentPeek, CommentStore, CommentsSection } from './Comments'
 import { EXTRA_FONTS, useExtraFonts } from '../../state/fonts'
-import { extraWordFonts } from './extraFonts'
 import './docx.css'
 
-type EditorCommand = Parameters<Editor['exec']>[0]
-
-// The packaged shell mounts the link popover itself; this composed editor has to ask for it.
+// The link popover; the page view shows it beside the pages.
 const POPUPS = { hyperlink: () => <LinkPopover /> }
 
-// One font resolver for every Word tab, so each face is fetched and parsed once.
-const FONTS = packagedFonts()
-
-// New documents start on A4 paper. The engine's blank template is US Letter.
-let blankA4: Promise<Uint8Array> | null = null
-function blankA4Document() {
-  blankA4 ??= (async () => {
-    const { default: JSZip } = await import('jszip')
-    const zip = await JSZip.loadAsync(blankDocumentBytes())
-    const xml = await zip.file('word/document.xml')!.async('string')
-    zip.file('word/document.xml', xml.replace(/<w:pgSz\b[^>]*\/>/, '<w:pgSz w:w="11906" w:h="16838"/>'))
-    return zip.generateAsync({ type: 'uint8array' })
-  })()
-  return blankA4
-}
-
 export default function DocxTab({ tab, active }: EditorProps) {
-  // Downloaded extras (Michelangelus) join only once they're on disk, so the engine doesn't try them.
-  const extras = useExtraFonts((s) => EXTRA_FONTS.some((f) => s.installed[f.id]))
-  const fonts = useFonts(FONTS, extras ? extraWordFonts : undefined)
-  const blank = tab.bytes ? null : use(blankA4Document())
-  // A copy per tab, so two new documents never share bytes.
-  const document = useMemo(() => tab.bytes ?? blank!.slice(), [tab.bytes, blank])
-  const savedRevision = useRef<number | null>(null)
   const commentsChanged = useRef(false)
+  const docChanged = useRef(false)
   const markDirty = useWorkspace((s) => s.markDirty)
   const comments = useMemo(
     () =>
@@ -112,44 +88,46 @@ export default function DocxTab({ tab, active }: EditorProps) {
 
   return (
     <DocxEditor.Root
-      document={document}
-      fonts={fonts}
-      mode="edit"
+      document={tab.bytes}
       popups={POPUPS}
-      author="Workspace"
       onReady={(editor) => {
         if (import.meta.env.DEV || import.meta.env.VITE_TEST_HOOKS) Object.assign(window, { __docxEditor: editor })
-        savedRevision.current = editor.getDocumentHandle().revision
         commentsChanged.current = false
-        comments.load(editor, tab.bytes)
+        docChanged.current = false
+        comments.load(commentEditor(editor), tab.bytes)
       }}
       onChange={(change) => {
-        if (change.source === 'load') {
-          savedRevision.current = change.revision
-          return
-        }
-        markDirty(tab.id, change.revision !== savedRevision.current || commentsChanged.current)
+        if (change.source === 'load') return
+        docChanged.current = change.revision !== 0
+        markDirty(tab.id, docChanged.current || commentsChanged.current)
       }}
     >
-      <DocxWorkbench tab={tab} active={active} savedRevision={savedRevision} comments={comments} commentsChanged={commentsChanged} />
+      <DocxWorkbench tab={tab} active={active} comments={comments} commentsChanged={commentsChanged} />
     </DocxEditor.Root>
   )
 }
 
-function DocxWorkbench({
-  tab,
-  active,
-  savedRevision,
-  comments,
-  commentsChanged,
-}: EditorProps & { savedRevision: React.MutableRefObject<number | null>; comments: CommentStore; commentsChanged: React.MutableRefObject<boolean> }) {
+function DocxWorkbench({ tab, active, comments, commentsChanged }: EditorProps & { comments: CommentStore; commentsChanged: React.MutableRefObject<boolean> }) {
   const editor = useDocxEditor()
   const page = useEditorState((s) => s.page)
   const zoom = useZoom()
   const search = useDocumentSearch()
   const [findOpen, setFindOpen] = useState<false | 'find' | 'replace'>(false)
-  const editorRef = useRef<Editor | null>(null)
-  editorRef.current = editor as Editor | null
+  const editorRef = useRef<WordEngine | null>(null)
+  editorRef.current = editor
+  const host = useMemo(() => (editor ? commentEditor(editor) : null), [editor])
+  const hostRef = useRef<CommentEditor | null>(host)
+  hostRef.current = host
+  useEffect(() => {
+    if (!editor) return
+    let revision = editor.revision
+    return editor.subscribe(() => {
+      if (editor.revision !== revision) {
+        revision = editor.revision
+        useWorkspace.getState().markDirty(tab.id, editor.state.dirty || commentsChanged.current)
+      }
+    })
+  }, [editor, tab.id, commentsChanged])
   const zoomRef = useRef(zoom)
   zoomRef.current = zoom
   const stageRef = useRef<HTMLDivElement>(null)
@@ -170,13 +148,15 @@ function DocxWorkbench({
   useEffect(
     () =>
       registerEditor(tab.id, {
+        getRevision: () => `${editorRef.current?.revision}:${comments.getEditVersion()}`,
         getBytes: async () => {
           const ed = editorRef.current
-          if (!ed) throw new Error('The document is still loading.')
-          return comments.write(ed, new Uint8Array(await ed.save()))
+          const h = hostRef.current
+          if (!ed || !h) throw new Error('The document is still loading.')
+          return comments.write(h, ed.save())
         },
         markSaved: () => {
-          savedRevision.current = editorRef.current?.getDocumentHandle().revision ?? null
+          editorRef.current?.run({ cmd: 'markSaved' })
           commentsChanged.current = false
         },
         find: () => setFindOpen('find'),
@@ -187,33 +167,33 @@ function DocxWorkbench({
           else if (dir === 'out') z.zoomOut()
           else z.auto()
         },
-        print: () => printPages(),
+        print: () => printPages(editorRef.current),
         actions: {
           'text.bold': () => runSlot(editorRef.current, 'text.bold'),
           'text.italic': () => runSlot(editorRef.current, 'text.italic'),
           'text.underline': () => runSlot(editorRef.current, 'text.underline'),
           'docx.link': () => {
-            if (!hasSelectedText(editorRef.current)) return false
+            if (!editorRef.current?.state.hasSelection) return false
             openLinkRef.current()
           },
           'docx.comment': () => {
-            const ed = editorRef.current
-            if (!ed || !comments.begin(ed)) return false
+            const h = hostRef.current
+            if (!h || !comments.begin(h)) return false
             // The comment is written in the inspector.
             if (!rightOpenRef.current) useWorkspace.getState().toggleRight('docx', tab.id)
           },
-          'docx.header': () => openHeaderFooter(editorRef.current, stageRef.current, 'header'),
-          'docx.footer': () => openHeaderFooter(editorRef.current, stageRef.current, 'footer'),
+          'docx.header': () => openHeaderFooter(editorRef.current, 'header'),
+          'docx.footer': () => openHeaderFooter(editorRef.current, 'footer'),
         },
       }),
-    [tab.id, savedRevision, comments, commentsChanged],
+    [tab.id, comments, commentsChanged],
   )
 
   // Comments follow their text as the document changes.
   const relocateTimer = useRef(0)
   useEditorEvent('change', () => {
     window.clearTimeout(relocateTimer.current)
-    relocateTimer.current = window.setTimeout(() => editorRef.current && comments.relocate(editorRef.current), 300)
+    relocateTimer.current = window.setTimeout(() => hostRef.current && comments.relocate(hostRef.current), 300)
   })
   useEffect(() => () => window.clearTimeout(relocateTimer.current), [])
 
@@ -221,40 +201,12 @@ function DocxWorkbench({
     if (active) editorRef.current?.focus()
   }, [active, editor])
 
-  // The engine turns spellcheck off on its editable pages; turn it back on (macOS draws the
-  // red underlines and offers corrections on right-click, which the engine applies).
-  // It also paints a page break as a form-feed character, which WebKit draws as a "?" box; hide those.
-  useEffect(() => {
-    const stage = stageRef.current
-    if (!stage) return
-    const enable = () => stage.querySelectorAll<HTMLElement>('.docx-pages[contenteditable]').forEach((el) => el.spellcheck || (el.spellcheck = true))
-    enable()
-    hideBreakMarks(stage)
-    // Typing mutates the pages constantly; check spellcheck at most once per frame.
-    let queued = false
-    const observer = new MutationObserver((records) => {
-      for (const record of records) {
-        if (record.type === 'attributes') hideBreakMark(record.target)
-        else record.addedNodes.forEach(hideBreakMarks)
-      }
-      if (queued) return
-      queued = true
-      requestAnimationFrame(() => {
-        queued = false
-        enable()
-      })
-    })
-    observer.observe(stage, { childList: true, subtree: true, attributes: true, attributeFilter: ['spellcheck', 'class'] })
-    return () => observer.disconnect()
-  }, [editor])
-
-  useLinks(stageRef, editorRef)
-  useTypingHelpers(stageRef, editorRef)
+  useLinks(stageRef)
 
   // Cropping the selected picture, on the page.
   const [crop, setCrop] = useState<PictureCrop | null>(null)
   const startCrop = () => {
-    const next = pictureCrop(editorRef.current, stageRef.current)
+    const next = pictureCrop(editorRef.current)
     if (next) setCrop(next)
   }
   const endCrop = (frame?: Rect, image?: Rect) => {
@@ -268,10 +220,10 @@ function DocxWorkbench({
   const [peek, setPeek] = useState<{ id: string; at: { left: number; top: number; bottom: number } } | null>(null)
   const peekTimer = useRef(0)
   const hover = (e: React.MouseEvent) => {
-    const ed = editorRef.current
+    const h = hostRef.current
     window.clearTimeout(peekTimer.current)
-    if (!ed || !comments.threads.length || e.buttons) return setPeek(null)
-    const hit = comments.hitAt(ed, e.clientX, e.clientY)
+    if (!h || !comments.threads.length || e.buttons) return setPeek(null)
+    const hit = comments.hitAt(h, e.clientX, e.clientY)
     if (!hit) return setPeek(null)
     if (peek?.id === hit.id) return
     const at = { left: hit.rect.left, top: hit.rect.top, bottom: hit.rect.top + hit.rect.height }
@@ -279,7 +231,7 @@ function DocxWorkbench({
   }
   useEffect(() => () => window.clearTimeout(peekTimer.current), [])
 
-  const words = useWordCount(editor as Editor | null)
+  const words = useWordCount(editor)
   const footer = [page && (page.total === 1 ? '1 page' : `${page.total} pages`), words != null && (words === 1 ? '1 word' : `${words.toLocaleString()} words`)].filter(Boolean).join(' · ')
 
   return (
@@ -287,9 +239,7 @@ function DocxWorkbench({
       tab={tab}
       left={<Outline />}
       leftFooter={footer ? <span>{footer}</span> : undefined}
-      right={
-        <Inspector tab={tab} comments={comments} onHeaderFooter={(position) => openHeaderFooter(editorRef.current, stageRef.current, position)} onCrop={startCrop} />
-      }
+      right={<Inspector tab={tab} comments={comments} host={host} onHeaderFooter={(position) => openHeaderFooter(editorRef.current, position)} onCrop={startCrop} />}
     >
       <div
         className={`docx-stage ${crop ? 'cropping' : ''}`}
@@ -301,10 +251,10 @@ function DocxWorkbench({
         }}
         onClick={(e) => {
           // Clicking commented text shows its thread.
-          const ed = editorRef.current
-          if (!ed || !comments.threads.length) return
-          const id = comments.threadAt(ed, e.clientX, e.clientY)
-          if (id !== comments.active) comments.focus(ed, id)
+          const h = hostRef.current
+          if (!h || !comments.threads.length) return
+          const id = comments.threadAt(h, e.clientX, e.clientY)
+          if (id !== comments.active) comments.focus(h, id)
         }}
       >
         <DocxEditor.Viewport className="docx-viewport">
@@ -326,8 +276,8 @@ function DocxWorkbench({
         onPrev={() => search.previous()}
         count={search.query ? search.matches.length : null}
         current={search.activeIndex >= 0 ? search.activeIndex : 0}
-        onReplace={(text) => replaceCurrent(editorRef.current, stageRef.current, search, text)}
-        onReplaceAll={(text) => replaceAll(editorRef.current, stageRef.current, search, text)}
+        onReplace={(text) => search.replaceCurrent(text)}
+        onReplaceAll={(text) => search.replaceAll(text)}
       />
       <div className="canvas-bar">
         <UndoRedo />
@@ -370,74 +320,34 @@ function UndoRedo() {
 }
 
 /** Run a toggle command such as bold, for a keyboard shortcut. Answers false when it can't run. */
-function runSlot(editor: Editor | null, slot: Parameters<typeof commandForSlot>[0]) {
-  const command = editor && commandForSlot(slot)
-  if (!editor || !command || !editor.can(command).ok) return false
-  editor.exec(command)
-}
-
-function hasSelectedText(editor: Editor | null) {
-  try {
-    return !!editor?.query({ type: 'selectedText' }).trim()
-  } catch {
-    return false
-  }
+function runSlot(editor: WordEngine | null, slot: Parameters<typeof slotCommand>[1]) {
+  const command = slotCommand(editor, slot)
+  if (!editor || !command.isEnabled) return false
+  command.execute()
 }
 
 /** Whether text is selected, kept current as the selection moves. */
 function useHasSelectedText() {
-  const editor = useDocxEditor() as Editor | null
-  useEditorState((s) => s.selection)
-  return hasSelectedText(editor)
+  return useWordSelector((e) => e.state.hasSelection, false)
 }
 
-/**
- * Edit the header or footer on the page in view, creating it if the page has none. The engine's
- * own command always opens the first page's, so this double-clicks the band the way a person
- * would (the bands ignore the pointer, so nothing shows when hovering over them).
- */
-function openHeaderFooter(editor: Editor | null, stage: HTMLElement | null, position: 'header' | 'footer') {
+/** Edit the header or footer on the page in view, creating it if the page has none. */
+function openHeaderFooter(editor: WordEngine | null, position: 'header' | 'footer') {
   if (!editor) return false
-  const page = editor.getCurrentPage('viewport') - 1
-  const band = stage?.querySelector<HTMLElement>(`.docx-page[data-page-index="${page}"] .docx-hf[data-docx-hf="${position}"]`)
-  if (!band) return editor.exec({ type: 'editHeaderFooter', position }).ok
-  const r = band.getBoundingClientRect()
-  const init = { bubbles: true, cancelable: true, composed: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0 }
-  for (const detail of [1, 2]) {
-    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
-      band.dispatchEvent(type.startsWith('pointer') ? new PointerEvent(type, { ...init, detail, pointerId: 1, isPrimary: true }) : new MouseEvent(type, { ...init, detail }))
-    }
-  }
-  band.dispatchEvent(new MouseEvent('dblclick', { ...init, detail: 2 }))
-  return true
-}
-
-/** Hide the run the engine paints for a page break: a lone form feed, which WebKit draws as a "?" box. */
-function hideBreakMark(node: Node) {
-  const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement)
-  if (el?.classList?.contains('layout-run-text') && el.textContent === '\f' && !el.classList.contains('docx-break-mark')) el.classList.add('docx-break-mark')
-}
-
-function hideBreakMarks(node: Node) {
-  hideBreakMark(node)
-  if (node instanceof HTMLElement) node.querySelectorAll('.layout-run-text').forEach(hideBreakMark)
+  const page = Math.max(0, editor.state.page.current - 1)
+  const ok = editor.run<boolean>({ cmd: 'editHeaderFooter', page, which: position })
+  editor.focus()
+  return ok
 }
 
 /** Words in the document body, recounted shortly after each edit. */
-function useWordCount(editor: Editor | null) {
+function useWordCount(editor: WordEngine | null) {
   const [words, setWords] = useState<number | null>(null)
   const timer = useRef(0)
   const recount = () => {
     window.clearTimeout(timer.current)
     timer.current = window.setTimeout(() => {
-      if (!editor) return
-      try {
-        let n = 0
-        for (const p of editor.query({ type: 'paragraphs' })) n += countWords(p.text)
-        setWords(n)
-      } catch {
-        // Still loading.
-      }
+      if (editor) setWords(editor.doc.wordCount())
     }, 400)
   }
   useEditorEvent('change', recount)
@@ -447,13 +357,6 @@ function useWordCount(editor: Editor | null) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor])
   return words
-}
-
-const WORD = /[\p{L}\p{N}]/u
-function countWords(text: string) {
-  let n = 0
-  for (const token of text.split(/\s+/)) if (WORD.test(token)) n++
-  return n
 }
 
 function Outline() {
@@ -505,16 +408,21 @@ const HIGHLIGHTS: { value: string; name: string; color: string }[] = [
 function Inspector({
   tab,
   comments,
+  host,
   onHeaderFooter,
   onCrop,
 }: {
   tab: EditorProps['tab']
   comments: CommentStore
+  host: CommentEditor | null
   onHeaderFooter: (position: 'header' | 'footer') => void
   onCrop: () => void
 }) {
   const style = useParagraphStyle()
-  const family = useFontFamily()
+  // Downloaded extras (Michelangelus) join the font menu once they're on disk.
+  const installed = useExtraFonts((s) => s.installed)
+  const extraFamilies = useMemo(() => EXTRA_FONTS.filter((f) => installed[f.id]).map((f) => f.family), [installed])
+  const family = useFontFamily(extraFamilies)
   const size = useEditorValueCommand('font.size')
   const color = useEditorValueCommand('text.color')
   const highlight = useEditorValueCommand('text.highlight')
@@ -672,7 +580,7 @@ function Inspector({
           <TableSizePicker
             onPick={(rows, cols) => {
               setTableOpen(false)
-              editor?.exec({ type: 'insertTable', rows, cols } as EditorCommand)
+              editor?.run({ cmd: 'insertTable', rows, cols })
               editor?.focus()
             }}
           />
@@ -683,7 +591,7 @@ function Inspector({
 
       <ImageSection onCrop={onCrop} />
 
-      <CommentsSection store={comments} editor={editor as Editor | null} canAdd={hasSelection} />
+      <CommentsSection store={comments} editor={host} canAdd={hasSelection} />
 
       <TableSection />
 
@@ -697,14 +605,13 @@ function Inspector({
   )
 }
 
-/** Opens the engine's link popover for the selection, like ⌘K. */
+/** Opens the link popover for the selection, like ⌘K. */
 function LinkButton() {
   const editor = useDocxEditor()
   const { openAtCaret } = useHyperlinkPopup()
   // A link needs words to sit on; the engine would otherwise insert the address as new text.
   const hasSelection = useHasSelectedText()
-  const probe = chromeProbeForSlot('text.link')
-  const enabled = hasSelection && !!editor && !!probe && editor.can(probe).ok
+  const enabled = hasSelection && !!editor
   return (
     <ToolButton
       icon={<Link size={15} />}
@@ -718,20 +625,17 @@ function LinkButton() {
 }
 
 /**
- * The engine's link popover, with two fixes. It refuses addresses typed without a scheme
- * ("example.com"), so Apply adds https:// (or mailto:) first. And it writes the link without
- * Word's Hyperlink style, so the text would look plain; Apply also makes it blue and underlined.
+ * The link popover. Addresses typed without a scheme ("example.com") get https:// (or mailto:)
+ * before they're applied; the engine makes the linked text blue and underlined, as Word's
+ * Hyperlink style does.
  */
 function LinkPopover() {
   const editor = useDocxEditor()
-  const { state, setUrl, commitEdit } = useHyperlinkPopup()
-  const textColor = useEditorValueCommand('text.color')
-  const [applyRequest, setApplyRequest] = useState(0)
+  const { state, setUrl, commitEdit, close } = useHyperlinkPopup()
   // Closed from its own buttons or keys: put the caret back in the document.
   const refocus = useRef(false)
   const wrapRef = useRef<HTMLDivElement>(null)
-  // The engine places the popover at the caret, and when it can't measure the caret the popover
-  // lands at the left edge of the document. Put it under the selected words, inside the view.
+  // Put it under the selected words, inside the view.
   const isOpen = state.mode !== 'closed'
   useLayoutEffect(() => {
     const wrap = wrapRef.current
@@ -741,33 +645,17 @@ function LinkPopover() {
     const pop = wrap.querySelector<HTMLElement>('.docx-hyperlink-popup')
     const parent = pop?.offsetParent
     const view = pop?.closest('.docx-viewport') ?? pop?.closest('.docx-stage')
-    const target = selectionRect()
+    const target = selectionRect(editor)
     if (!pop || !parent || !view || !target) return
     const box = parent.getBoundingClientRect()
     const area = view.getBoundingClientRect()
     const left = Math.max(area.left + 8, Math.min(target.left, area.right - pop.offsetWidth - 8))
     const below = target.bottom + 6
     const top = below + pop.offsetHeight > area.bottom - 8 && target.top - area.top > pop.offsetHeight + 14 ? target.top - 6 - pop.offsetHeight : below
-    wrap.style.setProperty('--link-left', `${left - box.left}px`)
-    wrap.style.setProperty('--link-top', `${top - box.top}px`)
+    wrap.style.setProperty('--link-left', `${left - box.left + (parent as HTMLElement).scrollLeft}px`)
+    wrap.style.setProperty('--link-top', `${top - box.top + (parent as HTMLElement).scrollTop}px`)
     wrap.dataset.placed = ''
-  }, [isOpen])
-  useEffect(() => {
-    if (!applyRequest || !editor) return
-    const before = textColor.value
-    // Style first: once the link is in, the selection has collapsed to its end.
-    const group = editor.beginHistoryGroup()
-    const styled = styleAsLink(editor, group)
-    group.end()
-    if (commitEdit()) {
-      // Text typed straight after the link should not carry on blue and underlined.
-      if (styled) endLinkStyle(editor, before)
-    } else if (styled) {
-      editor.exec({ type: 'undo' })
-    }
-    // Runs once per Apply, after the completed address has reached the popover's state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applyRequest])
+  }, [isOpen, editor])
   useEffect(() => {
     if (state.mode !== 'closed' || !refocus.current) return
     refocus.current = false
@@ -777,19 +665,21 @@ function LinkPopover() {
     e.preventDefault()
     e.stopPropagation()
     refocus.current = true
-    const url = state.url.trim()
-    if (url && !url.startsWith('#') && !/^[a-z][a-z0-9+.-]*:/i.test(url)) setUrl(/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(url) ? `mailto:${url}` : `https://${url}`)
-    setApplyRequest((n) => n + 1)
+    let url = state.url.trim()
+    if (url && !url.startsWith('#') && !/^[a-z][a-z0-9+.-]*:/i.test(url)) url = /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(url) ? `mailto:${url}` : `https://${url}`
+    setUrl(url)
+    commitEdit(url)
   }
   return (
     <div
       ref={wrapRef}
       className="docx-link-popover"
+      onMouseDown={(e) => e.stopPropagation()}
       onClickCapture={(e) => {
         const target = e.target as HTMLElement
         if (target.closest('.docx-hyperlink-popup__apply')) apply(e)
         else if (target.closest('.docx-hyperlink-popup__url') && state.url) {
-          // Open it in the browser ourselves, not through the engine's window.open.
+          // Open it in the browser ourselves.
           e.preventDefault()
           e.stopPropagation()
           void openExternal(state.url)
@@ -797,7 +687,10 @@ function LinkPopover() {
       }}
       onKeyDownCapture={(e) => {
         if (e.key === 'Enter' && state.mode === 'editing') apply(e)
-        else if (e.key === 'Escape') refocus.current = true
+        else if (e.key === 'Escape') {
+          refocus.current = true
+          close()
+        }
       }}
     >
       <DocxEditor.HyperLink />
@@ -806,51 +699,35 @@ function LinkPopover() {
 }
 
 /** Where the selection (or caret) is on screen. */
-function selectionRect() {
-  const selection = window.getSelection()
-  if (!selection?.rangeCount) return null
-  const range = selection.getRangeAt(0)
-  if (!range.startContainer.parentElement?.closest('.docx-pages')) return null
-  const rects = Array.from(range.getClientRects()).filter((r) => r.width || r.height)
+function selectionRect(editor: WordEngine | null) {
+  if (!editor?.toClient) return null
+  const o = editor.overlay
+  const rects = o.rects
   if (!rects.length) {
-    const r = range.getBoundingClientRect()
-    return r.width || r.height || r.top ? { left: r.left, top: r.top, bottom: r.bottom } : null
+    if (!o.caret) return null
+    const [page, x, y, h] = o.caret
+    const tl = editor.toClient(page, x, y)
+    const br = editor.toClient(page, x, y + h)
+    return { left: tl.x, top: tl.y, bottom: br.y }
   }
   // Under the last line, from where the selection starts on it.
   const last = rects[rects.length - 1]
-  const lineStart = rects.filter((r) => Math.abs(r.top - last.top) < 2).reduce((a, r) => Math.min(a, r.left), last.left)
-  return { left: lineStart, top: rects[0].top, bottom: last.bottom }
-}
-
-const LINK_COLOR = '0563C1'
-
-/** Color and underline the selected text, as Word's Hyperlink style would. Answers whether it did. */
-function styleAsLink(editor: Editor, historyGroup: ReturnType<Editor['beginHistoryGroup']>) {
-  if (!editor.query({ type: 'selectedText' })) return false
-  const color = commandForSlotValue('text.color', LINK_COLOR)
-  const underline = commandForSlot('text.underline')
-  if (color) editor.exec(color, { historyGroup })
-  if (underline && !editor.isActive(underline)) editor.exec(underline, { historyGroup })
-  return true
-}
-
-/** At the caret after a new link, go back to the text's own color and no underline. */
-function endLinkStyle(editor: Editor, color: unknown) {
-  const restore = commandForSlotValue('text.color', typeof color === 'string' && color ? color : 'auto')
-  const underline = commandForSlot('text.underline')
-  if (restore) editor.exec(restore)
-  if (underline && editor.isActive(underline)) editor.exec(underline)
+  const first = rects[0]
+  const start = editor.toClient(last[0], rects.filter((r) => r[0] === last[0] && Math.abs(r[2] - last[2]) < 2).reduce((a, r) => Math.min(a, r[1]), last[1]), last[2])
+  const top = editor.toClient(first[0], first[1], first[2])
+  const bottom = editor.toClient(last[0], last[1], last[2] + last[4])
+  return { left: start.x, top: top.y, bottom: bottom.y }
 }
 
 /** Shown while a header or footer is open: page numbers, and the way back to the text. */
 function HeaderFooterSection({ position }: { position: 'header' | 'footer' }) {
   const editor = useDocxEditor()
-  const run = (command: EditorCommand) => {
-    editor?.exec(command)
+  const run = (command: Record<string, unknown> & { cmd: string }) => {
+    editor?.run(command)
     editor?.focus()
   }
-  const button = (label: ReactNode, command: EditorCommand, variant?: 'primary' | 'danger') => (
-    <Button variant={variant} disabled={!editor?.can(command).ok} onMouseDown={(e) => e.preventDefault()} onClick={() => run(command)}>
+  const button = (label: ReactNode, command: Record<string, unknown> & { cmd: string }, variant?: 'primary' | 'danger') => (
+    <Button variant={variant} disabled={!editor} onMouseDown={(e) => e.preventDefault()} onClick={() => run(command)}>
       {label}
     </Button>
   )
@@ -861,17 +738,17 @@ function HeaderFooterSection({ position }: { position: 'header' | 'footer' }) {
           <>
             <Hash size={14} /> Page number
           </>,
-          { type: 'insertPageField', field: 'PAGE' },
+          { cmd: 'pageField', field: 'PAGE' },
         )}
-        {button('1 of N', { type: 'insertPageField', field: 'PAGE_X_OF_Y' })}
+        {button('1 of N', { cmd: 'pageField', field: 'PAGE_X_OF_Y' })}
         {button(
           <>
             <Trash2 size={14} /> Remove
           </>,
-          { type: 'removeHeaderFooter' },
+          { cmd: 'removeHeaderFooter' },
           'danger',
         )}
-        {button('Done', { type: 'exitHeaderFooter' }, 'primary')}
+        {button('Done', { cmd: 'exitHeaderFooter' }, 'primary')}
       </div>
       <p className="faint hint">It repeats on every page. Press Escape to go back to the text.</p>
     </Section>
@@ -886,12 +763,12 @@ function ImageSection({ onCrop }: { onCrop: () => void }) {
   const image = useEditorState((s) => s.image)
   if (!editor || !image) return null
   const ratio = image.widthEmu ? image.heightEmu / image.widthEmu : 1
-  const run = (command: EditorCommand) => {
-    editor.exec(command)
+  const run = (command: Record<string, unknown> & { cmd: string }) => {
+    editor.run(command)
     editor.focus()
   }
   // Stays in the field, so the image stays selected for another change.
-  const resize = (widthEmu: number, heightEmu: number) => editor.exec({ type: 'setImageProperties', widthEmu: Math.round(widthEmu), heightEmu: Math.round(heightEmu) })
+  const resize = (widthEmu: number, heightEmu: number) => editor.run({ cmd: 'imageSize', widthEmu: Math.round(widthEmu), heightEmu: Math.round(heightEmu) })
   return (
     <Section title="Image">
       <div className="grid-2">
@@ -915,7 +792,7 @@ function ImageSection({ onCrop }: { onCrop: () => void }) {
           min={0.1}
           max={50}
           disabled={!image.canResize}
-          onCommit={(h) => resize(h * EMU_PER_INCH / ratio, h * EMU_PER_INCH)}
+          onCommit={(h) => resize((h * EMU_PER_INCH) / ratio, h * EMU_PER_INCH)}
         />
         <Button
           disabled={!image.canCrop || !!image.rotationDegrees}
@@ -925,19 +802,17 @@ function ImageSection({ onCrop }: { onCrop: () => void }) {
         >
           <Crop size={14} /> Crop
         </Button>
-        <Button disabled={!image.canResize} onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'setImageProperties', resetToNaturalSize: true })}>
+        <Button disabled={!image.canResize} onMouseDown={(e) => e.preventDefault()} onClick={() => run({ cmd: 'resetImageSize' })}>
           Original size
         </Button>
       </div>
-      <Button variant="danger" block onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'deleteImage' })}>
+      <Button variant="danger" block onMouseDown={(e) => e.preventDefault()} onClick={() => run({ cmd: 'delete', word: false })}>
         <Trash2 size={14} /> Delete
       </Button>
       <p className="faint hint">Drag a corner of the image to resize it.</p>
     </Section>
   )
 }
-
-const BLACK_BORDER = { style: 'single', size: 4, color: { kind: 'hex', value: '000000' } } as const
 
 const CELL_FILLS = ['FFFFFF', 'F2F2F2', 'D9D9D9', 'DCE6F2', 'DFF0D8', 'FCF3CF', 'F8D7DA', '1F2937']
 
@@ -946,13 +821,12 @@ function TableSection() {
   const editor = useDocxEditor()
   const table = useEditorState((s) => s.table)
   if (!editor || !table) return null
-  const can = (command: EditorCommand) => editor.can(command).ok
-  const run = (command: EditorCommand) => {
-    editor.exec(command)
+  const run = (op: string, color?: string | null) => {
+    editor.run({ cmd: 'table', op, color: color ?? null })
     editor.focus()
   }
-  const button = (command: EditorCommand, label: string, icon: ReactNode) => (
-    <IconButton label={label} disabled={!can(command)} onMouseDown={(e) => e.preventDefault()} onClick={() => run(command)}>
+  const button = (op: string, label: string, icon: ReactNode) => (
+    <IconButton label={label} onMouseDown={(e) => e.preventDefault()} onClick={() => run(op)}>
       {icon}
     </IconButton>
   )
@@ -960,15 +834,15 @@ function TableSection() {
     <Section title={`Table · ${table.rows} × ${table.columns}`}>
       <span className="field-caption">Rows</span>
       <div className="toggle-row">
-        {button({ type: 'insertRow', where: 'above' }, 'Insert row above', <ArrowUpToLine size={15} />)}
-        {button({ type: 'insertRow', where: 'below' }, 'Insert row below', <ArrowDownToLine size={15} />)}
-        {button({ type: 'deleteRow' }, 'Delete row', <Minus size={15} />)}
+        {button('insertRowAbove', 'Insert row above', <ArrowUpToLine size={15} />)}
+        {button('insertRowBelow', 'Insert row below', <ArrowDownToLine size={15} />)}
+        {button('deleteRow', 'Delete row', <Minus size={15} />)}
       </div>
       <span className="field-caption">Columns</span>
       <div className="toggle-row">
-        {button({ type: 'insertColumn', where: 'left' }, 'Insert column left', <ArrowLeftToLine size={15} />)}
-        {button({ type: 'insertColumn', where: 'right' }, 'Insert column right', <ArrowRightToLine size={15} />)}
-        {button({ type: 'deleteColumn' }, 'Delete column', <Minus size={15} />)}
+        {button('insertColumnLeft', 'Insert column left', <ArrowLeftToLine size={15} />)}
+        {button('insertColumnRight', 'Insert column right', <ArrowRightToLine size={15} />)}
+        {button('deleteColumn', 'Delete column', <Minus size={15} />)}
       </div>
       <span className="field-caption">Shading and borders (selected cells)</span>
       <div className="swatches">
@@ -980,22 +854,22 @@ function TableSection() {
             className="swatch"
             style={{ background: `#${c}` }}
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => run({ type: 'setCellFill', color: c === 'FFFFFF' ? null : { kind: 'hex', value: c } })}
+            onClick={() => run('fill', c === 'FFFFFF' ? null : c)}
           />
         ))}
       </div>
       <div className="grid-3">
-        <Button onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'setTableBorders', scope: 'all', spec: BLACK_BORDER })}>
+        <Button onMouseDown={(e) => e.preventDefault()} onClick={() => run('bordersAll')}>
           All
         </Button>
-        <Button onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'setTableBorders', scope: 'outside', spec: BLACK_BORDER })}>
+        <Button onMouseDown={(e) => e.preventDefault()} onClick={() => run('bordersOutside')}>
           Outside
         </Button>
-        <Button onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'setTableBorders', scope: 'none', target: 'all' })}>
+        <Button onMouseDown={(e) => e.preventDefault()} onClick={() => run('bordersNone')}>
           None
         </Button>
       </div>
-      <Button variant="danger" block disabled={!can({ type: 'deleteTable' })} onMouseDown={(e) => e.preventDefault()} onClick={() => run({ type: 'deleteTable' })}>
+      <Button variant="danger" block onMouseDown={(e) => e.preventDefault()} onClick={() => run('delete')}>
         <Trash2 size={14} /> Delete table
       </Button>
       <p className="faint hint">Drag a column edge in the table to resize it.</p>
@@ -1061,7 +935,6 @@ function PageSection() {
 
 /** The selected picture on screen: the part that shows, the whole of it, and what it was cropped to. */
 interface PictureCrop {
-  id: string
   src: string
   frame: Rect
   image: Rect
@@ -1070,25 +943,24 @@ interface PictureCrop {
   scale: { x: number; y: number }
 }
 
-function pictureCrop(editor: Editor | null, stage: HTMLElement | null): PictureCrop | null {
-  const picture = editor?.getSelectedImage()
-  const box = stage?.querySelector('.docx-image-selection-overlay__frame')?.getBoundingClientRect()
-  if (!picture?.canCrop || picture.rotationDegrees || !box?.width || !box.height) return null
-  const frame = rectOf(box)
-  // The picture's own element is the one whose visible part is the selection frame.
-  const near = (r: DOMRect) => Math.abs(r.x - frame.x) < 2 && Math.abs(r.y - frame.y) < 2 && Math.abs(r.width - frame.width) < 2 && Math.abs(r.height - frame.height) < 2
-  const view = Array.from(stage!.querySelectorAll('.docx-drawing-crop-viewport')).find((v) => near(v.getBoundingClientRect()))
-  const src = view?.querySelector('img')?.src
-  if (!src) return null
+function pictureCrop(editor: WordEngine | null): PictureCrop | null {
+  const picture = editor?.state.image
+  const box = editor?.overlay.image
+  if (!editor || !picture?.canCrop || picture.rotationDegrees || !box || !editor.toClient) return null
+  const tl = editor.toClient(box[0], box[1], box[2])
+  const br = editor.toClient(box[0], box[1] + box[3], box[2] + box[4])
+  const frame = { x: tl.x, y: tl.y, width: br.x - tl.x, height: br.y - tl.y }
+  const src = editor.media.url(picture.media)
+  if (!src || !frame.width || !frame.height) return null
   const { left, top, right, bottom } = picture.crop
   const width = frame.width / Math.max(0.01, 1 - (left + right) / 100)
   const height = frame.height / Math.max(0.01, 1 - (top + bottom) / 100)
   const image = { x: frame.x - (left / 100) * width, y: frame.y - (top / 100) * height, width, height }
-  return { id: picture.id, src, frame, image, crop: picture.crop, scale: { x: picture.widthEmu / frame.width, y: picture.heightEmu / frame.height } }
+  return { src, frame, image, crop: picture.crop, scale: { x: picture.widthEmu / frame.width, y: picture.heightEmu / frame.height } }
 }
 
 /** Crop the picture to `frame`, a part of `image` (both on screen), in one undoable step. */
-function applyCrop(editor: Editor, start: PictureCrop, frame: Rect, image: Rect) {
+function applyCrop(editor: WordEngine, start: PictureCrop, frame: Rect, image: Rect) {
   const percent = (n: number) => Math.round(Math.min(100, Math.max(0, n * 100)) * 100) / 100
   const crop = {
     left: percent((frame.x - image.x) / image.width),
@@ -1098,242 +970,53 @@ function applyCrop(editor: Editor, start: PictureCrop, frame: Rect, image: Rect)
   }
   const sides = ['left', 'top', 'right', 'bottom'] as const
   if (sides.every((side) => Math.abs(crop[side] - start.crop[side]) < 0.01)) return
-  editor.exec({
-    type: 'setImageProperties',
-    drawingNodeId: start.id,
-    crop,
-    widthEmu: Math.round(frame.width * start.scale.x),
-    heightEmu: Math.round(frame.height * start.scale.y),
-  })
+  editor.run({ cmd: 'cropImage', ...crop, widthEmu: Math.round(frame.width * start.scale.x), heightEmu: Math.round(frame.height * start.scale.y) })
 }
 
-/**
- * What the engine leaves to the system and gets wrong, or doesn't do:
- * - A spelling correction picked from the right-click menu replaces the word it's for. The
- *   engine types it at the caret unless the caret sits right after the word.
- * - "- ", "* " or "1. " typed at the start of a paragraph turns it into a list, as in Word.
- */
-function useTypingHelpers(stageRef: React.RefObject<HTMLDivElement | null>, editorRef: React.RefObject<Editor | null>) {
+/** While ⌘ (Ctrl on Windows) is down, links in the document show a pointing hand: a click opens them. */
+function useLinks(stageRef: React.RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     const stage = stageRef.current
     if (!stage) return
-    let frame = 0
-    const onInput = (e: InputEvent) => {
-      const editor = editorRef.current
-      if (!editor) return
-      if (e.inputType === 'insertReplacementText' && correctSpelling(editor, stage, e)) {
-        e.preventDefault()
-        e.stopPropagation()
-      } else if (e.inputType === 'insertText' && e.data === ' ') {
-        // The engine queues typing and draws it a frame or two later; look once the space is on the page.
-        cancelAnimationFrame(frame)
-        frame = requestAnimationFrame(() => (frame = requestAnimationFrame(() => startList(editor, stage))))
-      }
-    }
-    stage.addEventListener('beforeinput', onInput, true)
-    return () => {
-      cancelAnimationFrame(frame)
-      stage.removeEventListener('beforeinput', onInput, true)
-    }
-  }, [stageRef, editorRef])
-}
-
-const elementOf = (node: Node) => (node instanceof Element ? node : node.parentElement)
-
-/** A point in the pages as the engine counts it: a paragraph, and an offset into its text. */
-function textPosition(stage: HTMLElement, node: Node, offset: number) {
-  const run = elementOf(node)?.closest<HTMLElement>('.layout-run[data-paragraph-id][data-start]')
-  if (!run || !stage.contains(run)) return null
-  const before = document.createRange()
-  before.setStart(run, 0)
-  before.setEnd(node, offset)
-  const inRun = before.toString()
-  return { paragraph: run.dataset.paragraphId!, offset: Number(run.dataset.start) + inRun.length, inRun }
-}
-
-/**
- * Replace a found match. The engine's own replaceMatch isn't supported by its tree editor, so
- * select the match and type over it; for nothing, delete it the way Backspace does.
- */
-function replaceFound(editor: Editor, stage: HTMLElement | null, match: TextMatch, text: string) {
-  if (!editor.selectMatch(match).ok) return false
-  if (text) return editor.exec({ type: 'pasteWithoutFormatting', text }).ok
-  const pages = stage?.querySelector('.docx-pages[contenteditable]')
-  return !!pages && !pages.dispatchEvent(new InputEvent('beforeinput', { inputType: 'deleteContentBackward', bubbles: true, cancelable: true }))
-}
-
-function correctSpelling(editor: Editor, stage: HTMLElement, e: InputEvent) {
-  const text = e.data ?? e.dataTransfer?.getData('text/plain')
-  const target = e.getTargetRanges()[0]
-  const selection = window.getSelection()
-  const range = target ?? (selection?.rangeCount ? selection.getRangeAt(0) : null)
-  if (!text || !range || range.collapsed) return false
-  const word = document.createRange()
-  word.setStart(range.startContainer, range.startOffset)
-  word.setEnd(range.endContainer, range.endOffset)
-  const misspelled = word.toString()
-  const at = textPosition(stage, range.startContainer, range.startOffset)
-  if (!misspelled.trim() || !at) return false
-  const match = editor.findMatches(misspelled, { matchCase: true }).find((m) => m.blockId === at.paragraph && m.start === at.offset)
-  return !!match && replaceFound(editor, stage, match, text)
-}
-
-/** What turns a paragraph into a list when it starts it, as typed: "- ", "* ", "1. ", "1) ". */
-const LIST_MARKERS: { pattern: RegExp; kind: 'bullet' | 'ordered' }[] = [
-  { pattern: /^[-*•] $/, kind: 'bullet' },
-  { pattern: /^1[.)] $/, kind: 'ordered' },
-]
-
-function startList(editor: Editor, stage: HTMLElement) {
-  const selection = window.getSelection()
-  if (!selection?.isCollapsed || !selection.anchorNode) return
-  const at = textPosition(stage, selection.anchorNode, selection.anchorOffset)
-  // Only right after the marker, at the very start of the paragraph.
-  if (!at || at.offset !== at.inRun.length) return
-  const kind = LIST_MARKERS.find((m) => m.pattern.test(at.inRun))?.kind
-  if (!kind) return
-  const list = { type: 'toggleList', kind } as const
-  const marker = editor.findMatches(at.inRun, { matchCase: true }).find((m) => m.blockId === at.paragraph && m.start === 0)
-  if (!marker || !editor.can(list).ok) return
-  // Undo takes back the list, then the marker's removal, as separate steps (the engine can't group these).
-  if (replaceFound(editor, stage, marker, '')) editor.exec(list)
-}
-
-/**
- * Links in the document. ⌘-click (Ctrl-click on Windows) opens one in the browser, as in Word,
- * and the pointer turns into a hand while the key is down. Typing at the end of a link that ends
- * its paragraph would carry on in the link's color, underline and font without being part of it;
- * the new text takes the style of the words before the link instead.
- */
-function useLinks(stageRef: React.RefObject<HTMLDivElement | null>, editorRef: React.RefObject<Editor | null>) {
-  useEffect(() => {
-    const stage = stageRef.current
-    if (!stage) return
-    const modifier = (e: KeyboardEvent | MouseEvent) => (isMac ? e.metaKey : e.ctrlKey)
-    const linkAt = (target: EventTarget | null) => (target instanceof Element ? target.closest<HTMLAnchorElement>('a.docx-hyperlink[data-docx-link-kind="external"]') : null)
-    const onPress = (e: MouseEvent) => {
-      const link = linkAt(e.target)
-      if (!link || e.button !== 0 || !modifier(e)) return
-      e.preventDefault()
-      e.stopPropagation()
-      if (e.type === 'click') void openExternal(link.href)
-    }
-    const onOver = (e: MouseEvent) => {
-      const link = linkAt(e.target)
-      if (link && !link.title) link.title = `${link.getAttribute('href')}\n${shortcut('⌘Click')} to open`
-    }
+    const modifier = (e: KeyboardEvent) => (isMac ? e.metaKey : e.ctrlKey)
     const onKey = (e: KeyboardEvent) => stage.classList.toggle('follow-links', modifier(e))
     const onBlur = () => stage.classList.remove('follow-links')
-    const onInput = (e: InputEvent) => {
-      const editor = editorRef.current
-      if (editor && (e.inputType === 'insertText' || e.inputType === 'insertCompositionText')) leaveLinkStyle(editor, stage)
-    }
-    const presses = ['pointerdown', 'mousedown', 'click'] as const
-    for (const type of presses) stage.addEventListener(type, onPress, true)
-    stage.addEventListener('mouseover', onOver)
-    stage.addEventListener('beforeinput', onInput, true)
     window.addEventListener('keydown', onKey)
     window.addEventListener('keyup', onKey)
     window.addEventListener('blur', onBlur)
     return () => {
-      for (const type of presses) stage.removeEventListener(type, onPress, true)
-      stage.removeEventListener('mouseover', onOver)
-      stage.removeEventListener('beforeinput', onInput, true)
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('keyup', onKey)
       window.removeEventListener('blur', onBlur)
     }
-  }, [stageRef, editorRef])
+  }, [stageRef])
 }
 
-/** How a run of text is drawn, read from the page. */
-function runStyle(run: HTMLElement) {
-  const s = run.style
-  const rgb = s.color.match(/\d+/g)
-  return {
-    color: rgb ? rgb.slice(0, 3).map((n) => Number(n).toString(16).padStart(2, '0')).join('').toUpperCase() : 'auto',
-    underline: s.textDecorationLine.includes('underline'),
-    // The engine puts its embedded copy of a font first, then the font's own name.
-    font: s.fontFamily.split(',').map((f) => f.trim().replace(/^["']|["']$/g, '')).find((f) => f && !f.startsWith('docx-embedded-')) ?? null,
-    // Half-points, the engine's unit: 96 px per inch, 72 pt per inch.
-    size: s.fontSize ? Math.round(parseFloat(s.fontSize) * 1.5) : null,
-    bold: s.fontWeight === 'bold' || Number(s.fontWeight) >= 600,
-    italic: s.fontStyle === 'italic',
-  }
-}
-
-/** Before typing at the end of a link that ends its paragraph, switch to the style of the text in front of the link. */
-function leaveLinkStyle(editor: Editor, stage: HTMLElement) {
-  const selection = window.getSelection()
-  const node = selection?.isCollapsed ? selection.anchorNode : null
-  const run = (node?.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element | null))?.closest<HTMLElement>('.layout-run-text')
-  const link = run?.closest('a.docx-hyperlink')
-  if (!node || !run || !link || selection!.anchorOffset < (node.textContent?.length ?? 0)) return
-  const paragraph = run.dataset.paragraphId ?? ''
-  const runs = Array.from(stage.querySelectorAll<HTMLElement>(`.layout-run-text[data-paragraph-id="${CSS.escape(paragraph)}"]`))
-  const linkRuns = Array.from(link.querySelectorAll<HTMLElement>('.layout-run-text'))
-  const end = Number(run.dataset.end)
-  // Only the link's last characters, with nothing after them in the paragraph.
-  if (run !== linkRuns[linkRuns.length - 1] || runs.some((r) => Number(r.dataset.start) >= end && r.textContent)) return
-  const start = Number(linkRuns[0]?.dataset.start)
-  const before = runs.filter((r) => !r.closest('a.docx-hyperlink') && Number(r.dataset.end) <= start && r.textContent?.trim()).pop()
-  const have = runStyle(run)
-  const want = before ? runStyle(before) : { ...have, color: 'auto', underline: false }
-  const exec = (command: EditorCommand | null) => command && editor.exec(command)
-  if (want.color !== have.color) exec(commandForSlotValue('text.color', want.color))
-  if (want.font && want.font !== have.font) exec(commandForSlotValue('font.family', want.font))
-  if (want.size && want.size !== have.size) exec(commandForSlotValue('font.size', want.size))
-  for (const [slot, on] of [['text.underline', want.underline], ['text.bold', want.bold], ['text.italic', want.italic]] as const) {
-    const command = commandForSlot(slot)
-    if (command && editor.isActive(command) !== on) editor.exec(command)
-  }
-}
-
-/** Replace the match the find bar is on (the first, before any navigation) and go to the next one. */
-function replaceCurrent(ed: Editor | null, stage: HTMLElement | null, search: ReturnType<typeof useDocumentSearch>, text: string) {
-  const query = search.query
-  const index = Math.max(0, search.activeIndex)
-  const match = search.matches[index]
-  if (!ed || !query || !match || !replaceFound(ed, stage, match, text)) return
-  // Offsets after it moved, so search again. Skip matches inside the new text ("cat" → "cats").
-  const next = search.find(query, { matchCase: search.matchCase, wholeWord: search.wholeWord })
-  let i = index
-  while (i < next.length && next[i].blockId === match.blockId && next[i].start >= match.start && next[i].start < match.start + text.length) i++
-  if (next.length) search.goTo(i < next.length ? i : 0)
-}
-
-/** Replace every match, last first so the earlier ones keep their offsets. */
-function replaceAll(ed: Editor | null, stage: HTMLElement | null, search: ReturnType<typeof useDocumentSearch>, text: string) {
-  const query = search.query
-  if (!ed || !query) return
-  const matches = ed.findMatches(query, { matchCase: search.matchCase, wholeWord: search.wholeWord })
-  for (const match of [...matches].reverse()) replaceFound(ed, stage, match, text)
-  search.find(query, { matchCase: search.matchCase, wholeWord: search.wholeWord })
-}
-
-/** Clone the laid-out pages into the print root at their true size, then open the print panel. */
-async function printPages() {
+/** Draw every page into the print root at its true size, then open the print panel. */
+async function printPages(editor: WordEngine | null) {
+  if (!editor) return
   const root = document.getElementById('print-root')!
   root.innerHTML = ''
-  const view = document.querySelector(".view[data-active='true'] .docx-viewport")
-  const pages = view ? Array.from(view.querySelectorAll<HTMLElement>('.docx-page')) : []
-  if (!pages.length) return
+  const sizes = editor.sizes
+  if (!sizes.length) return
   // Match the paper size of the document (layout is at 96 px per inch, as is CSS).
-  const first = pages[0]
   const style = document.createElement('style')
-  style.textContent = `@page { size: ${first.offsetWidth}px ${first.offsetHeight}px; margin: 0; }`
+  style.textContent = `@page { size: ${sizes[0][0]}px ${sizes[0][1]}px; margin: 0; }`
   root.appendChild(style)
-  for (const page of pages) {
+  for (let i = 0; i < sizes.length; i++) {
+    const p = editor.paint(i, true)!
     const wrap = document.createElement('div')
     wrap.className = 'print-page docx-print-page'
-    const clone = page.cloneNode(true) as HTMLElement
-    clone.style.position = 'relative'
-    clone.style.inset = 'auto'
-    clone.style.transform = 'none'
-    clone.style.margin = '0'
-    clone.style.boxShadow = 'none'
-    wrap.appendChild(clone)
+    const page = document.createElement('div')
+    page.className = 'docx-page'
+    page.style.cssText = `position:relative;width:${p.width}px;height:${p.height}px;box-shadow:none`
+    const content = document.createElement('div')
+    content.className = 'docx-page-content'
+    content.innerHTML = itemsHtml(p.items, editor.styles, editor.media.url)
+    page.appendChild(content)
+    wrap.appendChild(page)
     root.appendChild(wrap)
   }
+  await Promise.all(Array.from(root.querySelectorAll('img')).map((img) => img.decode().catch(() => {})))
   window.print()
 }

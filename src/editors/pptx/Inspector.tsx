@@ -47,22 +47,27 @@ import {
   Video,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { InspectorHeader } from '../../components/Workbench'
 import type { MenuEntry } from '../../components/ui'
 import * as platform from '../../lib/platform'
 import { withKeys } from '../../state/shortcuts'
 import { Button, ColorField, Hint, IconButton, normalizeHex, NumberField, PopoverMenu, Section, Segmented, SelectField, TableSizePicker, TextField, ToolButton } from '../../components/ui'
 import type { Restack } from './arrange'
-import { mapPicked, pickedShapes, pickedText, styleShape, styleText, withElements } from './arrange'
-import { SlidePreview } from './SlideStrip'
+import { pickedShapes, pickedText } from './arrange'
+import { SlideImage } from '../../engine/slides/SlideImage'
 import { SlideSwap } from './SlideSwap'
-import type { TableData, TableElement, TableLook } from './table'
-import { TABLE_LOOKS, applyLook, currentLook, fitRowsTo, isTable, resizeColumns, resizeRows, rowsHeight, styleAllCells, themeLook } from './table'
+import type { TableLook } from './table'
+import { TABLE_LOOKS, isTable, themeLook } from './table'
 import { DIRECTIONS, TRANSITIONS, changeTransition } from './transitions'
-import type { Deck, Element, ShapeKind, ShapeStyle, Slide, TextStyle, Transition } from './types'
-import { hasText, linkOf, shapeStyleOf } from './types'
+import type { Deck, Element, Transition } from './types'
+import type { ShapeLook, TextLook } from '../../engine/slides/engine'
+import { hasText } from './types'
 import { extraFamilies, useExtraFonts } from '../../state/fonts'
+
+type TextStyle = Partial<TextLook>
+type ShapeStyle = Partial<ShapeLook>
+type ShapeKind = string
 
 const SHAPES: { kind: ShapeKind; label: string; icon: ReactNode }[] = [
   { kind: 'rect', label: 'Rectangle', icon: <Square size={14} /> },
@@ -102,15 +107,15 @@ export function Inspector({
   /** Crop the selected picture; null when it can't be cropped. */
   onCrop: (() => void) | null
 }) {
-  const { tb, handle, slides, activeIndex, selectedSlides } = deck
+  const { engine, slides, activeIndex, selectedSlides } = deck
   const [shapeMenu, setShapeMenu] = useState<{ x: number; y: number } | null>(null)
   const [videoOpen, setVideoOpen] = useState(false)
   const [tableOpen, setTableOpen] = useState(false)
-  const el = tb.selectedElement
-  const count = tb.selectedCount
+  const el = deck.selectedElement
+  const count = deck.selectedIds.length
   const slide = slides[activeIndex]
 
-  const update = (patch: Partial<Element>) => el && handle.current?.updateElement(el.id, patch)
+  const update = (patch: Partial<Element>) => el && engine.run({ cmd: 'setBox', id: Number(el.id), x: patch.x ?? el.x, y: patch.y ?? el.y, w: patch.width ?? el.width, h: patch.height ?? el.height, rot: patch.rotation ?? el.rotation })
 
   return (
     <>
@@ -118,7 +123,7 @@ export function Inspector({
 
       <Section title="Insert">
         <div className="insert-grid">
-          <ToolButton icon={<Type size={15} />} label="Text" onMouseDown={(e) => e.preventDefault()} onClick={tb.onAddTextBox} />
+          <ToolButton icon={<Type size={15} />} label="Text" onMouseDown={(e) => e.preventDefault()} onClick={() => engine.run({ cmd: 'insertTextBox' })} />
           <ToolButton
             icon={<Shapes size={15} />}
             label="Shape"
@@ -170,20 +175,20 @@ export function Inspector({
           {hasText(el) && <TextSection deck={deck} el={el} />}
           {(el.type === 'shape' || el.type === 'text' || el.type === 'connector') && <FillSection deck={deck} el={el} />}
           <ArrangeSection deck={deck} el={el} update={update} onArrange={onArrange} canArrange={canArrange} onCrop={onCrop} />
-          <LinkSection el={el} update={update} />
+          <LinkSection deck={deck} el={el} />
         </>
       ) : selectedSlides.length > 1 ? (
         <>
           <Section title={`${selectedSlides.length} slides`}>
             <div className="grid-2">
-              <Button onClick={() => handle.current?.duplicateSlides([...selectedSlides])}>
+              <Button onClick={() => engine.run({ cmd: 'duplicateSlides', indexes: selectedSlides })}>
                 <Copy size={14} /> Duplicate
               </Button>
               <Button variant="danger" onClick={() => onDeleteSlides(selectedSlides)}>
                 <Trash2 size={14} /> Delete
               </Button>
             </div>
-            <Button block onClick={() => handle.current?.toggleHideSlides([...selectedSlides])}>
+            <Button block onClick={() => engine.run({ cmd: 'toggleHidden', indexes: selectedSlides })}>
               <EyeOff size={14} /> Hide or show in slideshow
             </Button>
             <Hint tone="faint" as="p">Shift-click picks a run of slides; {platform.isMac ? '⌘' : 'Ctrl'}-click adds or removes one.</Hint>
@@ -194,29 +199,29 @@ export function Inspector({
         slide && (
           <>
           <Section title={`Slide ${activeIndex + 1} of ${slides.length}`}>
-            {tb.layoutOptions.length > 1 && tb.onApplyLayout && (
+            {engine.layouts.length > 1 && (
               <SelectField
                 label="Layout"
-                value={tb.currentLayoutPath ?? null}
-                options={tb.layoutOptions.map((l) => ({ value: l.path, label: l.name }))}
-                onChange={(path) => tb.onApplyLayout?.(path)}
+                value={slide.layout ?? null}
+                options={engine.layouts.map((l) => ({ value: l.path, label: l.name }))}
+                onChange={(path) => engine.run({ cmd: 'applyLayout', layout: path })}
               />
             )}
             <div className="grid-2">
-              <Button onClick={() => handle.current?.duplicateSlides([activeIndex])}>
+              <Button onClick={() => engine.run({ cmd: 'duplicateSlides', indexes: [activeIndex] })}>
                 <Copy size={14} /> Duplicate
               </Button>
               <Button variant="danger" onClick={() => onDeleteSlides([activeIndex])}>
                 <Trash2 size={14} /> Delete
               </Button>
-              <Button disabled={activeIndex === 0} onClick={() => handle.current?.moveSlide(activeIndex, activeIndex - 1)}>
+              <Button disabled={activeIndex === 0} onClick={() => engine.run({ cmd: 'moveSlide', from: activeIndex, to: activeIndex - 1 })}>
                 <ArrowUpToLine size={14} /> Move up
               </Button>
-              <Button disabled={activeIndex >= slides.length - 1} onClick={() => handle.current?.moveSlide(activeIndex, activeIndex + 1)}>
+              <Button disabled={activeIndex >= slides.length - 1} onClick={() => engine.run({ cmd: 'moveSlide', from: activeIndex, to: activeIndex + 1 })}>
                 <ArrowDownToLine size={14} /> Move down
               </Button>
             </div>
-            <Button block onClick={() => tb.onToggleHideSlide?.()}>
+            <Button block onClick={() => engine.run({ cmd: 'toggleHidden', indexes: [activeIndex] })}>
               <EyeOff size={14} /> {slide.hidden ? 'Show slide in slideshow' : 'Hide slide in slideshow'}
             </Button>
             <Hint tone="faint" as="p">Drag across the slide or shift-click to select several objects. Double-click text to edit it.</Hint>
@@ -243,9 +248,7 @@ export function Inspector({
             label: s.label,
             icon: s.icon,
             onSelect: () => {
-              tb.onSetNewShapeType(s.kind)
-              // The engine reads the new shape type on its next render.
-              requestAnimationFrame(() => deck.tbRef.current?.onAddShape())
+              engine.run({ cmd: 'insertShape', preset: s.kind })
             },
           }))}
         />
@@ -291,41 +294,26 @@ function UrlField({ placeholder, submitLabel, initial = '', onSubmit, onClear }:
 
 /** Looks offered for tables: the deck's own accent first, when it has one. */
 export function tableLooks(deck: Deck): TableLook[] {
-  const theme = themeLook(deck.tb.templateScheme?.accent1)
+  const theme = themeLook(deck.engine.theme.colors.accent1)
   return theme ? [theme, ...TABLE_LOOKS] : TABLE_LOOKS
 }
 
-function TableSection({ deck, el }: { deck: Deck; el: TableElement }) {
+function TableSection({ deck, el }: { deck: Deck; el: Element }) {
   const extraFonts = useExtraFonts((s) => s.installed)
-  const { handle, tb } = deck
-  const data = el.tableData
+  const { engine } = deck
+  const data = el.table
   const looks = tableLooks(deck)
-
-  // Dragging the frame taller or shorter stretches the rows to fill it, as in PowerPoint.
-  const last = useRef<{ id: string; height: number } | null>(null)
-  useEffect(() => {
-    const prev = last.current
-    last.current = { id: el.id, height: el.height }
-    if (!data || !prev || prev.id !== el.id || prev.height === el.height) return
-    if (Math.abs(rowsHeight(data) - el.height) > 1) handle.current?.updateElement(el.id, { tableData: fitRowsTo(data, el.height) } as Partial<Element>)
-  }, [el.id, el.height, data, handle])
-
   if (!data) return null
-  const look = currentLook(data, looks)
-  const header = data.firstRowHeader !== false
-  const banded = data.bandedRows !== false
-  const first = data.rows[0]?.cells[0]?.style
-  const fonts = Array.from(new Set([tb.themeFonts?.body, tb.themeFonts?.heading, ...FONTS, ...extraFamilies(extraFonts)].filter(Boolean) as string[]))
-
-  const commit = (next: TableData) => {
-    const height = rowsHeight(next)
-    handle.current?.updateElement(el.id, { tableData: next, ...(height ? { height } : {}) } as Partial<Element>)
-    last.current = { id: el.id, height: height || el.height }
-  }
-  const restyle = (next: TableData) => (look ? applyLook(next, look, { header: next.firstRowHeader !== false, banded: next.bandedRows !== false }) : next)
+  const look = looks.find((l) => l.style === data.style)
+  const header = data.header
+  const banded = data.banded
+  const first = data.textStyle
+  const fonts = Array.from(new Set([engine.theme.body, engine.theme.heading, ...FONTS, ...extraFamilies(extraFonts)].filter(Boolean)))
+  const op = (op: string, value?: string | number) => engine.run({ cmd: 'table', op, value: value == null ? null : String(value) })
+  const style = (patch: TextStyle) => engine.run({ cmd: 'tableTextStyle', patch })
 
   return (
-    <Section title={`Table · ${data.rows.length} × ${data.columnWidths.length}`}>
+    <Section title={`Table · ${data.rows} × ${data.columns}`}>
       <div className="table-looks">
         {looks.map((l) => (
           <button
@@ -334,7 +322,7 @@ function TableSection({ deck, el }: { deck: Deck; el: TableElement }) {
             title={l.label}
             aria-label={`${l.label} table style`}
             className={`table-look ${look?.id === l.id ? 'on' : ''}`}
-            onClick={() => commit(applyLook(data, l, { header, banded }))}
+            onClick={() => op('style', l.style)}
           >
             <span style={{ background: l.header, borderBottom: l.open ? `1.5px solid ${l.text}` : undefined }} />
             <span style={{ background: l.band, boxShadow: `inset 0 -1px ${l.line}` }} />
@@ -344,24 +332,24 @@ function TableSection({ deck, el }: { deck: Deck; el: TableElement }) {
         ))}
       </div>
       <div className="grid-2">
-        <Button className={header ? 'active-chip' : ''} onClick={() => commit(restyle({ ...data, firstRowHeader: !header }))}>
+        <Button className={header ? 'active-chip' : ''} onClick={() => op('header')}>
           Header row
         </Button>
-        <Button className={banded ? 'active-chip' : ''} onClick={() => commit(restyle({ ...data, bandedRows: !banded }))}>
+        <Button className={banded ? 'active-chip' : ''} onClick={() => op('banded')}>
           Banded rows
         </Button>
       </div>
       <div className="grid-2">
-        <Stepper label="Rows" value={data.rows.length} min={1} max={50} onChange={(n) => commit(restyle(resizeRows(data, n)))} />
-        <Stepper label="Columns" value={data.columnWidths.length} min={1} max={20} onChange={(n) => commit(restyle(resizeColumns(data, n)))} />
+        <Stepper label="Rows" value={data.rows} min={1} max={50} onChange={(n) => op('rows', n)} />
+        <Stepper label="Columns" value={data.columns} min={1} max={20} onChange={(n) => op('cols', n)} />
       </div>
       <div className="docx-font-row">
-        <SelectField value={first?.fontFamily ?? null} placeholder="Theme font" options={fonts.map((f) => ({ value: f, label: f }))} onChange={(f) => commit(styleAllCells(data, { fontFamily: f }))} />
-        <NumberField label={<span className="faint">pt</span>} value={first?.fontSize ?? null} precision={1} min={4} max={200} onCommit={(v) => commit(styleAllCells(data, { fontSize: v }))} />
+        <SelectField value={first?.fontFamily ?? null} placeholder="Theme font" options={fonts.map((f) => ({ value: f, label: f }))} onChange={(f) => style({ fontFamily: f })} />
+        <NumberField label={<span className="faint">pt</span>} value={first?.fontSize ?? null} precision={1} min={4} max={200} onCommit={(v) => style({ fontSize: v })} />
       </div>
       <Segmented
         value={first?.align === 'center' || first?.align === 'right' ? first.align : 'left'}
-        onChange={(a) => commit(styleAllCells(data, { align: a }))}
+        onChange={(a) => style({ align: a })}
         options={[
           { value: 'left', icon: <AlignLeft size={15} />, title: 'Align left' },
           { value: 'center', icon: <AlignCenter size={15} />, title: 'Center' },
@@ -390,10 +378,10 @@ function Stepper({ label, value, min, max, onChange }: { label: string; value: n
 
 function TextSection({ deck, el }: { deck: Deck; el: Element & { textStyle?: TextStyle } }) {
   const extraFonts = useExtraFonts((s) => s.installed)
-  const { tb } = deck
-  const style = el.textStyle ?? {}
-  const set = (patch: TextStyle) => tb.onUpdateTextStyle(patch)
-  const fonts = Array.from(new Set([tb.themeFonts?.body, tb.themeFonts?.heading, ...(tb.embeddedFontFamilies ?? []), ...FONTS, ...extraFamilies(extraFonts)].filter(Boolean) as string[]))
+  const { engine } = deck
+  const style: TextStyle = el.textStyle ?? {}
+  const set = (patch: TextStyle) => engine.run({ cmd: 'textStyle', patch })
+  const fonts = Array.from(new Set([engine.theme.body, engine.theme.heading, ...FONTS, ...extraFamilies(extraFonts)].filter(Boolean) as string[]))
   const align = style.align === 'center' || style.align === 'right' || style.align === 'justify' ? style.align : 'left'
   return (
     <Section title="Text">
@@ -414,10 +402,10 @@ function TextSection({ deck, el }: { deck: Deck; el: Element & { textStyle?: Tex
         <IconButton label="Strikethrough" active={!!style.strikethrough} onMouseDown={(e) => e.preventDefault()} onClick={() => set({ strikethrough: !style.strikethrough })}>
           <Strikethrough size={15} />
         </IconButton>
-        <IconButton label="Bulleted list" onMouseDown={(e) => e.preventDefault()} onClick={() => tb.onToggleBullets('bullet')}>
+        <IconButton label="Bulleted list" onMouseDown={(e) => e.preventDefault()} onClick={() => engine.run({ cmd: 'bullets', kind: 'bullet' })}>
           <List size={15} />
         </IconButton>
-        <IconButton label="Numbered list" onMouseDown={(e) => e.preventDefault()} onClick={() => tb.onToggleBullets('numbered')}>
+        <IconButton label="Numbered list" onMouseDown={(e) => e.preventDefault()} onClick={() => engine.run({ cmd: 'bullets', kind: 'numbered' })}>
           <ListOrdered size={15} />
         </IconButton>
       </div>
@@ -439,21 +427,21 @@ function TextSection({ deck, el }: { deck: Deck; el: Element & { textStyle?: Tex
 }
 
 function FillSection({ deck, el }: { deck: Deck; el: Element }) {
-  const { tb } = deck
-  const s = shapeStyleOf(el) ?? {}
+  const { engine } = deck
+  const s: ShapeStyle = el.shapeStyle ?? {}
   const noFill = s.fillMode === 'none' || (!s.fillColor && s.fillMode !== 'solid')
   return (
     <Section title="Fill & line">
       <div className="docx-color-row">
-        <ColorField value={noFill ? null : normalizeHex(s.fillColor)} label="No fill" onChange={(hex) => tb.onUpdateElementStyle({ fillMode: 'solid', fillColor: `#${hex}` })} />
-        <Button className={noFill ? 'active-chip' : ''} onClick={() => tb.onUpdateElementStyle({ fillMode: 'none' })}>
+        <ColorField value={noFill ? null : normalizeHex(s.fillColor)} label="No fill" onChange={(hex) => engine.run({ cmd: 'fill', hex })} />
+        <Button className={noFill ? 'active-chip' : ''} onClick={() => engine.run({ cmd: 'fill', hex: null })}>
           None
         </Button>
       </div>
-      <Swatches value={noFill ? null : normalizeHex(s.fillColor)} onPick={(hex) => tb.onUpdateElementStyle({ fillMode: 'solid', fillColor: `#${hex}` })} />
+      <Swatches value={noFill ? null : normalizeHex(s.fillColor)} onPick={(hex) => engine.run({ cmd: 'fill', hex })} />
       <div className="grid-2">
-        <ColorField value={normalizeHex(s.strokeColor)} label="No line" onChange={(hex) => tb.onUpdateElementStyle({ strokeColor: `#${hex}`, strokeWidth: s.strokeWidth || 1 })} />
-        <NumberField label="W" suffix="pt" value={s.strokeWidth ?? 0} min={0} max={50} step={0.5} precision={1} onCommit={(w) => tb.onUpdateElementStyle({ strokeWidth: w })} />
+        <ColorField value={normalizeHex(s.strokeColor)} label="No line" onChange={(hex) => engine.run({ cmd: 'line', hex, width: s.strokeWidth || 1 })} />
+        <NumberField label="W" suffix="pt" value={s.strokeWidth ?? 0} min={0} max={50} step={0.5} precision={1} onCommit={(w) => engine.run({ cmd: 'line', hex: null, width: w })} />
       </div>
     </Section>
   )
@@ -474,8 +462,8 @@ function ArrangeSection({
   canArrange: (how: Restack) => boolean
   onCrop: (() => void) | null
 }) {
-  const { tb } = deck
-  const kind = el.type === 'text' ? 'Text box' : el.type === 'image' || el.type === 'picture' ? 'Image' : el.type[0].toUpperCase() + el.type.slice(1)
+  const { engine } = deck
+  const kind = el.type === 'text' ? 'Text box' : el.type === 'image' ? 'Image' : el.type[0].toUpperCase() + el.type.slice(1)
   return (
     <Section title={kind}>
       <div className="grid-2">
@@ -485,30 +473,30 @@ function ArrangeSection({
         <NumberField label="H" value={el.height} min={1} onCommit={(height) => update({ height })} />
         <NumberField label="∠" value={el.rotation ?? 0} suffix="°" onCommit={(r) => update({ rotation: ((r % 360) + 360) % 360 })} />
         <div className="toggle-row">
-          <IconButton label="Flip horizontally" onClick={() => tb.onFlip('horizontal')}>
+          <IconButton label="Flip horizontally" onClick={() => engine.run({ cmd: 'flip', horizontal: true })}>
             <FlipHorizontal2 size={15} />
           </IconButton>
-          <IconButton label="Flip vertically" onClick={() => tb.onFlip('vertical')}>
+          <IconButton label="Flip vertically" onClick={() => engine.run({ cmd: 'flip', horizontal: false })}>
             <FlipVertical2 size={15} />
           </IconButton>
         </div>
       </div>
-      {(el.type === 'image' || el.type === 'picture') && (
+      {(el.type === 'image') && (
         <Button block disabled={!onCrop} title={onCrop ? 'Crop' : 'A rotated or flipped picture can’t be cropped here'} onClick={() => onCrop?.()}>
           <Crop size={14} /> Crop
         </Button>
       )}
       <LayerButtons onArrange={onArrange} canArrange={canArrange} />
       {el.type === 'group' && (
-        <Button block onClick={tb.onUngroupElement} title={platform.shortcut(withKeys('Ungroup', 'pptx.ungroup'))}>
+        <Button block onClick={() => engine.run({ cmd: 'ungroup' })} title={platform.shortcut(withKeys('Ungroup', 'pptx.ungroup'))}>
           <Ungroup size={14} /> Ungroup
         </Button>
       )}
       <div className="grid-2">
-        <Button onClick={tb.onDuplicate} title={platform.shortcut(withKeys('Duplicate', 'pptx.duplicate'))}>
+        <Button onClick={() => engine.run({ cmd: 'duplicate' })} title={platform.shortcut(withKeys('Duplicate', 'pptx.duplicate'))}>
           <Copy size={14} /> Duplicate
         </Button>
-        <Button variant="danger" onClick={tb.onDelete}>
+        <Button variant="danger" onClick={() => engine.run({ cmd: 'delete' })}>
           <Trash2 size={14} /> Delete
         </Button>
       </div>
@@ -536,8 +524,8 @@ function LayerButtons({ onArrange, canArrange }: { onArrange: (how: Restack) => 
   )
 }
 
-function LinkSection({ el, update }: { el: Element; update: (patch: Partial<Element>) => void }) {
-  const url = linkOf(el)
+function LinkSection({ deck, el }: { deck: Deck; el: Element }) {
+  const url = el.link?.url
   return (
     <Section title="Link" collapsible defaultOpen={!!url}>
       <UrlField
@@ -547,9 +535,9 @@ function LinkSection({ el, update }: { el: Element; update: (patch: Partial<Elem
         submitLabel={url ? 'Update' : 'Add link'}
         onSubmit={(value) => {
           const href = /^[a-z]+:/i.test(value) ? value : `https://${value}`
-          update({ actionClick: { action: '', url: href } } as Partial<Element>)
+          deck.engine.run({ cmd: 'link', id: Number(el.id), url: href })
         }}
-        onClear={() => update({ actionClick: undefined } as Partial<Element>)}
+        onClear={() => deck.engine.run({ cmd: 'link', id: Number(el.id), url: null })}
       />
       <Hint tone="faint" as="p">Clicking this object during a slideshow opens the link. Video links play in the slide.</Hint>
     </Section>
@@ -557,43 +545,43 @@ function LinkSection({ el, update }: { el: Element; update: (patch: Partial<Elem
 }
 
 function MultiSelection({ deck, count, onArrange, canArrange }: { deck: Deck; count: number; onArrange: (how: Restack) => void; canArrange: (how: Restack) => boolean }) {
-  const { tb } = deck
+  const { engine } = deck
   return (
     <>
     <Section title={`${count} objects`}>
       <div className="grid-2">
-        <Button disabled={!tb.selectionGroupable} onClick={tb.onGroupElements} title={platform.shortcut(withKeys('Group', 'pptx.group'))}>
+        <Button disabled={count < 2} onClick={() => engine.run({ cmd: 'group' })} title={platform.shortcut(withKeys('Group', 'pptx.group'))}>
           <Group size={14} /> Group
         </Button>
-        <Button variant="danger" onClick={tb.onDelete}>
+        <Button variant="danger" onClick={() => engine.run({ cmd: 'delete' })}>
           <Trash2 size={14} /> Delete
         </Button>
       </div>
       <div className="toggle-row">
-        <IconButton label="Align left" onClick={() => tb.onAlignElements('left')}>
+        <IconButton label="Align left" onClick={() => engine.run({ cmd: 'align', how: 'left' })}>
           <AlignStartVertical size={15} />
         </IconButton>
-        <IconButton label="Align centers" onClick={() => tb.onAlignElements('center')}>
+        <IconButton label="Align centers" onClick={() => engine.run({ cmd: 'align', how: 'center' })}>
           <AlignCenterVertical size={15} />
         </IconButton>
-        <IconButton label="Align right" onClick={() => tb.onAlignElements('right')}>
+        <IconButton label="Align right" onClick={() => engine.run({ cmd: 'align', how: 'right' })}>
           <AlignEndVertical size={15} />
         </IconButton>
-        <IconButton label="Align top" onClick={() => tb.onAlignElements('top')}>
+        <IconButton label="Align top" onClick={() => engine.run({ cmd: 'align', how: 'top' })}>
           <AlignStartHorizontal size={15} />
         </IconButton>
-        <IconButton label="Align middles" onClick={() => tb.onAlignElements('middle')}>
+        <IconButton label="Align middles" onClick={() => engine.run({ cmd: 'align', how: 'middle' })}>
           <AlignCenterHorizontal size={15} />
         </IconButton>
-        <IconButton label="Align bottom" onClick={() => tb.onAlignElements('bottom')}>
+        <IconButton label="Align bottom" onClick={() => engine.run({ cmd: 'align', how: 'bottom' })}>
           <AlignEndHorizontal size={15} />
         </IconButton>
       </div>
       <div className="grid-2">
-        <Button disabled={!tb.canDistribute} onClick={() => tb.onDistributeElements('horizontal')}>
+        <Button disabled={count < 3} onClick={() => engine.run({ cmd: 'distribute', horizontal: true })}>
           Space across
         </Button>
-        <Button disabled={!tb.canDistribute} onClick={() => tb.onDistributeElements('vertical')}>
+        <Button disabled={count < 3} onClick={() => engine.run({ cmd: 'distribute', horizontal: false })}>
           Space down
         </Button>
       </div>
@@ -608,17 +596,17 @@ function MultiSelection({ deck, count, onArrange, canArrange }: { deck: Deck; co
 /** Text styling for every selected object that holds text, all at once (one undo step). */
 function GroupTextSection({ deck }: { deck: Deck }) {
   const extraFonts = useExtraFonts((s) => s.installed)
-  const { tb, handle, slides, activeIndex, selectedIds } = deck
+  const { engine, elements, selectedIds } = deck
   const ids = new Set(selectedIds)
-  const texts = pickedText(slides[activeIndex]?.elements ?? [], ids)
+  const texts = pickedText(elements, ids)
   if (!texts.length) return null
   // Show a value only when every box agrees on it.
   const shared = <K extends keyof TextStyle>(key: K) => {
     const first = texts[0].textStyle?.[key]
     return texts.every((t) => t.textStyle?.[key] === first) ? first : undefined
   }
-  const set = (patch: TextStyle) => handle.current?.editSlides(withElements(activeIndex, (els) => mapPicked(els, ids, (el) => styleText(el, patch))))
-  const fonts = Array.from(new Set([tb.themeFonts?.body, tb.themeFonts?.heading, ...(tb.embeddedFontFamilies ?? []), ...FONTS, ...extraFamilies(extraFonts)].filter(Boolean) as string[]))
+  const set = (patch: TextStyle) => engine.run({ cmd: 'textStyle', patch })
+  const fonts = Array.from(new Set([engine.theme.body, engine.theme.heading, ...FONTS, ...extraFamilies(extraFonts)].filter(Boolean) as string[]))
   const all = (key: 'bold' | 'italic' | 'underline' | 'strikethrough') => texts.every((t) => !!t.textStyle?.[key])
   const color = normalizeHex(shared('color') as string | undefined)
   const align = shared('align')
@@ -659,12 +647,12 @@ function GroupTextSection({ deck }: { deck: Deck }) {
 }
 
 function GroupFillSection({ deck }: { deck: Deck }) {
-  const { handle, slides, activeIndex, selectedIds } = deck
+  const { engine, elements, selectedIds } = deck
   const ids = new Set(selectedIds)
-  const shapes = pickedShapes(slides[activeIndex]?.elements ?? [], ids)
+  const shapes = pickedShapes(elements, ids)
   if (!shapes.length) return null
-  const set = (patch: Partial<ShapeStyle>) => handle.current?.editSlides(withElements(activeIndex, (els) => mapPicked(els, ids, (el) => styleShape(el, patch))))
-  const fills = shapes.map((e) => shapeStyleOf(e))
+  const set = (patch: ShapeStyle) => engine.run({ cmd: 'fill', hex: patch.fillMode === 'none' ? null : patch.fillColor })
+  const fills = shapes.map((e) => e.shapeStyle)
   const first = normalizeHex(fills[0]?.fillMode === 'none' ? undefined : fills[0]?.fillColor)
   const value = fills.every((f) => normalizeHex(f?.fillMode === 'none' ? undefined : f?.fillColor) === first) ? first : null
   return (
@@ -680,25 +668,30 @@ function GroupFillSection({ deck }: { deck: Deck }) {
 
 /** Transition into the picked slides, with a preview played from the slide before. */
 function TransitionSection({ deck, indexes }: { deck: Deck; indexes: readonly number[] }) {
-  const { handle, slides, cv, templateFor } = deck
+  const { engine, slides } = deck
   const [run, setRun] = useState(0)
   const first = slides[indexes[0]]
   if (!first) return null
   const current = first.transition
-  const type = indexes.every((i) => (slides[i]?.transition?.type ?? 'none') === (current?.type ?? 'none')) ? (current?.type ?? 'none') : null
+  const type = indexes.every((i) => (slides[i]?.transition?.kind || 'none') === (current?.kind || 'none')) ? (current?.kind || 'none') : null
   const option = TRANSITIONS.find((t) => t.value === type)
   const set = (change: (t: Transition | undefined) => Transition | undefined, targets: readonly number[] = indexes) => {
-    handle.current?.editSlides((all) => all.map((s, i) => (targets.includes(i) ? { ...s, transition: change(s.transition) } : s)))
+    engine.run({ cmd: 'beginGroup' })
+    try {
+      for (const index of targets) engine.run({ cmd: 'transition', indexes: [index], transition: change(slides[index]?.transition) ?? null })
+    } finally {
+      engine.run({ cmd: 'endGroup' })
+    }
     setRun((r) => r + 1)
   }
   const options = TRANSITIONS.map((t) => ({ value: t.value as string, label: t.label }))
   if (type && !option) options.push({ value: type, label: type })
-  const before = slides[indexes[0] - 1] as Slide | undefined
+  const before = slides[indexes[0] - 1]
   const width = 244
   const playing = type && type !== 'none' && type !== 'cut'
   return (
     <Section title="Transition">
-      <SelectField value={type} placeholder="Mixed" options={options} onChange={(v) => set((t) => changeTransition(t, v as Transition['type']))} />
+      <SelectField value={type} placeholder="Mixed" options={options} onChange={(v) => set((t) => changeTransition(t, v as Transition['kind']))} />
       {playing && (
         <>
           <div className="grid-2">
@@ -717,12 +710,12 @@ function TransitionSection({ deck, indexes }: { deck: Deck; indexes: readonly nu
               onCommit={(v) => set((t) => t && { ...t, durationMs: Math.round(v * 1000) })}
             />
           </div>
-          <button type="button" className="transition-preview" style={{ height: (width * cv.canvasSize.height) / cv.canvasSize.width }} title="Play the transition" onClick={() => setRun((r) => r + 1)}>
+          <button type="button" className="transition-preview" style={{ height: (width * engine.height) / engine.width }} title="Play the transition" onClick={() => setRun((r) => r + 1)}>
             <SlideSwap
               run={run}
               transition={current}
-              outgoing={before ? <SlidePreview slide={before} templateElements={templateFor(before)} canvasSize={cv.canvasSize} width={width} lazy={false} /> : <div className="transition-blank" />}
-              incoming={<SlidePreview slide={first} templateElements={templateFor(first)} canvasSize={cv.canvasSize} width={width} lazy={false} />}
+              outgoing={before ? <SlideImage engine={engine} index={indexes[0] - 1} revision={before.revision} width={width} lazy={false} /> : <div className="transition-blank" />}
+              incoming={<SlideImage engine={engine} index={indexes[0]} revision={first.revision} width={width} lazy={false} />}
             />
           </button>
         </>

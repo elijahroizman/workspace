@@ -1,0 +1,164 @@
+/* Slides drawn from the engine's display lists (src/engine/paint.ts), and the editing canvas. */
+
+.slide-preview {
+  position: relative;
+  overflow: hidden;
+}
+
+.slide-surface {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.slide-surface > *,
+.slide-surface .gr > * {
+  position: absolute;
+}
+
+.slide-surface span {
+  white-space: pre;
+  font-kerning: normal;
+}
+
+.slide-surface .gr {
+  transform-origin: 50% 50%;
+}
+
+.slide-surface .gr.clip {
+  overflow: hidden;
+}
+
+.slide-surface .im {
+  overflow: hidden;
+}
+
+.slide-surface .im img {
+  position: absolute;
+  max-width: none;
+}
+
+.slide-surface svg.pa {
+  overflow: visible;
+  width: 1px;
+  height: 1px;
+}
+
+/* The editing canvas. */
+.sc-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+
+.sc-stage {
+  position: relative;
+  margin: auto;
+}
+
+.sc-slide {
+  position: absolute;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12), 0 14px 36px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.sc-slide .slide-surface {
+  pointer-events: none;
+}
+
+.sc-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
+.sc-box {
+  position: absolute;
+  border: 1.5px solid var(--pptx-selection, var(--accent, #4f8cff));
+  transform-origin: 50% 50%;
+  box-sizing: border-box;
+}
+
+.sc-box.editing {
+  border-style: dashed;
+}
+
+.sc-handle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin: -5px 0 0 -5px;
+  border: 1.5px solid var(--pptx-selection, var(--accent, #4f8cff));
+  border-radius: 50%;
+  background: #fff;
+  pointer-events: auto;
+}
+
+.sc-handle::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+.sc-rotate {
+  position: absolute;
+  left: 50%;
+  top: -26px;
+  width: 11px;
+  height: 11px;
+  margin-left: -6px;
+  border: 1.5px solid var(--pptx-selection, var(--accent, #4f8cff));
+  border-radius: 50%;
+  background: #fff;
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.sc-marquee {
+  position: absolute;
+  border: 1px solid var(--accent, #4f8cff);
+  background: color-mix(in srgb, var(--accent, #4f8cff) 12%, transparent);
+}
+
+.sc-text-sel {
+  position: absolute;
+  background: color-mix(in srgb, var(--accent, #4f8cff) 30%, transparent);
+  mix-blend-mode: multiply;
+}
+
+.sc-caret {
+  position: absolute;
+  width: 1.5px;
+  margin-left: -0.75px;
+  background: #111;
+  animation: wp-blink 1.05s steps(1) infinite;
+}
+
+.sc-input {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  resize: none;
+  overflow: hidden;
+  outline: none;
+  white-space: pre;
+}
+
+.sc-input.composing {
+  width: auto;
+  opacity: 1;
+  background: #fff;
+  color: #111;
+  field-sizing: content;
+}

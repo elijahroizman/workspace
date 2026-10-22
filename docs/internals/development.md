@@ -11,6 +11,7 @@ npm run typecheck      # tsc-rs, a Rust port of the TypeScript compiler
 npm run build          # licenses, type check, production build into dist/
 npm run plugins        # builds the optional plugins into plugins/<id>/dist
 cd src-tauri && cargo test
+cd crates && cargo test     # the office compiler
 ```
 
 Type checking uses [tsc-rs](https://github.com/pingdotgg/ts-rust), not Microsoft's `tsc`. In October 2026 it was also faster here than [tsc-ts](https://github.com/vercel-labs/tsc-ts) (0.73 s against 0.87 s for the app).
@@ -60,6 +61,7 @@ src-tauri/
   src/files.rs            raw-bytes file reading and atomic saving
   src/menu.rs             the native menu bar
   linux/                  the .deb's install scripts and APT signing key
+crates/                   the office compiler and engine: Rust, compiled to WebAssembly for the Word, PowerPoint and Excel editors (see office-compiler.md and office-engine.md)
 ```
 
 ## The icon

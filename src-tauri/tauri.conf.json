@@ -52,7 +52,7 @@
       "dmg"
     ],
     "category": "Productivity",
-    "shortDescription": "Word, PowerPoint, PDF, Markdown and text files in one tabbed window",
+    "shortDescription": "Word, PowerPoint, Excel, PDF, Markdown and text files in one tabbed window",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -78,6 +78,24 @@
         "role": "Editor",
         "rank": "Alternate",
         "mimeType": "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      },
+      {
+        "ext": [
+          "xlsx"
+        ],
+        "name": "Excel Workbook",
+        "role": "Editor",
+        "rank": "Alternate",
+        "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      },
+      {
+        "ext": [
+          "csv"
+        ],
+        "name": "CSV File",
+        "role": "Editor",
+        "rank": "Alternate",
+        "mimeType": "text/csv"
       },
       {
         "ext": [

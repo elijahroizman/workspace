@@ -1,14 +1,13 @@
 import { X } from 'lucide-react'
-import { resolveTransitionDurationMs } from 'ooxml-ui/pptx'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { resolveTransitionDurationMs } from './transitions'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as platform from '../../lib/platform'
-import { SlidePreview } from './SlideStrip'
+import { SlideImage } from '../../engine/slides/SlideImage'
 import { SlideSwap } from './SlideSwap'
-import type { Canvas, Element, Slide } from './types'
-import { linkOf } from './types'
+import type { Element, SlideInfo, SlidesEngine } from '../../engine/slides/engine'
 import { parseVideoLink } from './video'
 
-const resolveDuration = (slide: Slide | undefined) => resolveTransitionDurationMs(slide?.transition)
+const resolveDuration = (slide: SlideInfo | undefined) => resolveTransitionDurationMs(slide?.transition)
 
 /**
  * Full-screen slideshow. Arrow keys, space or a click advance; esc ends. Clicking an object
@@ -16,20 +15,16 @@ const resolveDuration = (slide: Slide | undefined) => resolveTransitionDurationM
  * next slide's transition, and a slide set to advance after a time does so.
  */
 export function PresentMode({
-  slides: allSlides,
+  engine,
   startIndex,
-  canvasSize,
-  templateFor,
   onExit,
 }: {
-  slides: readonly Slide[]
+  engine: SlidesEngine
   startIndex: number
-  canvasSize: Canvas['canvasSize']
-  templateFor: (slide: Slide) => Element[]
   onExit: (lastIndex: number) => void
 }) {
   // Hidden slides are skipped, but we report positions in the full deck.
-  const order = allSlides.map((s, i) => ({ s, i })).filter(({ s }) => !s.hidden)
+  const order = useMemo(() => engine.slides.map((s, i) => ({ s, i })).filter(({ s }) => !s.hidden), [engine, engine.slides])
   const [pos, setPos] = useState(() => Math.max(0, order.findIndex(({ i }) => i >= startIndex)))
   // The slide being left, while the next one's transition plays over it.
   const [swap, setSwap] = useState<{ from: number; run: number }>({ from: -1, run: 0 })
@@ -53,7 +48,7 @@ export function PresentMode({
   )
 
   // Advance on its own after the slide's timing, as PowerPoint does.
-  const advanceAfter = current?.s.transition?.advanceAfterMs
+  const advanceAfter = current?.s.transition?.afterMs
   useEffect(() => {
     if (advanceAfter == null || video || pos >= order.length - 1) return
     const timer = window.setTimeout(() => go(1), advanceAfter + resolveDuration(current?.s))
@@ -98,19 +93,21 @@ export function PresentMode({
     return () => window.removeEventListener('keydown', onKey, true)
   }, [go, finish, order.length, video])
 
-  const scale = Math.min(box.width / canvasSize.width, box.height / canvasSize.height)
-  const width = canvasSize.width * scale
-  const height = canvasSize.height * scale
+  const scale = Math.min(box.width / engine.width, box.height / engine.height)
+  const width = engine.width * scale
+  const height = engine.height * scale
   const left = (box.width - width) / 2
   const top = (box.height - height) / 2
 
   const onClick = (e: React.MouseEvent) => {
     if (!current) return
     // Hit-test linked objects, topmost first.
-    const x = (e.clientX - left) / scale
-    const y = (e.clientY - top) / scale
-    const hit = [...current.s.elements].reverse().find((el) => linkOf(el) && x >= el.x && x <= el.x + el.width && y >= el.y && y <= el.y + el.height)
-    const url = hit && linkOf(hit)
+    const stage = stageRef.current!.getBoundingClientRect()
+    const x = (e.clientX - stage.left - left) / scale
+    const y = (e.clientY - stage.top - top) / scale
+    const elements = JSON.parse(engine.doc.elements(current.i)) as Element[]
+    const hit = linkedAt(elements, x, y)
+    const url = hit?.link?.url
     if (hit && url) {
       const videoLink = parseVideoLink(url)
       if (videoLink && videoLink.provider !== 'other') {
@@ -121,6 +118,7 @@ export function PresentMode({
       return
     }
     if (video) setVideo(null)
+    else if (current.s.transition?.onClick === false) return
     else if (pos >= order.length - 1) finish()
     else go(1)
   }
@@ -132,8 +130,8 @@ export function PresentMode({
           <SlideSwap
             run={swap.run}
             transition={current.s.transition}
-            outgoing={order[swap.from] && <SlidePreview slide={order[swap.from].s} templateElements={templateFor(order[swap.from].s)} canvasSize={canvasSize} width={width} lazy={false} />}
-            incoming={<SlidePreview key={current.s.id} slide={current.s} templateElements={templateFor(current.s)} canvasSize={canvasSize} width={width} lazy={false} />}
+            outgoing={order[swap.from] && <SlideImage engine={engine} index={order[swap.from].i} revision={order[swap.from].s.revision} width={width} lazy={false} />}
+            incoming={<SlideImage key={current.s.id} engine={engine} index={current.i} revision={current.s.revision} width={width} lazy={false} />}
           />
         </div>
       )}
@@ -156,4 +154,19 @@ export function PresentMode({
       </div>
     </div>
   )
+}
+
+/** Linked frames are hit in paint order, using their rotated bounds. */
+function linkedAt(elements: readonly Element[], x: number, y: number): Element | undefined {
+  for (const el of [...elements].reverse()) {
+    const child = el.children && linkedAt(el.children, x, y)
+    if (child) return child
+    if (!el.link?.url) continue
+    const angle = -el.rotation * Math.PI / 180
+    const dx = x - el.x - el.width / 2
+    const dy = y - el.y - el.height / 2
+    const lx = dx * Math.cos(angle) - dy * Math.sin(angle)
+    const ly = dx * Math.sin(angle) + dy * Math.cos(angle)
+    if (Math.abs(lx) <= el.width / 2 && Math.abs(ly) <= el.height / 2) return el
+  }
 }

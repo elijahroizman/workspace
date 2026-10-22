@@ -144,7 +144,7 @@ function GeneralPage() {
         <Button onClick={() => (setOpen(false), useSetup.getState().show())}>Show the tour again</Button>
       </SettingsRow>
 
-      <SettingsRow label="Open-source licenses" hint="Workspace is built on open-source engines, including PDFium, docx-editor and CodeMirror.">
+      <SettingsRow label="Open-source licenses" hint="Workspace is built on open-source engines, including PDFium, CodeMirror and the Carlito, Caladea and Liberation fonts.">
         <Button onClick={() => setPage('licenses')}>View licenses</Button>
       </SettingsRow>
     </>

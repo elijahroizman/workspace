@@ -12,7 +12,7 @@ import { ActionCard, DocBadge, EmptyState, IconButton, KindIcon, PillTabs, Popov
 
 /** Recent's filters: file types grouped the way people think of them. */
 const RECENT_GROUPS = [
-  { id: 'office', label: 'Office', none: 'Office files', kinds: ['docx', 'pptx'], color: 'var(--kind-docx)' },
+  { id: 'office', label: 'Office', none: 'Office files', kinds: ['docx', 'pptx', 'xlsx', 'csv'], color: 'var(--kind-docx)' },
   { id: 'notes', label: 'Notes', none: 'notes', kinds: ['md', 'txt'], color: 'var(--kind-md)' },
   { id: 'pdf', label: 'PDF', none: 'PDFs', kinds: ['pdf'], color: 'var(--kind-pdf)' },
   { id: 'image', label: 'Images', none: 'images', kinds: ['image'], color: 'var(--kind-image)' },

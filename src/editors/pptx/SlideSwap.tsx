@@ -1,4 +1,4 @@
-import { SLIDE_TRANSITION_KEYFRAMES, resolveSlideTransition, resolveTransitionDurationMs } from 'ooxml-ui/pptx'
+import { SLIDE_TRANSITION_KEYFRAMES, resolveSlideTransition, resolveTransitionDurationMs } from './transitions'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import type { Transition } from './types'

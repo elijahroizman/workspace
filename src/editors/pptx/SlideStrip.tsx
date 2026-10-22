@@ -1,82 +1,31 @@
 import { Sparkles } from 'lucide-react'
-import { deviceStrokeStageStyle } from 'ooxml-ui/pptx'
-import { SlideLayer } from 'pptx-react-viewer/internals'
-import { memo, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { isMac } from '../../lib/platform'
 import { transitionLabel } from './transitions'
-import type { Canvas, Element, Slide } from './types'
+import type { SlideInfo, SlidesEngine } from '../../engine/slides/engine'
+import { SlideImage } from '../../engine/slides/SlideImage'
 
 /** How a click picks slides: on its own, added to or taken from the picked ones, or a run from the last pick. */
 export type PickMode = 'only' | 'toggle' | 'range'
-
-/** A slide drawn by the engine at full size and scaled down; mounted only when on screen. */
-export const SlidePreview = memo(function SlidePreview({
-  slide,
-  templateElements,
-  canvasSize,
-  width,
-  lazy = true,
-}: {
-  slide: Slide
-  templateElements: Element[]
-  canvasSize: Canvas['canvasSize']
-  width: number
-  lazy?: boolean
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [visible, setVisible] = useState(!lazy)
-  useEffect(() => {
-    if (!lazy) return
-    const observer = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { rootMargin: '600px 0px' })
-    observer.observe(ref.current!)
-    return () => observer.disconnect()
-  }, [lazy])
-  const scale = width / canvasSize.width
-  // Above 1× the show's text clip, an inset in slide pixels, drops whole lines
-  // in WebKit. The class turns that clip off.
-  const enlarged = scale > 1.01
-  return (
-    <div ref={ref} className={enlarged ? 'slide-preview slide-enlarged' : 'slide-preview'} style={{ width, height: canvasSize.height * scale }}>
-      {visible && (
-        <div
-          style={{
-            width: canvasSize.width,
-            height: canvasSize.height,
-            transform: `scale(${scale})`,
-            transformOrigin: '0 0',
-            pointerEvents: 'none',
-            ...deviceStrokeStageStyle(scale),
-            ['--pptx-slide-w' as string]: `${canvasSize.width}px`,
-            ['--pptx-slide-h' as string]: `${canvasSize.height}px`,
-          }}
-        >
-          <SlideLayer slide={slide} templateElements={templateElements} canvasSize={canvasSize} />
-        </div>
-      )}
-    </div>
-  )
-})
 
 /**
  * Left sidebar: every slide, click to go, drag to reorder, right-click for more.
  * ⌘-click (Ctrl on Windows) and shift-click pick several; Delete removes the picked slides.
  */
 export function SlideStrip({
+  engine,
   slides,
   activeIndex,
   selected,
-  canvasSize,
-  templateFor,
   onSelect,
   onMove,
   onMenu,
   onDelete,
 }: {
-  slides: readonly Slide[]
+  engine: SlidesEngine
+  slides: readonly SlideInfo[]
   activeIndex: number
   selected: readonly number[]
-  canvasSize: Canvas['canvasSize']
-  templateFor: (slide: Slide) => Element[]
   onSelect: (index: number, mode: PickMode) => void
   onMove: (from: number, to: number) => void
   onMenu: (index: number, x: number, y: number) => void
@@ -193,7 +142,7 @@ export function SlideStrip({
             )}
           </span>
           <div className="slide-thumb">
-            <SlidePreview slide={slide} templateElements={templateFor(slide)} canvasSize={canvasSize} width={thumbWidth} />
+            <SlideImage engine={engine} index={i} revision={slide.revision} width={thumbWidth} />
           </div>
         </div>
       ))}

@@ -1,10 +1,10 @@
-import type { Editor, HighlightRange } from '@docx-editor.dev/react'
+import type { CommentEditor as Editor, HighlightRange } from '../../engine/word/comments'
 import { Check, MessageSquarePlus, RotateCcw, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Button, Hint, IconButton, Section, TextField } from '../../components/ui'
 import { withKeys } from '../../state/shortcuts'
 import type { Anchor, Note, Thread } from './commentXml'
-import { hasComments, initialsOf, nearest, newParaId, readComments, writeComments } from './commentXml'
+import { initialsOf, nearest, newParaId, readComments, writeComments } from './commentXml'
 
 type Paragraphs = readonly { paraId?: string; text: string }[]
 
@@ -66,6 +66,7 @@ export class CommentStore {
    */
   touched = false
   private version = 0
+  private editVersion = 0
   private listeners = new Set<() => void>()
   private loading: Promise<void> | null = null
 
@@ -76,12 +77,15 @@ export class CommentStore {
     return () => void this.listeners.delete(fn)
   }
   getVersion = () => this.version
+  /** Content edits only. Highlight relocation and selection do not change the saved comments. */
+  getEditVersion = () => this.editVersion
   private emit() {
     this.version++
     this.listeners.forEach((fn) => fn())
   }
   private edited(editor: Editor | null) {
     this.touched = true
+    this.editVersion++
     this.onEdit()
     if (editor) this.paint(editor)
     this.emit()
@@ -94,7 +98,7 @@ export class CommentStore {
     this.draft = null
     this.touched = false
     this.loading = (async () => {
-      if (!original || !(await hasComments(original).catch(() => false))) return
+      if (!original || !editor.hasComments()) return
       // Read them from the engine's own save, whose paragraph ids are the ones it uses.
       const loaded = await readComments(new Uint8Array(await editor.save()))
       // Keep anything posted while the file's comments were still being read.
@@ -203,7 +207,7 @@ export class CommentStore {
 
   /** Which of several copies of the selected words is the selected one: the one under the selection's first line. */
   private pickOccurrence(editor: Editor, base: Anchor, starts: number[]) {
-    const rect = window.getSelection()?.rangeCount ? window.getSelection()!.getRangeAt(0).getClientRects()[0] : null
+    const rect = editor.selectionRect()
     const ranges = starts.flatMap((start) => {
       const m = this.matchFor(editor, { ...base, start })
       return m ? [{ blockId: m.blockId, start, length: base.text.length }] : []

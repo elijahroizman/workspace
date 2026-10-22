@@ -1,0 +1,300 @@
+use office_core::model::{CellRef, Origin, Range, Value};
+use office_core::opc::Package;
+use office_core::xml::{ns, Element};
+use office_engine::display::Item;
+use office_engine::measure::FixedMeasurer;
+
+use super::*;
+
+fn texts(items: &[Item]) -> Vec<String> {
+    let mut out = Vec::new();
+    for i in items {
+        match i {
+            Item::Text { text, .. } => out.push(text.clone()),
+            Item::Group { items, .. } => out.extend(texts(items)),
+            _ => {}
+        }
+    }
+    out
+}
+
+#[test]
+fn csv_opens_draws_edits_and_saves() {
+    let mut host = FixedMeasurer::default();
+    let mut v = SheetsView::open(b"name,qty\nApple,3\nPear,4\n", "fruit.csv").unwrap();
+    assert_eq!(v.kind, Kind::Csv);
+    let p = v.paint(&mut host, 0, 0, 10, 0, 5);
+    assert_eq!(texts(&p.items), vec!["name", "qty", "Apple", "3", "Pear", "4"]);
+    v.set_input(0, CellRef::new(3, 0), "Total");
+    v.set_input(0, CellRef::new(3, 1), "=SUM(B2:B3)");
+    assert_eq!(v.cell_info(0, CellRef::new(3, 1)).display, "7");
+    assert_eq!(v.cell_info(0, CellRef::new(3, 1)).input, "=SUM(B2:B3)");
+    v.set_input(0, CellRef::new(1, 1), "10");
+    assert_eq!(v.cell_info(0, CellRef::new(3, 1)).display, "14");
+    v.undo();
+    assert_eq!(v.cell_info(0, CellRef::new(3, 1)).display, "7");
+    let out = String::from_utf8(v.save().unwrap()).unwrap();
+    assert!(out.contains("Total,7"), "{out}");
+}
+
+#[test]
+fn workbook_formats_columns_and_sheets() {
+    let mut host = FixedMeasurer::default();
+    let mut v = SheetsView::blank(Kind::Sheets);
+    v.set_input(0, CellRef::new(0, 0), "12%");
+    assert_eq!(v.cell_info(0, CellRef::new(0, 0)).display, "12%");
+    v.set_input(0, CellRef::new(1, 0), "2026-01-31");
+    assert_eq!(v.cell_info(0, CellRef::new(1, 0)).display, "2026-01-31");
+    let a1 = Range { start: CellRef::new(0, 0), end: CellRef::new(0, 0) };
+    v.format(0, a1, &FormatPatch { bold: Some(true), fill: Some("FFFF00".into()), ..Default::default() });
+    let info = v.cell_info(0, CellRef::new(0, 0));
+    assert!(info.bold);
+    assert_eq!(info.fill.as_deref(), Some("FFFF00"));
+    v.set_column_width(0, 0, Some(120.0));
+    assert_eq!(v.grid(0).width(0), 120.0);
+    v.shift_rows(0, 0, 1);
+    assert_eq!(v.cell_info(0, CellRef::new(1, 0)).display, "12%");
+    v.toggle_merge(0, Range { start: CellRef::new(5, 0), end: CellRef::new(6, 2) });
+    assert!(v.cell_info(0, CellRef::new(6, 1)).merged);
+    v.add_sheet();
+    v.rename_sheet(1, "Data");
+    assert_eq!(v.sheets()[1].name, "Data");
+    v.paste(1, Range { start: CellRef::new(0, 0), end: CellRef::new(0, 0) }, "a\tb\n1\t2\n");
+    assert_eq!(v.copy(1, Range { start: CellRef::new(0, 0), end: CellRef::new(1, 1) }), "a\tb\n1\t2\n");
+    let found = v.find("b");
+    assert_eq!(found, vec![(1, CellRef::new(0, 1))]);
+    let bytes = v.save().unwrap();
+    let mut back = SheetsView::open(&bytes, "Book.xlsx").unwrap();
+    assert_eq!(back.sheets().len(), 2);
+    assert!(back.cell_info(0, CellRef::new(1, 0)).bold);
+    assert_eq!(back.grid(0).width(0), 120.0);
+    assert!(!back.paint(&mut host, 0, 0, 10, 0, 5).items.is_empty());
+}
+
+#[test]
+fn typed_currency_uses_that_symbol_and_impossible_dates_stay_text() {
+    let mut v = SheetsView::blank(Kind::Sheets);
+    v.set_input(0, CellRef::new(0, 0), "€5");
+    v.set_input(0, CellRef::new(0, 1), "£2.5");
+    v.set_input(0, CellRef::new(0, 2), "$9");
+    v.set_input(0, CellRef::new(1, 0), "-€5");
+    v.set_input(0, CellRef::new(1, 1), "(£4)");
+    assert_eq!(v.cell_info(0, CellRef::new(0, 0)).display, "€5.00");
+    assert_eq!(v.cell_info(0, CellRef::new(0, 1)).display, "£2.50");
+    assert_eq!(v.cell_info(0, CellRef::new(0, 2)).display, "$9.00");
+    assert_eq!(v.cell_info(0, CellRef::new(1, 0)).display, "-€5.00");
+    assert_eq!(v.cell_info(0, CellRef::new(1, 1)).display, "-£4.00");
+    assert_eq!(crate::format_of(&v.doc, 0, CellRef::new(0, 0)).number_format, "\"€\"#,##0.00");
+    assert_eq!(crate::format_of(&v.doc, 0, CellRef::new(0, 1)).number_format, "\"£\"#,##0.00");
+    assert_eq!(crate::format_of(&v.doc, 0, CellRef::new(0, 2)).number_format, "\"$\"#,##0.00");
+
+    v.set_input(0, CellRef::new(2, 0), "2/31/2026");
+    v.set_input(0, CellRef::new(2, 1), "1900-02-29");
+    v.set_input(0, CellRef::new(2, 2), "2024-02-29");
+    v.set_input(0, CellRef::new(3, 0), "2026-02-29");
+    v.set_input(0, CellRef::new(3, 1), "4/31/2026");
+    assert_eq!(v.sheets()[0].value(CellRef::new(2, 0)), &Value::Text("2/31/2026".into()));
+    assert_eq!(v.sheets()[0].value(CellRef::new(2, 1)), &Value::Text("1900-02-29".into()));
+    assert_eq!(v.sheets()[0].value(CellRef::new(3, 0)), &Value::Text("2026-02-29".into()));
+    assert_eq!(v.sheets()[0].value(CellRef::new(3, 1)), &Value::Text("4/31/2026".into()));
+    assert!(matches!(v.sheets()[0].value(CellRef::new(2, 2)), Value::Number(_)));
+    assert_eq!(v.cell_info(0, CellRef::new(2, 2)).display, "2024-02-29");
+}
+
+#[test]
+fn fit_columns_truncates_on_character_boundaries() {
+    let sample = crate::numfmt::format(&Value::Number(123.45), "0.00 \"€\"", crate::DateSystem::default()).text;
+    assert_eq!(sample, "123.45 €");
+    assert!(sample.len() > 9 && !sample.is_char_boundary(9), "byte 9 sits inside the euro sign");
+
+    let mut v = SheetsView::blank(Kind::Sheets);
+    let wide = CellRef::new(0, 0);
+    let euro = CellRef::new(0, 1);
+    v.sheets_mut()[0].set(wide, Value::Number(1_234_567.89));
+    v.sheets_mut()[0].set(euro, Value::Number(123.45));
+    for at in [wide, euro] {
+        let mut f = crate::format_of(&v.doc, 0, at);
+        f.number_format = "0.00 \"€\"".into();
+        crate::set_format(&mut v.doc, 0, at, &f);
+    }
+    let mut host = FixedMeasurer::default();
+    v.fit_columns(&mut host, 0);
+    assert!(v.grid(0).width(0) > v.grid(0).default_width);
+}
+
+fn put_shared(v: &mut SheetsView, at: CellRef, value: Value, formula: Option<&str>, si: &str, range: Option<&str>) {
+    let cell = v.sheets_mut()[0].cell_mut(at);
+    cell.value = value;
+    cell.formula = formula.map(str::to_string);
+    let mut f = Element::new(ns::X, "f").with_attr("", "t", "shared").with_attr("", "si", si);
+    if let Some(range) = range {
+        f.set_attr("", "ref", range);
+    }
+    let f = match formula {
+        Some(text) => f.with_text(text),
+        None => f,
+    };
+    cell.origin = Origin::new(Element::new(ns::X, "c").with_child(f));
+}
+
+fn put_formula(v: &mut SheetsView, at: CellRef, formula: &str) {
+    let cell = v.sheets_mut()[0].cell_mut(at);
+    cell.formula = Some(formula.to_string());
+    cell.value = Value::Number(0.0);
+}
+
+fn formula_text(v: &SheetsView, at: CellRef) -> Option<String> {
+    v.sheets()[0].cell(at).and_then(|c| c.formula.clone())
+}
+
+fn sheet_xml(bytes: &[u8], part: &str) -> String {
+    String::from_utf8(Package::read(bytes).unwrap().part(part).unwrap().to_vec()).unwrap()
+}
+
+#[test]
+fn shift_rows_keeps_shared_formulas_and_moves_references() {
+    let mut v = SheetsView::blank(Kind::Sheets);
+    v.add_sheet();
+    v.rename_sheet(1, "Other");
+    v.sheets_mut()[1].set(CellRef::new(0, 0), Value::Number(3.0));
+    v.sheets_mut()[0].set(CellRef::new(0, 1), Value::Number(10.0));
+    v.sheets_mut()[0].set(CellRef::new(1, 1), Value::Number(20.0));
+    v.sheets_mut()[0].set(CellRef::new(9, 0), Value::Number(5.0));
+    v.sheets_mut()[0].set(CellRef::new(10, 0), Value::Number(6.0));
+    v.sheets_mut()[0].set(CellRef::new(11, 0), Value::Number(7.0));
+    v.sheets_mut()[0].set(CellRef::new(0, 4), Value::Number(100.0));
+    v.sheets_mut()[0].set(CellRef::new(5, 25), Value::Number(1.0));
+    v.sheets_mut()[0].set(CellRef::new(6, 25), Value::Number(2.0));
+    v.sheets_mut()[0].set(CellRef::new(7, 25), Value::Number(4.0));
+    // Above the insertion, so the group and its references stay shared.
+    put_shared(&mut v, CellRef::new(0, 0), Value::Number(0.0), Some("B1+1"), "0", Some("A1:A2"));
+    put_shared(&mut v, CellRef::new(1, 0), Value::Number(0.0), None, "0", None);
+    // Below the insertion: every cell of the group has to become its own formula.
+    put_shared(&mut v, CellRef::new(9, 2), Value::Number(0.0), Some("A10+1"), "1", Some("C10:C12"));
+    put_shared(&mut v, CellRef::new(10, 2), Value::Number(0.0), None, "1", None);
+    put_shared(&mut v, CellRef::new(11, 2), Value::Number(0.0), None, "1", None);
+    put_formula(&mut v, CellRef::new(1, 6), "SUM(Z6:Z8)");
+    put_formula(&mut v, CellRef::new(9, 3), "$E$1+A10");
+    put_formula(&mut v, CellRef::new(9, 5), "Other!A1+A10");
+
+    v.shift_rows(0, 5, 1);
+
+    assert_eq!(v.cell_info(0, CellRef::new(0, 0)).input, "=B1+1");
+    assert_eq!(v.cell_info(0, CellRef::new(1, 0)).input, "=B2+1");
+    assert_eq!(v.cell_info(0, CellRef::new(0, 0)).display, "11");
+    assert_eq!(v.cell_info(0, CellRef::new(1, 0)).display, "21");
+    assert_eq!(formula_text(&v, CellRef::new(10, 2)).as_deref(), Some("A11+1"));
+    assert_eq!(formula_text(&v, CellRef::new(11, 2)).as_deref(), Some("A12+1"));
+    assert_eq!(formula_text(&v, CellRef::new(12, 2)).as_deref(), Some("A13+1"));
+    assert_eq!(v.cell_info(0, CellRef::new(10, 2)).display, "6");
+    assert_eq!(v.cell_info(0, CellRef::new(11, 2)).display, "7");
+    assert_eq!(v.cell_info(0, CellRef::new(12, 2)).display, "8");
+    assert_eq!(formula_text(&v, CellRef::new(1, 6)).as_deref(), Some("SUM(Z7:Z9)"));
+    assert_eq!(v.cell_info(0, CellRef::new(1, 6)).display, "7");
+    assert_eq!(formula_text(&v, CellRef::new(10, 3)).as_deref(), Some("$E$1+A11"));
+    assert_eq!(v.cell_info(0, CellRef::new(10, 3)).display, "105");
+    assert_eq!(formula_text(&v, CellRef::new(10, 5)).as_deref(), Some("Other!A1+A11"));
+    assert_eq!(v.cell_info(0, CellRef::new(10, 5)).display, "8");
+
+    let part = v.sheets()[0].part.clone().unwrap();
+    let bytes = v.save().unwrap();
+    let xml = sheet_xml(&bytes, &part);
+    assert!(xml.contains(r#"t="shared""#), "{xml}");
+    assert!(xml.contains("<f>A11+1</f>"), "{xml}");
+    assert!(xml.contains("<f>A13+1</f>"), "{xml}");
+    assert!(!xml.contains(r#"si="1""#), "the moved group is no longer shared\n{xml}");
+
+    let mut back = SheetsView::open(&bytes, "Book.xlsx").unwrap();
+    crate::recalculate(&mut back.doc, None);
+    assert_eq!(back.cell_info(0, CellRef::new(1, 0)).input, "=B2+1");
+    assert_eq!(back.cell_info(0, CellRef::new(1, 0)).display, "21");
+    assert_eq!(formula_text(&back, CellRef::new(10, 2)).as_deref(), Some("A11+1"));
+    assert_eq!(back.cell_info(0, CellRef::new(10, 2)).display, "6");
+    assert_eq!(back.cell_info(0, CellRef::new(12, 2)).display, "8");
+    assert_eq!(back.cell_info(0, CellRef::new(10, 5)).input, "=Other!A1+A11");
+    assert_eq!(back.cell_info(0, CellRef::new(10, 5)).display, "8");
+}
+
+#[test]
+fn deleting_a_shared_leader_keeps_follower_formulas() {
+    let mut v = SheetsView::blank(Kind::Sheets);
+    v.sheets_mut()[0].set(CellRef::new(9, 0), Value::Number(100.0));
+    v.sheets_mut()[0].set(CellRef::new(10, 0), Value::Number(200.0));
+    v.sheets_mut()[0].set(CellRef::new(11, 0), Value::Number(300.0));
+    put_shared(&mut v, CellRef::new(0, 1), Value::Number(0.0), Some("A10*2"), "0", Some("B1:B3"));
+    put_shared(&mut v, CellRef::new(1, 1), Value::Number(0.0), None, "0", None);
+    put_shared(&mut v, CellRef::new(2, 1), Value::Number(0.0), None, "0", None);
+
+    v.shift_rows(0, 0, -1);
+
+    assert!(v.sheets()[0].cell(CellRef::new(0, 1)).unwrap().formula.is_some(), "the follower that lost its leader still has a formula");
+    assert_eq!(formula_text(&v, CellRef::new(0, 1)).as_deref(), Some("A10*2"));
+    assert_eq!(formula_text(&v, CellRef::new(1, 1)).as_deref(), Some("A11*2"));
+    assert_eq!(v.cell_info(0, CellRef::new(0, 1)).display, "400");
+    assert_eq!(v.cell_info(0, CellRef::new(1, 1)).display, "600");
+
+    let part = v.sheets()[0].part.clone().unwrap();
+    let bytes = v.save().unwrap();
+    let xml = sheet_xml(&bytes, &part);
+    assert!(xml.contains("<f>A10*2</f>"), "{xml}");
+    assert!(xml.contains("<f>A11*2</f>"), "{xml}");
+    assert!(!xml.contains(r#"t="shared""#), "{xml}");
+
+    let mut back = SheetsView::open(&bytes, "Book.xlsx").unwrap();
+    crate::recalculate(&mut back.doc, None);
+    assert_eq!(formula_text(&back, CellRef::new(0, 1)).as_deref(), Some("A10*2"));
+    assert_eq!(formula_text(&back, CellRef::new(1, 1)).as_deref(), Some("A11*2"));
+    assert_eq!(back.cell_info(0, CellRef::new(0, 1)).display, "400");
+    assert_eq!(back.cell_info(0, CellRef::new(1, 1)).display, "600");
+}
+
+#[test]
+fn shift_cols_keeps_shared_formulas_and_moves_references() {
+    let mut v = SheetsView::blank(Kind::Sheets);
+    v.sheets_mut()[0].set(CellRef::new(20, 0), Value::Number(3.0));
+    put_shared(&mut v, CellRef::new(20, 1), Value::Number(0.0), Some("A21*10"), "0", Some("B21:D21"));
+    put_shared(&mut v, CellRef::new(20, 2), Value::Number(0.0), None, "0", None);
+    put_shared(&mut v, CellRef::new(20, 3), Value::Number(0.0), None, "0", None);
+
+    v.shift_cols(0, 1, 1);
+
+    assert_eq!(formula_text(&v, CellRef::new(20, 2)).as_deref(), Some("A21*10"));
+    assert_eq!(formula_text(&v, CellRef::new(20, 3)).as_deref(), Some("C21*10"));
+    assert_eq!(formula_text(&v, CellRef::new(20, 4)).as_deref(), Some("D21*10"));
+    assert_eq!(v.cell_info(0, CellRef::new(20, 2)).display, "30");
+    assert_eq!(v.cell_info(0, CellRef::new(20, 3)).display, "300");
+    assert_eq!(v.cell_info(0, CellRef::new(20, 4)).display, "3000");
+
+    let bytes = v.save().unwrap();
+    let mut back = SheetsView::open(&bytes, "Book.xlsx").unwrap();
+    crate::recalculate(&mut back.doc, None);
+    assert_eq!(formula_text(&back, CellRef::new(20, 2)).as_deref(), Some("A21*10"));
+    assert_eq!(formula_text(&back, CellRef::new(20, 3)).as_deref(), Some("C21*10"));
+    assert_eq!(formula_text(&back, CellRef::new(20, 4)).as_deref(), Some("D21*10"));
+    assert_eq!(back.cell_info(0, CellRef::new(20, 4)).display, "3000");
+}
+
+#[test]
+fn shared_follower_range_expands_when_the_leader_does_not() {
+    // A1's range ends above the insertion; A2's copied range includes it. Keeping them shared
+    // would leave A2 one row short.
+    let mut v = SheetsView::blank(Kind::Sheets);
+    for (row, n) in [1.0, 10.0, 100.0, 1_000.0, 10_000.0].into_iter().enumerate() {
+        v.sheets_mut()[0].set(CellRef::new(row as u32, 25), Value::Number(n));
+    }
+    put_shared(&mut v, CellRef::new(0, 0), Value::Number(0.0), Some("SUM(Z1:Z4)"), "0", Some("A1:A2"));
+    put_shared(&mut v, CellRef::new(1, 0), Value::Number(0.0), None, "0", None);
+
+    v.shift_rows(0, 4, 1);
+
+    assert_eq!(formula_text(&v, CellRef::new(0, 0)).as_deref(), Some("SUM(Z1:Z4)"));
+    assert_eq!(formula_text(&v, CellRef::new(1, 0)).as_deref(), Some("SUM(Z2:Z6)"));
+    assert_eq!(v.cell_info(0, CellRef::new(0, 0)).display, "1111");
+    assert_eq!(v.cell_info(0, CellRef::new(1, 0)).display, "11110");
+
+    let bytes = v.save().unwrap();
+    let mut back = SheetsView::open(&bytes, "Book.xlsx").unwrap();
+    crate::recalculate(&mut back.doc, None);
+    assert_eq!(formula_text(&back, CellRef::new(1, 0)).as_deref(), Some("SUM(Z2:Z6)"));
+    assert_eq!(back.cell_info(0, CellRef::new(1, 0)).display, "11110");
+}

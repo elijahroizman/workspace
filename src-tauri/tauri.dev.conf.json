@@ -1,0 +1,11 @@
+{
+  "productName": "Workspace Dev",
+  "identifier": "com.eliroizman.workspace.dev",
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "macOS": {
+      "signingIdentity": null,
+      "hardenedRuntime": true
+    }
+  }
+}
