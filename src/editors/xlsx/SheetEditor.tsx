@@ -7,6 +7,13 @@ import {
   ArrowRightToLine,
   ArrowUpToLine,
   Bold,
+  ChartArea,
+  ChartBar,
+  ChartColumn,
+  ChartLine,
+  ChartPie,
+  ChartScatter,
+  Donut,
   Italic,
   Merge,
   Minus,
@@ -18,13 +25,19 @@ import {
   Undo2,
   WrapText,
 } from 'lucide-react'
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { EditorProps } from '../../App'
 import { FindBar, InspectorHeader, Workbench, formatZoom } from '../../components/Workbench'
 import type { MenuEntry } from '../../components/ui'
 import { Button, CenterState, ColorField, Hint, IconButton, NumberField, PopoverMenu, Section, Segmented, SelectField, TextField } from '../../components/ui'
+import type { ChartKind, ChartView } from '../../engine/sheets/engine'
 import { SheetsEngine } from '../../engine/sheets/engine'
+import { a1, callAt, canPointAt, nameAt, quoteSheet, REF_COLORS, refsIn } from '../../engine/sheets/formula'
+import type { SheetFunction } from '../../engine/sheets/functions'
+import { COMMON, FUNCTIONS, functionByName } from '../../engine/sheets/functions'
+import type { EditorHooks } from '../../engine/sheets/Grid'
 import { Grid } from '../../engine/sheets/Grid'
+import { FormulaHelp } from './FormulaHelp'
 import { registerEditor, useWorkspace } from '../../state/workspace'
 import './sheets.css'
 
@@ -44,6 +57,22 @@ const NUMBER_FORMATS = [
 ]
 const FONTS = ['Calibri', 'Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana', 'Aptos']
 const ZOOM_STEPS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
+const CHART_KINDS: { kind: ChartKind; label: string; icon: React.ReactNode }[] = [
+  { kind: 'column', label: 'Column', icon: <ChartColumn size={15} /> },
+  { kind: 'bar', label: 'Bar', icon: <ChartBar size={15} /> },
+  { kind: 'line', label: 'Line', icon: <ChartLine size={15} /> },
+  { kind: 'area', label: 'Area', icon: <ChartArea size={15} /> },
+  { kind: 'pie', label: 'Pie', icon: <ChartPie size={15} /> },
+  { kind: 'doughnut', label: 'Doughnut', icon: <Donut size={15} /> },
+  { kind: 'scatter', label: 'Scatter', icon: <ChartScatter size={15} /> },
+]
+const LEGENDS = [
+  { value: 'none', label: 'None' },
+  { value: 'right', label: 'Right' },
+  { value: 'bottom', label: 'Bottom' },
+  { value: 'top', label: 'Top' },
+  { value: 'left', label: 'Left' },
+]
 
 export default function SheetEditor({ tab, active }: EditorProps) {
   const [engine, setEngine] = useState<SheetsEngine | null>(null)
@@ -107,7 +136,29 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
     })
   }, [engine, markDirty, tab.id])
 
+  // ── Typing a formula: suggestions, hints, and clicking cells to put their references in.
+  const editorEl = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null)
+  const formulaInput = useRef<HTMLInputElement>(null)
+  const [caret, setCaret] = useState(0)
+  /** The reference last put in by clicking a cell: the next click replaces it. */
+  const pointer = useRef<{ start: number; end: number } | null>(null)
+  const pendingCaret = useRef<number | null>(null)
+  const [pick, setPick] = useState({ index: 0, moved: false })
+  const [dismissed, setDismissed] = useState<number | null>(null)
+
+  /** What the person typed (or null to stop editing). */
   const edit = (text: string | null) => {
+    pointer.current = null
+    setDismissed(null)
+    const el = editorEl.current
+    if (text !== null && el) setCaret(el.selectionStart ?? text.length)
+    setDraft(text)
+  }
+
+  const setDraft = (text: string | null) => {
+    // Stopping on another sheet (clicked to while pointing) goes back to the cell being edited.
+    const d0 = draft.current
+    if (text === null && d0 && d0.sheet !== engine.state.sheet) engine.run({ cmd: 'select', sheet: d0.sheet, anchor: [d0.row, d0.col], focus: [d0.row, d0.col] })
     if (text === null) draft.current = null
     else if (draft.current) draft.current.text = text
     else {
@@ -140,10 +191,161 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
     const targetSheet = d?.sheet ?? engine.state.sheet
     draft.current = null
     setEditing(null)
+    pointer.current = null
     if (!d || text !== d.original) engine.run({ cmd: 'input', sheet: targetSheet, row: r, col: c, text })
     const next: [number, number] = move === 'down' ? [r + 1, c] : move === 'up' ? [Math.max(0, r - 1), c] : move === 'right' ? [r, c + 1] : move === 'left' ? [r, Math.max(0, c - 1)] : [r, c]
-    if (engine.state.sheet === targetSheet) engine.run({ cmd: 'select', sheet: targetSheet, anchor: next, focus: next })
+    // Back on the cell's sheet, if a reference took the view to another.
+    engine.run({ cmd: 'select', sheet: targetSheet, anchor: next, focus: next })
   }
+
+  useLayoutEffect(() => {
+    const p = pendingCaret.current
+    const el = editorEl.current
+    if (p === null || !el || !el.isConnected) return
+    pendingCaret.current = null
+    el.focus({ preventScroll: true })
+    el.setSelectionRange(p, p)
+    setCaret(p)
+  }, [editing])
+
+  const token = editing !== null ? nameAt(editing, caret) : null
+  const suggestions = useMemo((): SheetFunction[] => {
+    if (editing === null || !editing.startsWith('=')) return []
+    if (editing === '=' && caret === 1) {
+      if (dismissed === 1) return []
+      const common = COMMON.map((n) => functionByName.get(n)!).filter(Boolean)
+      return [...common, ...FUNCTIONS.filter((f) => !COMMON.includes(f.name)).sort((a, b) => a.name.localeCompare(b.name))]
+    }
+    if (!token || dismissed === token.start) return []
+    const q = token.text.toUpperCase()
+    return FUNCTIONS.filter((f) => f.name.startsWith(q)).sort((a, b) => a.name.length - b.name.length || a.name.localeCompare(b.name))
+  }, [editing, caret, token?.start, token?.text, dismissed])
+  useEffect(() => setPick({ index: 0, moved: false }), [token?.text, editing === '='])
+  const call = editing !== null && suggestions.length === 0 ? callAt(editing, caret) : null
+  const callFn = call ? functionByName.get(call.name) : undefined
+
+  /** Puts a function's name and its bracket where its name was being typed. */
+  const acceptFunction = (fn: SheetFunction) => {
+    const text = draft.current?.text ?? editing ?? ''
+    const start = token?.start ?? caret
+    const tail = text.slice(caret)
+    const insert = fn.args.length ? `${fn.name}(` : `${fn.name}()`
+    pointer.current = null
+    pendingCaret.current = start + insert.length
+    setDraft(text.slice(0, start) + insert + tail)
+  }
+
+  const assistKey = (e: React.KeyboardEvent): boolean => {
+    if (!suggestions.length) return false
+    const n = suggestions.length
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      setPick((p) => ({ index: (p.index + (e.key === 'ArrowDown' ? 1 : n - 1)) % n, moved: true }))
+      return true
+    }
+    if ((e.key === 'Tab' && !e.shiftKey) || (e.key === 'Enter' && pick.moved)) {
+      e.preventDefault()
+      acceptFunction(suggestions[Math.min(pick.index, n - 1)])
+      return true
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      setDismissed(token?.start ?? 1)
+      return true
+    }
+    return false
+  }
+
+  const editorHooks: EditorHooks = {
+    onFocus: (el) => {
+      editorEl.current = el
+      setCaret(el.selectionStart ?? el.value.length)
+    },
+    onCaret: (el) => {
+      const c = el.selectionStart ?? 0
+      if (pointer.current && pendingCaret.current === null && c !== pointer.current.end) pointer.current = null
+      setCaret(c)
+    },
+    onKeyDown: assistKey,
+  }
+
+  const canPoint = () => {
+    const d = draft.current
+    const el = editorEl.current
+    if (!d || !el || !el.isConnected || !d.text.startsWith('=')) return false
+    if (pointer.current) return true
+    return canPointAt(d.text, el.selectionStart ?? d.text.length)
+  }
+
+  const onPoint = (from: [number, number], to: [number, number]) => {
+    const d = draft.current
+    const el = editorEl.current
+    if (!d || !el) return
+    let ref = a1(from, to)
+    if (engine.state.sheet !== d.sheet) ref = `${quoteSheet(engine.sheets[engine.state.sheet]?.name ?? '')}!${ref}`
+    const at = pointer.current ? pointer.current.end : (el.selectionStart ?? d.text.length)
+    const start = pointer.current ? pointer.current.start : at
+    pointer.current = { start, end: start + ref.length }
+    pendingCaret.current = start + ref.length
+    setDraft(d.text.slice(0, start) + ref + d.text.slice(at))
+  }
+
+  const refBoxes = useMemo(() => {
+    if (editing === null || !editing.startsWith('=')) return []
+    const here = engine.sheets[sheet]?.name.toLowerCase()
+    const home = draft.current?.sheet ?? sheet
+    return refsIn(editing)
+      .map((r, i) => ({ ...r, color: REF_COLORS[i % REF_COLORS.length] }))
+      .filter((r) => (r.sheet ? r.sheet.toLowerCase() === here : home === sheet))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, sheet])
+
+  /** Opens another sheet. While a formula is being typed, it stays open to point at that sheet's cells. */
+  const openSheet = (i: number) => {
+    if (draft.current && canPoint()) {
+      engine.run({ cmd: 'select', sheet: i, anchor: [0, 0], focus: [0, 0] })
+      // The cell's own editor is on its sheet; the formula bar carries on here.
+      const el = formulaInput.current
+      if (el) {
+        const at = pointer.current?.end ?? editorEl.current?.selectionStart ?? draft.current.text.length
+        editorEl.current = el
+        requestAnimationFrame(() => {
+          el.focus({ preventScroll: true })
+          el.setSelectionRange(at, at)
+          setCaret(at)
+        })
+      }
+      return
+    }
+    run({ cmd: 'select', sheet: i, anchor: [0, 0], focus: [0, 0] })
+  }
+
+  // ── Charts
+  const charts = engine.chartsOf(sheet)
+  const [chartSel, setChartSel] = useState<number | null>(null)
+  const [chartNote, setChartNote] = useState<string | null>(null)
+  useEffect(() => setChartSel(null), [sheet])
+  useEffect(() => {
+    if (chartSel !== null && chartSel >= charts.length) setChartSel(null)
+  }, [chartSel, charts.length])
+  const chart = chartSel !== null ? (charts[chartSel] ?? null) : null
+  const setChart = (patch: Record<string, unknown>) => chartSel !== null && run({ cmd: 'setChart', sheet, index: chartSel, patch })
+  const insertChart = (kind: ChartKind) => {
+    const index = run<number | null>({ cmd: 'addChart', sheet, range: engine.range, kind })
+    if (index === null) setChartNote('Select cells with numbers to chart, with their labels if they have any.')
+    else {
+      setChartNote(null)
+      setChartSel(index)
+    }
+  }
+  const chartTypeMenu = (x: number, y: number) =>
+    setMenu({ x, y, items: CHART_KINDS.map((k) => ({ label: `${k.label} chart`, icon: k.icon, onSelect: () => insertChart(k.kind) })) })
+  const chartMenu = (index: number, x: number, y: number) =>
+    setMenu({
+      x,
+      y,
+      items: [{ label: 'Delete chart', icon: <Trash2 size={14} />, danger: true, onSelect: () => run({ cmd: 'deleteChart', sheet, index }) }],
+    })
 
   const zoomStep = (dir: 'in' | 'out' | 'fit' | 'reset') => {
     if (dir === 'fit' || dir === 'reset') return setZoom(1)
@@ -225,6 +427,7 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
         { label: 'Delete rows', icon: <Minus size={14} />, separatorBefore: true, onSelect: () => run({ cmd: 'shiftRows', sheet, at: range.r0, n: -(range.r1 - range.r0 + 1) }) },
         { label: 'Delete columns', icon: <Minus size={14} />, onSelect: () => run({ cmd: 'shiftCols', sheet, at: range.c0, n: -(range.c1 - range.c0 + 1) }) },
         { label: cell?.merged ? 'Unmerge' : 'Merge cells', icon: <Merge size={14} />, separatorBefore: true, onSelect: () => run({ cmd: 'merge', sheet, range }) },
+        ...(st.csv ? [] : [{ label: 'Insert chart…', icon: <ChartColumn size={14} />, separatorBefore: true, onSelect: () => setTimeout(() => chartTypeMenu(x, y)) }]),
         { label: 'Clear', icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: () => run({ cmd: 'clear', sheet, range }) },
       ],
     })
@@ -237,7 +440,7 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
           key={`${i}-${s.name}`}
           type="button"
           className={`list-item ${i === sheet ? 'active' : ''}`}
-          onClick={() => run({ cmd: 'select', sheet: i, anchor: [0, 0], focus: [0, 0] })}
+          onClick={() => openSheet(i)}
           onDoubleClick={() => {
             const name = window.prompt('Sheet name', s.name)
             if (name) run({ cmd: 'renameSheet', sheet: i, name })
@@ -267,6 +470,18 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
       left={left}
       leftFooter={<span>{engine.sheets.length === 1 ? '1 sheet' : `${engine.sheets.length} sheets`}</span>}
       right={
+        chart ? (
+          <ChartPanel
+            key={`${sheet}-${chartSel}`}
+            chart={chart}
+            kind={tab.kind}
+            onChange={setChart}
+            onDelete={() => {
+              run({ cmd: 'deleteChart', sheet, index: chartSel! })
+              setChartSel(null)
+            }}
+          />
+        ) : (
         <>
           <InspectorHeader kind={tab.kind}>{st.csv ? 'CSV file' : 'Workbook'}</InspectorHeader>
           <Section title={size * width > 1 ? `${size * width} cells` : `Cell ${cell?.address ?? ''}`}>
@@ -378,12 +593,24 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
               </Button>
             </Section>
           )}
+          <Section title="Chart">
+            <Button block disabled={st.csv} onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              chartTypeMenu(r.left, r.bottom + 4)
+            }}>
+              <ChartColumn size={14} /> Insert chart
+            </Button>
+            <Hint tone="faint" as="p">
+              {st.csv ? 'CSV files hold only cells. Save as an Excel workbook to add charts.' : (chartNote ?? 'Charts the selected cells, or the block of cells around the selected one.')}
+            </Hint>
+          </Section>
           <Section title="File" collapsible defaultOpen={false}>
             <p className="faint" style={{ margin: 0, fontSize: 12 }}>
               {tab.path ? tab.path.replace(/^\/Users\/[^/]+/, '~') : 'Not saved yet'}
             </p>
           </Section>
         </>
+        )
       }
     >
       <div className="sheet-stage">
@@ -391,13 +618,20 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
           <span className="formula-address">{cell?.address}</span>
           <span className="formula-fx">fx</span>
           <input
+            ref={formulaInput}
             className="formula-input"
             data-engine-input=""
             aria-label="Cell contents"
             value={editing ?? cell?.input ?? ''}
             spellCheck={false}
+            onFocus={(e) => editorHooks.onFocus(e.currentTarget)}
+            onSelect={(e) => editorHooks.onCaret(e.currentTarget)}
             onChange={(e) => edit(e.target.value)}
             onKeyDown={(e) => {
+              if (assistKey(e)) {
+                e.stopPropagation()
+                return
+              }
               if (e.key === 'Enter') {
                 e.preventDefault()
                 commit(editing ?? cell?.input ?? '', 'down')
@@ -413,7 +647,24 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
           />
         </div>
         <div className="sheet-grid">
-          <Grid engine={engine} zoom={zoom} active={active} editing={editing} onEdit={edit} onCommit={commit} onContextMenu={cellMenu} />
+          <Grid
+            engine={engine}
+            zoom={zoom}
+            active={active}
+            editing={editing}
+            onEdit={edit}
+            onCommit={commit}
+            onContextMenu={cellMenu}
+            editingHere={!draft.current || draft.current.sheet === sheet}
+            canPoint={canPoint}
+            onPoint={onPoint}
+            refBoxes={refBoxes}
+            editorHooks={editorHooks}
+            charts={charts}
+            selectedChart={chartSel}
+            onSelectChart={setChartSel}
+            onChartMenu={chartMenu}
+          />
         </div>
       </div>
       <FindBar
@@ -442,6 +693,18 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
         <IconButton label="Redo (⇧⌘Z)" size="sm" disabled={!st.canRedo} onClick={() => run({ cmd: 'redo' })}>
           <Redo2 size={14} />
         </IconButton>
+        {!st.csv && (
+          <IconButton
+            label="Insert chart"
+            size="sm"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              chartTypeMenu(r.left, r.top - 8 - CHART_KINDS.length * 32)
+            }}
+          >
+            <ChartColumn size={14} />
+          </IconButton>
+        )}
         <span className="sep" />
         <span className="readout">{engine.sheets[sheet]?.name}</span>
         <span className="sep" />
@@ -456,6 +719,97 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
         </IconButton>
       </div>
       {menu && <PopoverMenu anchor={menu} items={menu.items} onClose={() => setMenu(null)} />}
+      {editing !== null && active && editorEl.current?.isConnected && (suggestions.length > 0 || callFn) && (
+        <FormulaHelp
+          anchor={editorEl.current}
+          items={suggestions}
+          index={Math.min(pick.index, Math.max(0, suggestions.length - 1))}
+          call={callFn && call ? { fn: callFn, arg: call.arg } : null}
+          onPick={acceptFunction}
+          onHover={(index) => setPick({ index, moved: true })}
+        />
+      )}
     </Workbench>
+  )
+}
+
+/** The inspector for a selected chart: its kind, title, cells, colors and legend. */
+function ChartPanel({ chart, kind, onChange, onDelete }: { chart: ChartView; kind: string; onChange: (patch: Record<string, unknown>) => void; onDelete: () => void }) {
+  const stackable = ['column', 'bar', 'line', 'area'].includes(chart.kind)
+  const pie = chart.kind === 'pie' || chart.kind === 'doughnut'
+  const commitOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') e.currentTarget.blur()
+    e.stopPropagation()
+  }
+  return (
+    <>
+      <InspectorHeader kind={kind}>Chart</InspectorHeader>
+      <Section title="Type">
+        <div className="chart-kinds">
+          {CHART_KINDS.map((k) => (
+            <IconButton key={k.kind} label={k.label} active={chart.kind === k.kind} onClick={() => onChange({ kind: k.kind })}>
+              {k.icon}
+            </IconButton>
+          ))}
+        </div>
+        {chart.kind === 'other' && <Hint tone="faint" as="p">This kind of chart isn’t drawn here. Picking a type replaces it.</Hint>}
+        {stackable && (
+          <Segmented
+            value={chart.grouping}
+            onChange={(g) => onChange({ grouping: g })}
+            options={[
+              { value: 'standard', label: chart.kind === 'column' || chart.kind === 'bar' ? 'Side by side' : 'Overlapping' },
+              { value: 'stacked', label: 'Stacked' },
+              { value: 'percentStacked', label: '100%' },
+            ]}
+          />
+        )}
+      </Section>
+      <Section title="Title">
+        <TextField
+          key={chart.title ?? ''}
+          defaultValue={chart.title ?? ''}
+          placeholder="No title"
+          aria-label="Chart title"
+          onKeyDown={commitOnEnter}
+          onBlur={(e) => {
+            if (e.currentTarget.value.trim() !== (chart.title ?? '')) onChange({ title: e.currentTarget.value })
+          }}
+        />
+      </Section>
+      <Section title="Data">
+        <TextField
+          key={chart.range ?? ''}
+          defaultValue={chart.range ?? ''}
+          placeholder="A1:C7"
+          aria-label="Cells the chart plots"
+          spellCheck={false}
+          onKeyDown={commitOnEnter}
+          onBlur={(e) => {
+            const v = e.currentTarget.value.trim()
+            if (v && v !== (chart.range ?? '')) onChange({ range: v })
+          }}
+        />
+        <Hint tone="faint" as="p">
+          The cells it plots. A first row and column of labels name the series and categories.
+        </Hint>
+        {!pie &&
+          chart.series.map((s, i) => (
+            <div key={i} className="chart-series-row">
+              <span title={s.name}>{s.name}</span>
+              <ColorField value={(s.color ?? chart.palette[i % chart.palette.length] ?? '').replace('#', '')} onChange={(hex) => onChange({ color: [i, hex] })} />
+            </div>
+          ))}
+      </Section>
+      <Section title="Legend">
+        <SelectField value={chart.legend ?? 'none'} options={LEGENDS} onChange={(v) => onChange({ legend: v })} />
+      </Section>
+      <Section title="Chart">
+        <Button variant="danger" block onClick={onDelete}>
+          <Trash2 size={14} /> Delete chart
+        </Button>
+        <Hint tone="faint" as="p">Drag a chart to move it, or its handles to resize it.</Hint>
+      </Section>
+    </>
   )
 }

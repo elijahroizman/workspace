@@ -3,7 +3,8 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { isMac } from '../../lib/platform'
-import type { SheetsEngine } from './engine'
+import { ChartSvg } from './Chart'
+import type { ChartView, SheetsEngine } from './engine'
 import { columnName } from './engine'
 import './grid.css'
 
@@ -22,16 +23,64 @@ interface Props {
   onEdit: (text: string | null) => void
   onCommit: (text: string, move: 'down' | 'right' | 'up' | 'left' | 'none') => void
   onContextMenu?: (x: number, y: number) => void
+  /** Whether the cell being edited is on this sheet (a formula can point at another sheet's cells). */
+  editingHere?: boolean
+  /** The formula editor: whether a click on a cell now puts its reference into the formula. */
+  canPoint?: () => boolean
+  onPoint?: (from: [number, number], to: [number, number]) => void
+  /** The ranges the formula being typed refers to, drawn in their colors. */
+  refBoxes?: { r0: number; c0: number; r1: number; c1: number; color: string }[]
+  /** Hooks for the box typed into on the cell (suggestions, the caret). */
+  editorHooks?: EditorHooks
+  charts?: ChartView[]
+  selectedChart?: number | null
+  onSelectChart?: (index: number | null) => void
+  onChartMenu?: (index: number, x: number, y: number) => void
 }
 
-export function Grid({ engine, zoom, active, editing, onEdit, onCommit, onContextMenu }: Props) {
+export interface EditorHooks {
+  onFocus: (el: HTMLTextAreaElement | HTMLInputElement) => void
+  onCaret: (el: HTMLTextAreaElement | HTMLInputElement) => void
+  /** Keys the suggestions want first; true when handled. */
+  onKeyDown: (e: React.KeyboardEvent) => boolean
+}
+
+type Box = { x: number; y: number; w: number; h: number }
+
+export function Grid({
+  engine,
+  zoom,
+  active,
+  editing,
+  onEdit,
+  onCommit,
+  onContextMenu,
+  editingHere = true,
+  canPoint,
+  onPoint,
+  refBoxes = [],
+  editorHooks,
+  charts = [],
+  selectedChart = null,
+  onSelectChart,
+  onChartMenu,
+}: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const cellsRef = useRef<HTMLDivElement>(null)
   const [view, setView] = useState({ left: 0, top: 0, w: 800, h: 600 })
   const [, setTick] = useState(0)
   const drawn = useRef<{ key: string } | null>(null)
-  const drag = useRef<null | { kind: 'cells' | 'cols' | 'rows'; from: [number, number] } | { kind: 'resizeCol' | 'resizeRow'; index: number; start: number; size: number }>(null)
+  const drag = useRef<
+    | null
+    | { kind: 'cells' | 'cols' | 'rows' | 'point'; from: [number, number] }
+    | { kind: 'resizeCol' | 'resizeRow'; index: number; start: number; size: number }
+    | { kind: 'chart'; index: number; handle: string; x: number; y: number; box: Box }
+  >(null)
+  // A chart being moved or resized: its box so far, in grid pixels.
+  const [chartDrag, setChartDrag] = useState<{ index: number; box: Box } | null>(null)
+  const chartBox = useRef<Box | null>(null)
+  const chartRefs = useRef<(HTMLDivElement | null)[]>([])
   const [resize, setResize] = useState<{ kind: 'col' | 'row'; index: number; size: number } | null>(null)
 
   useEffect(() => engine.subscribe(() => setTick((t) => t + 1)), [engine])
@@ -124,6 +173,14 @@ export function Grid({ engine, zoom, active, editing, onEdit, onCommit, onContex
   const onCellsDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return
     e.preventDefault()
+    // Typing a formula: the click puts the cell's reference into it, and the editor keeps focus.
+    if (editing !== null && canPoint?.()) {
+      const at = cellAt(e)
+      onPoint?.(at, at)
+      drag.current = { kind: 'point', from: at }
+      return
+    }
+    onSelectChart?.(null)
     inputRef.current?.focus({ preventScroll: true })
     const at = cellAt(e)
     if (e.detail >= 2) {
@@ -170,6 +227,35 @@ export function Grid({ engine, zoom, active, editing, onEdit, onCommit, onContex
         setResize({ kind: d.kind === 'resizeCol' ? 'col' : 'row', index: d.index, size: Math.max(4, d.size + delta) })
         return
       }
+      if (d.kind === 'chart') {
+        const dx = (e.clientX - d.x) / z
+        const dy = (e.clientY - d.y) / z
+        const b = { ...d.box }
+        if (d.handle === 'move') {
+          b.x = Math.max(0, b.x + dx)
+          b.y = Math.max(0, b.y + dy)
+        } else {
+          if (d.handle.includes('e')) b.w = Math.max(40, b.w + dx)
+          if (d.handle.includes('s')) b.h = Math.max(40, b.h + dy)
+          if (d.handle.includes('w')) {
+            const w = Math.max(40, b.w - dx)
+            b.x = Math.max(0, b.x + b.w - w)
+            b.w = w
+          }
+          if (d.handle.includes('n')) {
+            const h = Math.max(40, b.h - dy)
+            b.y = Math.max(0, b.y + b.h - h)
+            b.h = h
+          }
+        }
+        chartBox.current = b
+        setChartDrag({ index: d.index, box: b })
+        return
+      }
+      if (d.kind === 'point') {
+        onPoint?.(d.from, cellAt(e))
+        return
+      }
       if (d.kind !== 'cells' && d.kind !== 'cols' && d.kind !== 'rows') return
       const at = cellAt(e)
       if (d.kind === 'cells') select(d.from, at)
@@ -179,6 +265,15 @@ export function Grid({ engine, zoom, active, editing, onEdit, onCommit, onContex
     const up = () => {
       const d = drag.current
       drag.current = null
+      if (d?.kind === 'chart') {
+        const b = chartBox.current
+        chartBox.current = null
+        if (b && (b.x !== d.box.x || b.y !== d.box.y || b.w !== d.box.w || b.h !== d.box.h)) {
+          engine.run({ cmd: 'moveChart', sheet, index: d.index, x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h) })
+        }
+        setChartDrag(null)
+        return
+      }
       if (d && (d.kind === 'resizeCol' || d.kind === 'resizeRow')) {
         setResize((r) => {
           if (r) engine.run(r.kind === 'col' ? { cmd: 'columnWidth', sheet, col: r.index, px: Math.round(r.size) } : { cmd: 'rowHeight', sheet, row: r.index, px: Math.round(r.size) })
@@ -308,6 +403,43 @@ export function Grid({ engine, zoom, active, editing, onEdit, onCommit, onContex
     engine.run({ cmd: 'paste', sheet, range: engine.range, text })
   }
 
+  // ── Charts
+  const onChartDown = (e: React.MouseEvent, index: number, handle: string) => {
+    if (e.button !== 0) return
+    e.stopPropagation()
+    e.preventDefault()
+    if (editing !== null) onCommit(editing, 'none')
+    onSelectChart?.(index)
+    chartRefs.current[index]?.focus({ preventScroll: true })
+    const c = charts[index]
+    drag.current = { kind: 'chart', index, handle, x: e.clientX, y: e.clientY, box: { x: c.x, y: c.y, w: c.w, h: c.h } }
+  }
+  const onChartKey = (e: React.KeyboardEvent, index: number) => {
+    const c = charts[index]
+    const nudge = e.shiftKey ? 10 : 1
+    const move = (dx: number, dy: number) => engine.run({ cmd: 'moveChart', sheet, index, x: Math.max(0, c.x + dx), y: Math.max(0, c.y + dy), w: c.w, h: c.h })
+    const mod = isMac ? e.metaKey : e.ctrlKey
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      engine.run({ cmd: 'deleteChart', sheet, index })
+      onSelectChart?.(null)
+      inputRef.current?.focus({ preventScroll: true })
+    } else if (e.key === 'Escape') {
+      onSelectChart?.(null)
+      inputRef.current?.focus({ preventScroll: true })
+    } else if (e.key === 'ArrowLeft') move(-nudge, 0)
+    else if (e.key === 'ArrowRight') move(nudge, 0)
+    else if (e.key === 'ArrowUp') move(0, -nudge)
+    else if (e.key === 'ArrowDown') move(0, nudge)
+    else if (mod && !e.altKey && e.key.toLowerCase() === 'z') engine.run({ cmd: e.shiftKey ? 'redo' : 'undo' })
+    else return
+    e.preventDefault()
+    e.stopPropagation()
+  }
+  // Keep focus on the selected chart (after undo, or when picked from elsewhere).
+  useEffect(() => {
+    if (selectedChart !== null && active) chartRefs.current[selectedChart]?.focus({ preventScroll: true })
+  }, [selectedChart, active])
+
   // ── Headers in view
   const cols: number[] = []
   for (let c = c0; c < c1; c++) cols.push(c)
@@ -347,14 +479,61 @@ export function Grid({ engine, zoom, active, editing, onEdit, onCommit, onContex
           <div className="sg-cells" ref={cellsRef} style={{ width: g.width, height: g.height, transform: `scale(${z})` }} />
           <div className="sg-sel" style={{ left: selX, top: selY, width: selW, height: selH }} />
           <div className="sg-cur" style={{ left: curX, top: curY, width: curW, height: curH }} />
+          {refBoxes.map((b, i) => (
+            <div
+              key={`ref${i}`}
+              className="sg-ref"
+              style={{
+                left: g.x(b.c0) * z,
+                top: g.y(b.r0) * z,
+                width: (g.x(b.c1 + 1) - g.x(b.c0)) * z,
+                height: (g.y(b.r1 + 1) - g.y(b.r0)) * z,
+                '--ref': b.color,
+              } as React.CSSProperties}
+            />
+          ))}
+          {charts.map((c, i) => {
+            const box = chartDrag?.index === i ? chartDrag.box : c
+            const on = selectedChart === i
+            return (
+              <div
+                key={i}
+                ref={(el) => {
+                  chartRefs.current[i] = el
+                }}
+                className={`sg-chart ${on ? 'on' : ''}`}
+                tabIndex={-1}
+                role="img"
+                aria-label={c.title ? `Chart: ${c.title}` : 'Chart'}
+                style={{ left: box.x * z, top: box.y * z, width: box.w * z, height: box.h * z }}
+                onMouseDown={(e) => onChartDown(e, i, 'move')}
+                onKeyDown={(e) => onChartKey(e, i)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onSelectChart?.(i)
+                  onChartMenu?.(i, e.clientX, e.clientY)
+                }}
+              >
+                <div className="sg-chart-scale" style={{ width: box.w, height: box.h, transform: `scale(${z})` }}>
+                  <ChartSvg chart={c} width={box.w} height={box.h} />
+                </div>
+                {on &&
+                  ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].map((h) => (
+                    <span key={h} className={`sg-handle ${h}`} onMouseDown={(e) => onChartDown(e, i, h)} />
+                  ))}
+              </div>
+            )
+          })}
           {resize && (
             <div
               className="sg-resize-guide"
               style={resize.kind === 'col' ? { left: (g.x(resize.index) + resize.size) * z, top: 0, width: 1, height: '100%' } : { top: (g.y(resize.index) + resize.size) * z, left: 0, height: 1, width: '100%' }}
             />
           )}
-          {editing !== null && (
+          {editing !== null && editingHere && (
             <CellEditor
+              hooks={editorHooks}
               value={editing}
               style={{ left: curX, top: curY, minWidth: curW, minHeight: curH, fontSize: Math.max(11, (engine.cell?.size ?? 11) * (96 / 72) * z) }}
               onChange={onEdit}
@@ -385,13 +564,29 @@ export function Grid({ engine, zoom, active, editing, onEdit, onCommit, onContex
 }
 
 /** The box typed into on the cell itself. Enter and Tab commit and move; Escape cancels. */
-function CellEditor({ value, style, onChange, onCommit, onCancel }: { value: string; style: React.CSSProperties; onChange: (v: string) => void; onCommit: (move: 'down' | 'right' | 'up' | 'left' | 'none') => void; onCancel: () => void }) {
+function CellEditor({
+  value,
+  style,
+  hooks,
+  onChange,
+  onCommit,
+  onCancel,
+}: {
+  value: string
+  style: React.CSSProperties
+  hooks?: EditorHooks
+  onChange: (v: string) => void
+  onCommit: (move: 'down' | 'right' | 'up' | 'left' | 'none') => void
+  onCancel: () => void
+}) {
   const ref = useRef<HTMLTextAreaElement>(null)
   // Focused before the next key arrives, so a fast typist's second letter lands here.
   useLayoutEffect(() => {
     const el = ref.current!
     el.focus({ preventScroll: true })
     el.setSelectionRange(el.value.length, el.value.length)
+    hooks?.onFocus(el)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   return (
     <textarea
@@ -402,8 +597,14 @@ function CellEditor({ value, style, onChange, onCommit, onCancel }: { value: str
       style={style}
       spellCheck={false}
       onMouseDown={(e) => e.stopPropagation()}
+      onFocus={(e) => hooks?.onFocus(e.currentTarget)}
+      onSelect={(e) => hooks?.onCaret(e.currentTarget)}
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={(e) => {
+        if (hooks?.onKeyDown(e)) {
+          e.stopPropagation()
+          return
+        }
         if (e.key === 'Enter' && (e.altKey || (isMac ? false : e.ctrlKey))) return
         if (e.key === 'Enter') {
           e.preventDefault()

@@ -98,7 +98,7 @@ export function ChartSvg({ chart, width, height }: { chart: ChartView; width: nu
     }
     const shown = rows.slice(0, 3)
     const h = shown.length * 16 + 6
-    const y0 = legend === 'bottom' ? bottom - h + 10 : top + 2
+    const y0 = legend === 'bottom' ? bottom - h + 12 : top + 2
     shown.forEach((row, ri) => {
       const total = row.reduce((s, it) => s + it.w, 0)
       let x = (width - total) / 2
@@ -107,7 +107,7 @@ export function ChartSvg({ chart, width, height }: { chart: ChartView; width: nu
         x += it.w
       }
     })
-    if (legend === 'bottom') bottom -= h
+    if (legend === 'bottom') bottom -= h + 4
     else top += h
   } else if (legend === 'right' || legend === 'left') {
     const w = Math.min(Math.max(...legendItems.map((it) => textWidth(it.label))) + 24, width * 0.35)

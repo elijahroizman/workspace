@@ -175,3 +175,102 @@
   field-sizing: content;
   white-space: pre;
 }
+
+/* A formula's references, each in its color while the formula is typed. */
+.sg-ref {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  margin: -1px 0 0 -1px;
+  border: 2px solid var(--ref);
+  background: color-mix(in srgb, var(--ref) 8%, transparent);
+  pointer-events: none;
+}
+
+/* Charts float over the cells, like Excel's. */
+.sg-chart {
+  position: absolute;
+  z-index: 1;
+  cursor: move;
+  outline: none;
+}
+
+.sg-chart-scale {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+
+.sg-chart-svg {
+  position: relative;
+}
+
+.sg-chart-svg svg {
+  display: block;
+}
+
+.sg-chart.on {
+  box-shadow: 0 0 0 2px var(--accent, #4f8cff);
+}
+
+.sg-handle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin: -5px 0 0 -5px;
+  border: 1.5px solid var(--accent, #4f8cff);
+  border-radius: 50%;
+  background: #fff;
+}
+
+.sg-handle.nw { left: 0; top: 0; cursor: nwse-resize; }
+.sg-handle.n { left: 50%; top: 0; cursor: ns-resize; }
+.sg-handle.ne { left: 100%; top: 0; cursor: nesw-resize; }
+.sg-handle.e { left: 100%; top: 50%; cursor: ew-resize; }
+.sg-handle.se { left: 100%; top: 100%; cursor: nwse-resize; }
+.sg-handle.s { left: 50%; top: 100%; cursor: ns-resize; }
+.sg-handle.sw { left: 0; top: 100%; cursor: nesw-resize; }
+.sg-handle.w { left: 0; top: 50%; cursor: ew-resize; }
+
+.sg-chart-tip {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 90px;
+  max-width: 220px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(30, 30, 30, 0.94);
+  color: #f2f2f2;
+  font: 11.5px var(--font-ui);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.sg-chart-tip strong {
+  font-weight: 600;
+}
+
+.sg-chart-tip span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sg-chart-tip i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.sg-chart-tip em {
+  font-style: normal;
+  color: #bdbdbd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
