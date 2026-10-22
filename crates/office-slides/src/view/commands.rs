@@ -311,12 +311,19 @@ impl SlidesView {
     }
 
     pub fn set_transition(&mut self, indexes: &[usize], t: Option<crate::Transition>) {
-        self.begin_group();
-        for &i in indexes {
-            let t = t.clone();
-            self.change_slide(i, None, |s| crate::set_transition(s, t.as_ref()));
+        let before_sel = self.sel.clone();
+        let mut steps = Vec::new();
+        for &index in indexes {
+            let Some(before) = self.slides().get(index).cloned() else { continue };
+            let mut after = before.clone();
+            crate::set_transition(&mut after, t.as_ref());
+            self.slides_mut()[index] = after.clone();
+            self.touch(index);
+            steps.push(SStep::Slide { index, before: Box::new(before), after: Box::new(after) });
         }
-        self.end_group();
+        if !steps.is_empty() {
+            self.record(steps, before_sel, None);
+        }
     }
 
     // ---- picking frames ----
@@ -693,6 +700,7 @@ impl SlidesView {
                     ..Default::default()
                 },
                 placeholder: None,
+                link: None,
                 content: FrameContent::Group { frames: members },
                 origin: Origin::default(),
             };
@@ -776,6 +784,35 @@ impl SlidesView {
         });
     }
 
+    /// Applies text formatting to every cell, even while a cell is being edited.
+    pub fn table_text_style(&mut self, patch: &TextPatch) {
+        let ids = self.sel.frames.clone();
+        self.change_slide(self.sel.active, None, |s| {
+            for f in s.frames.iter_mut().filter(|f| ids.contains(&f.id) && matches!(f.content, FrameContent::Table { .. })) {
+                for_each_paragraph(f, &mut |q| {
+                    for r in q.runs_mut() {
+                        patch.apply(&mut r.props);
+                    }
+                    let mark = q.mark.get_or_insert_with(RunProps::default);
+                    patch.apply(mark);
+                    if let Some(a) = patch.align() {
+                        q.props.align = Some(a);
+                    }
+                });
+            }
+        });
+    }
+
+    /// The URL opened when a frame is clicked during a slideshow.
+    pub fn set_link(&mut self, id: u32, url: Option<&str>) {
+        let link = url.filter(|u| !u.is_empty()).map(|u| office_core::model::Link { url: Some(u.into()), ..Default::default() });
+        self.change_slide(self.sel.active, None, |s| {
+            if let Some(f) = find_frame_mut(&mut s.frames, id) {
+                f.link = link;
+            }
+        });
+    }
+
     /// Bullets (`bullet`) or numbers (`numbered`) on the selected frames' paragraphs, or off when
     /// they already have them.
     pub fn toggle_bullets(&mut self, kind: &str) {
@@ -813,9 +850,7 @@ impl SlidesView {
         };
         self.change_slide(active, None, |s| {
             for f in s.frames.iter_mut().filter(|f| ids.contains(&f.id)) {
-                if matches!(f.content, FrameContent::Shape { .. }) {
-                    f.shape.fill = fill.clone();
-                }
+                for_each_shape(f, &mut |f| f.shape.fill = fill.clone());
             }
         });
     }
@@ -827,21 +862,23 @@ impl SlidesView {
         let color = hex.and_then(Rgb::parse);
         self.change_slide(active, None, |s| {
             for f in s.frames.iter_mut().filter(|f| ids.contains(&f.id)) {
-                let mut line = f.shape.line.clone().unwrap_or(Line { width: None, fill: None, dash: None });
-                if let Some(c) = color {
-                    line.fill = Some(Fill::Solid { color: Color::rgb(c) });
-                }
-                if let Some(w) = width_pt {
-                    if w <= 0.0 {
-                        line.fill = Some(Fill::None);
-                    } else {
-                        line.width = Some(Emu::from_points(w));
-                        if matches!(line.fill, Some(Fill::None)) || line.fill.is_none() && color.is_none() {
-                            line.fill = Some(Fill::Solid { color: Color::rgb(Rgb::BLACK) });
+                for_each_shape(f, &mut |f| {
+                    let mut line = f.shape.line.clone().unwrap_or(Line { width: None, fill: None, dash: None });
+                    if let Some(c) = color {
+                        line.fill = Some(Fill::Solid { color: Color::rgb(c) });
+                    }
+                    if let Some(w) = width_pt {
+                        if w <= 0.0 {
+                            line.fill = Some(Fill::None);
+                        } else {
+                            line.width = Some(Emu::from_points(w));
+                            if matches!(line.fill, Some(Fill::None)) || line.fill.is_none() && color.is_none() {
+                                line.fill = Some(Fill::Solid { color: Color::rgb(Rgb::BLACK) });
+                            }
                         }
                     }
-                }
-                f.shape.line = Some(line);
+                    f.shape.line = Some(line);
+                });
             }
         });
     }
@@ -858,7 +895,11 @@ impl SlidesView {
             let mut origin = f.origin.get().cloned().unwrap_or_else(|| Element::new(ns::P, "pic"));
             let fill = origin.child_or_insert(ns::P, "blipFill");
             if fill.child(ns::A, "srcRect").is_none() {
-                let at = fill.children.iter().position(|n| matches!(n, office_core::xml::Node::Element(e) if e.is(ns::A, "stretch") || e.is(ns::A, "tile"))).unwrap_or(fill.children.len());
+                let at = fill
+                    .children
+                    .iter()
+                    .position(|n| matches!(n, office_core::xml::Node::Element(e) if e.is(ns::A, "stretch") || e.is(ns::A, "tile")))
+                    .unwrap_or(fill.children.len());
                 fill.children.insert(at, office_core::xml::Node::Element(Element::new(ns::A, "srcRect")));
             }
             let rect = fill.child_mut(ns::A, "srcRect").expect("srcRect was just made");
@@ -942,6 +983,7 @@ impl SlidesView {
                 }),
             },
             placeholder: None,
+            link: None,
             content: FrameContent::Shape {
                 text: (!line).then(|| TextBody { paragraphs: vec![Paragraph::default()], origin: Origin::default() }),
                 connector: line,
@@ -966,6 +1008,7 @@ impl SlidesView {
             hidden: false,
             shape: office_core::drawing::ShapeProps { xfrm: Some(xf.clone()), preset: Some("rect".into()), ..Default::default() },
             placeholder: None,
+            link: None,
             content: FrameContent::Picture {
                 image: Image {
                     media,
@@ -1017,6 +1060,7 @@ impl SlidesView {
             hidden: false,
             shape: office_core::drawing::ShapeProps { xfrm: Some(xf), ..Default::default() },
             placeholder: None,
+            link: None,
             content: FrameContent::Table { table },
             origin: Origin::default(),
         };
@@ -1070,7 +1114,44 @@ impl SlidesView {
                         row.cells.truncate(n);
                     }
                 }
-                "style" => table.style = value.clone(),
+                "style" => {
+                    table.style = value.clone();
+                    // Direct colors and borders would otherwise conceal the chosen look.
+                    for cell in table.rows.iter_mut().flat_map(|r| &mut r.cells) {
+                        cell.fill = None;
+                        if let Some(o) = cell.origin.get() {
+                            let mut o = o.clone();
+                            if let Some(pr) = o.child_mut(ns::A, "tcPr") {
+                                for local in [
+                                    "solidFill",
+                                    "gradFill",
+                                    "noFill",
+                                    "pattFill",
+                                    "blipFill",
+                                    "lnL",
+                                    "lnR",
+                                    "lnT",
+                                    "lnB",
+                                    "lnTlToBr",
+                                    "lnBlToTr",
+                                ] {
+                                    pr.remove_children(ns::A, local);
+                                }
+                            }
+                            cell.origin = Origin::new(o);
+                        }
+                        for block in &mut cell.blocks {
+                            if let Block::Paragraph(p) = block {
+                                for r in p.runs_mut() {
+                                    r.props.color = None;
+                                }
+                                if let Some(mark) = &mut p.mark {
+                                    mark.color = None;
+                                }
+                            }
+                        }
+                    }
+                }
                 _ => {}
             }
             if let Some(x) = &mut f.shape.xfrm {
@@ -1659,5 +1740,18 @@ impl flow::Resolver for TableText<'_> {
 
     fn table(&mut self, _: &Path, t: &Table, width: f64) -> flow::TableLook {
         super::table_style::look(self.paint, t, self.style, width)
+    }
+}
+
+/// Fill and line controls affect shapes inside selected groups as well.
+fn for_each_shape(frame: &mut Frame, cb: &mut dyn FnMut(&mut Frame)) {
+    match &mut frame.content {
+        FrameContent::Group { frames } => {
+            for frame in frames {
+                for_each_shape(frame, cb);
+            }
+        }
+        FrameContent::Shape { .. } => cb(frame),
+        _ => {}
     }
 }

@@ -238,7 +238,7 @@ impl FrameIds {
 
 fn write_frame(frame: &Frame, ctx: &mut PartCtx, out: &mut Out, ids: &mut FrameIds) -> Result<Option<Element>> {
     let id = ids.id(frame);
-    let el = match &frame.content {
+    let mut el = match &frame.content {
         FrameContent::Shape { text, connector } => {
             let (local, nv) = if *connector { ("cxnSp", "nvCxnSpPr") } else { ("sp", "nvSpPr") };
             let mut el = origin_as(&frame.origin, ns::P, local).unwrap_or_else(|| {
@@ -317,6 +317,19 @@ fn write_frame(frame: &Frame, ctx: &mut PartCtx, out: &mut Out, ids: &mut FrameI
         FrameContent::Raw { xml } if xml.in_ns(ns::P) || xml.in_ns(ns::MC) => xml.clone(),
         FrameContent::Raw { .. } => return Ok(None),
     };
+    // Keep unknown action links and all attributes of unchanged hyperlinks intact.
+    if let Some(nv) = el
+        .children
+        .iter_mut()
+        .filter_map(|n| match n {
+            crate::xml::Node::Element(e) => Some(e),
+            _ => None,
+        })
+        .find(|e| e.in_ns(ns::P) && e.local.starts_with("nv"))
+    {
+        let c = nv.child_or_insert(ns::P, "cNvPr");
+        crate::formats::dml::patch_link(frame.link.as_ref(), c, ctx);
+    }
     Ok(Some(el))
 }
 

@@ -148,6 +148,7 @@ pub fn add_slide(doc: &mut Document, layout: &str) -> Option<usize> {
             hidden: false,
             shape: Default::default(),
             placeholder: Some(Ph { kind: (p.kind != "obj").then(|| p.kind.clone()), index: p.index }),
+            link: None,
             content: FrameContent::Shape {
                 text: Some(TextBody { paragraphs: vec![Paragraph::default()], origin: Origin::default() }),
                 connector: false,

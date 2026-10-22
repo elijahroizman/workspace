@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{Image, Origin, Paragraph, Table};
+use super::{Image, Link, Origin, Paragraph, Table};
 use crate::drawing::ShapeProps;
 use crate::units::Emu;
 use crate::xml::Element;
@@ -43,6 +43,9 @@ pub struct Frame {
     /// The layout placeholder this frame fills, which it inherits position and formatting from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placeholder: Option<Placeholder>,
+    /// A click on the frame during a slideshow opens this link.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<Link>,
     pub content: FrameContent,
     #[serde(skip)]
     pub origin: Origin,
@@ -115,6 +118,7 @@ impl Frame {
             hidden: false,
             shape: ShapeProps { xfrm: Some(xfrm), preset: Some("rect".into()), ..Default::default() },
             placeholder: None,
+            link: None,
             content: FrameContent::Shape { text: Some(TextBody { paragraphs, origin: Origin::default() }), connector: false },
             origin: Origin::default(),
         }

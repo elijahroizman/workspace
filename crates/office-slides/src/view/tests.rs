@@ -176,3 +176,116 @@ fn shapes_tables_and_styles() {
     let p = back.paint(&mut host, 0);
     assert!(texts(&p.items).contains(&"cell".to_string()), "{:?}", texts(&p.items));
 }
+
+#[test]
+fn template_slides_are_scaled_and_undo_as_one_change() {
+    let mut host = FixedMeasurer::default();
+    for (id, count) in [
+        ("titleAndContent", 3),
+        ("title", 3),
+        ("sectionHeader", 4),
+        ("twoContent", 4),
+        ("comparison", 6),
+        ("titleOnly", 2),
+        ("quote", 3),
+        ("closing", 3),
+        ("blank", 0),
+    ] {
+        let mut v = SlidesView::open(&deck(&[&["Original"]])).unwrap();
+        v.add_template(0, id);
+        assert_eq!(v.selection().active, 1);
+        let els = v.elements(&mut host, 1);
+        assert_eq!(els.len(), count, "{id}");
+        assert!(els.iter().all(|e| e.x >= 0.0 && e.x + e.width <= v.size().0 + 1.0));
+        let bytes = v.save().unwrap();
+        let reopened = SlidesView::open(&bytes).unwrap();
+        assert_eq!(reopened.slides().len(), 2);
+        assert!(v.undo());
+        assert_eq!(v.slides().len(), 1);
+        assert!(!v.can_undo());
+        assert!(v.redo());
+        assert_eq!(v.elements(&mut host, 1).len(), count);
+    }
+}
+
+#[test]
+fn frame_links_round_trip_and_leave_unchanged_parts_alone() {
+    let mut host = FixedMeasurer::default();
+    let mut v = SlidesView::open(&deck(&[&["Linked object"]])).unwrap();
+    v.set_link(2, Some("https://example.com/watch?v=123"));
+    assert_eq!(v.elements(&mut host, 0)[0].link.as_ref().unwrap().url.as_deref(), Some("https://example.com/watch?v=123"));
+    let bytes = v.save().unwrap();
+    let mut pkg = office_core::opc::Package::read(&bytes).unwrap();
+    let part = "ppt/slides/slide1.xml";
+    let mut xml = pkg.xml(part).unwrap();
+    let click = xml
+        .root
+        .child_mut(office_core::xml::ns::P, "cSld")
+        .unwrap()
+        .child_mut(office_core::xml::ns::P, "spTree")
+        .unwrap()
+        .child_mut(office_core::xml::ns::P, "sp")
+        .unwrap()
+        .child_mut(office_core::xml::ns::P, "nvSpPr")
+        .unwrap()
+        .child_mut(office_core::xml::ns::P, "cNvPr")
+        .unwrap()
+        .child_mut(office_core::xml::ns::A, "hlinkClick")
+        .unwrap();
+    click.set_attr("", "tooltip", "Watch this presentation");
+    click.set_attr("", "history", "0");
+    click.set_attr("", "highlightClick", "1");
+    pkg.replace(part, xml.to_bytes()).unwrap();
+    let bytes = pkg.to_bytes().unwrap();
+    let mut reopened = SlidesView::open(&bytes).unwrap();
+    let stable = reopened.save().unwrap();
+    let a = office_core::opc::Package::read(&bytes).unwrap();
+    let b = office_core::opc::Package::read(&stable).unwrap();
+    for name in a.part_names() {
+        assert_eq!(a.part(name).unwrap(), b.part(name).unwrap(), "{name}");
+    }
+    assert_eq!(reopened.elements(&mut host, 0)[0].link.as_ref().unwrap().url.as_deref(), Some("https://example.com/watch?v=123"));
+    reopened.set_link(2, None);
+    let mut removed = SlidesView::open(&reopened.save().unwrap()).unwrap();
+    assert!(removed.elements(&mut host, 0)[0].link.is_none());
+    reopened.undo();
+    assert!(reopened.elements(&mut host, 0)[0].link.is_some());
+}
+
+#[test]
+fn table_text_style_applies_to_all_cells_while_editing() {
+    let mut host = FixedMeasurer::default();
+    let mut v = SlidesView::open(&deck(&[&["Original"]])).unwrap();
+    let id = v.insert_table(2, 3);
+    v.begin_edit(&mut host, id, None);
+    v.table_text_style(&TextPatch {
+        font_family: Some("Georgia".into()),
+        font_size: Some(24.0),
+        align: Some("center".into()),
+        ..Default::default()
+    });
+    let frame = v.slides()[0].frames.iter().find(|f| f.id == id).unwrap();
+    for p in frame.paragraphs() {
+        assert_eq!(p.mark.as_ref().unwrap().font.as_deref(), Some("Georgia"));
+        assert_eq!(p.props.align, Some(office_core::model::Align::Center));
+    }
+    let table = v.elements(&mut host, 0).into_iter().find(|f| f.id == id.to_string()).unwrap().table.unwrap();
+    assert_eq!(table.text_style.unwrap().font_size, Some(24.0));
+    v.undo();
+    let frame = v.slides()[0].frames.iter().find(|f| f.id == id).unwrap();
+    assert!(frame.paragraphs().iter().all(|p| p.mark.as_ref().and_then(|m| m.font.as_ref()).is_none()));
+}
+
+#[test]
+fn transition_changes_in_an_outer_group_undo_together_and_keep_timing_without_an_effect() {
+    let mut v = SlidesView::open(&deck(&[&["First"], &["Second"]])).unwrap();
+    let timed = crate::Transition { kind: String::new(), direction: None, duration_ms: None, on_click: false, after_ms: Some(1500) };
+    v.begin_group();
+    v.set_transition(&[0], Some(timed.clone()));
+    v.set_transition(&[1], Some(timed.clone()));
+    v.end_group();
+    assert!(v.slide_infos().iter().all(|s| s.transition.as_ref() == Some(&timed)));
+    v.undo();
+    assert!(v.slide_infos().iter().all(|s| s.transition.is_none()));
+    assert!(!v.can_undo());
+}

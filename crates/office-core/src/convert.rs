@@ -368,6 +368,7 @@ impl Deck {
                 hidden: false,
                 shape: ShapeProps { xfrm: Some(xfrm), ..Default::default() },
                 placeholder: None,
+                link: None,
                 content: FrameContent::Table { table: part },
                 origin: Origin::default(),
             });
@@ -390,6 +391,7 @@ impl Deck {
             hidden: false,
             shape: ShapeProps { xfrm: Some(xfrm), preset: Some("rect".into()), ..Default::default() },
             placeholder: None,
+            link: None,
             content: FrameContent::Picture { image: Image { width: Emu(w), height: Emu(h), ..image } },
             origin: Origin::default(),
         });

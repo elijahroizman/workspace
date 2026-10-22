@@ -8,6 +8,7 @@ mod commands;
 mod draw;
 mod elements;
 mod table_style;
+mod templates;
 mod text;
 
 use office_core::model::{Block, Body, Document, Frame, FrameContent, Kind, Paragraph, Run, RunProps, Slide, SlideSize, TextBody};

@@ -25,6 +25,7 @@ fn placeholder(id: u32, kind: Option<&str>, index: Option<u32>, text: &str) -> F
         hidden: false,
         shape: Default::default(),
         placeholder: Some(Ph { kind: kind.map(str::to_string), index }),
+        link: None,
         content: FrameContent::Shape {
             text: Some(TextBody { paragraphs: vec![Paragraph::text(text)], origin: Origin::default() }),
             connector: false,

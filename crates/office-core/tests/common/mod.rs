@@ -103,6 +103,7 @@ pub fn slides() -> Document {
         hidden: false,
         shape: ShapeProps { xfrm: Some(at(8.0, 1.0, 1.0, 1.0)), preset: Some("rect".into()), ..Default::default() },
         placeholder: None,
+        link: None,
         content: FrameContent::Picture {
             image: Image {
                 media: png,
@@ -128,6 +129,7 @@ pub fn slides() -> Document {
         hidden: false,
         shape: ShapeProps { xfrm: Some(at(1.0, 3.0, 6.0, 1.2)), ..Default::default() },
         placeholder: None,
+        link: None,
         content: FrameContent::Table { table },
         origin: Default::default(),
     };
@@ -142,6 +144,7 @@ pub fn slides() -> Document {
         hidden: false,
         shape: group_shape,
         placeholder: None,
+        link: None,
         content: FrameContent::Group { frames: vec![child] },
         origin: Default::default(),
     };

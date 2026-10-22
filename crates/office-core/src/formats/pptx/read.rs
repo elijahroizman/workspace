@@ -87,6 +87,7 @@ fn read_frame(el: &Element, rels: &PartRels, doc: &mut Document) -> Frame {
         hidden: c_nv.and_then(|c| c.attr("hidden")).and_then(parse_bool).unwrap_or(false),
         shape: ShapeProps::default(),
         placeholder,
+        link: c_nv.and_then(|c| crate::formats::dml::read_link(c, Some(rels))),
         content: FrameContent::Raw { xml: el.clone() },
         origin: Default::default(),
     };

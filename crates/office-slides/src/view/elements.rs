@@ -46,6 +46,7 @@ pub struct TableInfo {
     pub header: bool,
     pub banded: bool,
     pub style: Option<String>,
+    pub text_style: Option<TextLook>,
 }
 
 /// A frame as the inspector sees it.
@@ -57,6 +58,8 @@ pub struct Element {
     #[serde(rename = "type")]
     pub kind: &'static str,
     pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link: Option<office_core::model::Link>,
     pub x: f64,
     pub y: f64,
     pub width: f64,
@@ -120,7 +123,7 @@ impl SlidesView {
                 layout: s.layout.clone(),
                 layout_name: crate::layouts(&self.doc).into_iter().find(|t| Some(&t.part) == s.layout.as_ref()).map(|t| t.name.clone()),
                 notes: crate::notes(&self.doc, i).iter().map(|p| p.plain_text()).collect::<Vec<_>>().join("\n"),
-                transition: crate::transition(s).filter(|t| !t.kind.is_empty()),
+                transition: crate::transition(s).filter(|t| !t.kind.is_empty() || !t.on_click || t.after_ms.is_some()),
                 revision: self.revisions.get(i).copied().unwrap_or(0),
                 show_master_shapes: s
                     .origin
@@ -212,6 +215,36 @@ fn element(d: &Drawer, slide: &office_core::model::Slide, f: &Frame, map: Map) -
                 header: flag("firstRow"),
                 banded: flag("bandRow"),
                 style: table.style.clone(),
+                text_style: table
+                    .rows
+                    .first()
+                    .and_then(|r| r.cells.first())
+                    .and_then(|c| {
+                        c.blocks.iter().find_map(|b| match b {
+                            office_core::model::Block::Paragraph(p) => Some(p),
+                            _ => None,
+                        })
+                    })
+                    .map(|p| {
+                        let props = p.runs().next().map(|r| &r.props).or(p.mark.as_ref());
+                        TextLook {
+                            font_family: props
+                                .and_then(|r| r.font.clone())
+                                .or_else(|| Some(super::text::Paint { doc: d.doc, slide }.body_font())),
+                            font_size: Some(props.and_then(|r| r.size).map(|s| s.points()).unwrap_or(18.0)),
+                            bold: props.and_then(|r| r.bold).unwrap_or(false),
+                            italic: props.and_then(|r| r.italic).unwrap_or(false),
+                            underline: props.and_then(|r| r.underline.as_deref()).is_some_and(|u| u != "none"),
+                            strikethrough: props.and_then(|r| r.strike).is_some_and(|s| s != Strike::None),
+                            color: props.and_then(|r| r.color.as_ref()).map(|c| super::text::Paint { doc: d.doc, slide }.color(c).css()),
+                            align: match p.props.align {
+                                Some(office_core::model::Align::Center) => "center",
+                                Some(office_core::model::Align::Right) => "right",
+                                Some(office_core::model::Align::Justify) => "justify",
+                                _ => "left",
+                            },
+                        }
+                    }),
             })
         }
         _ => None,
@@ -238,6 +271,7 @@ fn element(d: &Drawer, slide: &office_core::model::Slide, f: &Frame, map: Map) -
         id: f.id.to_string(),
         kind,
         name: f.name.clone(),
+        link: f.link.clone(),
         x: r2(b.x),
         y: r2(b.y),
         width: r2(b.w),

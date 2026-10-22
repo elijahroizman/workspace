@@ -93,7 +93,7 @@ pub fn read_run_props(el: &Element) -> RunProps {
 
 /// A run's `a:hlinkClick` to a URL. Clicks that jump to a slide or run an action stay in the
 /// run's origin for the PowerPoint layer.
-fn read_link(rpr: &Element, rels: Option<&PartRels>) -> Option<Link> {
+pub(crate) fn read_link(rpr: &Element, rels: Option<&PartRels>) -> Option<Link> {
     let click = rpr.child(ns::A, "hlinkClick")?;
     if click.attr("action").is_some_and(|a| !a.is_empty() && !a.starts_with("ppaction://hlinkfile")) {
         return None;
@@ -271,15 +271,18 @@ fn write_run(run: &Run, ctx: &mut PartCtx, para: &mut Element) {
 /// A run's URL hyperlink, changed only if it differs from what `rpr` has.
 fn current_link(rpr: &Element, ctx: &PartCtx) -> Option<Link> {
     let c = rpr.child(ns::A, "hlinkClick")?;
+    if c.attr("action").is_some_and(|a| !a.is_empty() && !a.starts_with("ppaction://hlinkfile")) {
+        return None;
+    }
     let url = ctx.url(rel_attr(c, "id")?)?.to_string();
     Some(Link { url: Some(url), anchor: None, tooltip: c.attr("tooltip").map(str::to_string) })
 }
 
-fn patch_link(link: Option<&Link>, rpr: &mut Element, ctx: &mut PartCtx) {
+pub(crate) fn patch_link(link: Option<&Link>, rpr: &mut Element, ctx: &mut PartCtx) {
     let click = rpr.child(ns::A, "hlinkClick");
     let current = current_link(rpr, ctx);
     // Links to slides and actions aren't the model's; leave them be.
-    if current.is_none() && click.is_some() {
+    if current.is_none() && click.is_some() && link.is_none() {
         return;
     }
     let wanted = link.filter(|l| l.url.is_some()).cloned();

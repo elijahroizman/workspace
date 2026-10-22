@@ -36,6 +36,8 @@ enum Cmd {
     Group,
     Ungroup,
     TextStyle { patch: TextPatchIn },
+    TableTextStyle { patch: TextPatchIn },
+    Link { id: u32, url: Option<String> },
     Bullets { kind: String },
     Fill { hex: Option<String> },
     Line { hex: Option<String>, width: Option<f64> },
@@ -44,6 +46,7 @@ enum Cmd {
     InsertTable { rows: u32, cols: u32 },
     Table { op: String, value: Option<String> },
     AddSlide { after: usize, layout: Option<String> },
+    AddTemplate { after: usize, template: String },
     DuplicateSlides { indexes: Vec<usize> },
     DeleteSlides { indexes: Vec<usize> },
     MoveSlide { from: usize, to: usize },
@@ -103,6 +106,15 @@ impl SlidesDoc {
     /// Every slide: id, hidden, layout, notes, transition, revision.
     pub fn slides(&self) -> String {
         json(&self.view.slide_infos())
+    }
+
+    pub fn theme(&self) -> String {
+        let theme = self.view.doc.theme.clone().unwrap_or_else(office_core::drawing::Theme::office);
+        let colors: std::collections::BTreeMap<_, _> = office_core::drawing::theme::SLOTS
+            .iter()
+            .map(|slot| (*slot, format!("#{}", theme.scheme_color(slot).unwrap_or(office_core::drawing::Rgb::BLACK).hex())))
+            .collect();
+        json(&serde_json::json!({ "heading": theme.fonts.major.latin, "body": theme.fonts.minor.latin, "colors": colors }))
     }
 
     pub fn layouts(&self) -> String {
@@ -261,6 +273,23 @@ impl SlidesDoc {
                 });
                 null
             }
+            Cmd::TableTextStyle { patch: p } => {
+                v.table_text_style(&TextPatch {
+                    font_family: p.font_family,
+                    font_size: p.font_size,
+                    bold: p.bold,
+                    italic: p.italic,
+                    underline: p.underline,
+                    strikethrough: p.strikethrough,
+                    color: p.color,
+                    align: p.align,
+                });
+                null
+            }
+            Cmd::Link { id, url } => {
+                v.set_link(id, url.as_deref());
+                null
+            }
             Cmd::Bullets { kind } => {
                 v.toggle_bullets(&kind);
                 null
@@ -282,6 +311,10 @@ impl SlidesDoc {
             }
             Cmd::AddSlide { after, layout } => {
                 v.add_slide(after, layout.as_deref());
+                null
+            }
+            Cmd::AddTemplate { after, template } => {
+                v.add_template(after, &template);
                 null
             }
             Cmd::DuplicateSlides { indexes } => {
@@ -370,7 +403,11 @@ impl SlidesDoc {
             Cmd::Find { query } => {
                 self.matches = v.find(&query);
                 self.query = query;
-                serde_json::json!(self.matches.iter().map(|(s, f)| serde_json::json!({ "slide": s, "id": f.to_string() })).collect::<Vec<_>>())
+                serde_json::json!(self
+                    .matches
+                    .iter()
+                    .map(|(s, f)| serde_json::json!({ "slide": s, "id": f.to_string() }))
+                    .collect::<Vec<_>>())
             }
             Cmd::ReplaceMatch { index, text } => {
                 if let Some(mt) = self.matches.get(index).copied() {
