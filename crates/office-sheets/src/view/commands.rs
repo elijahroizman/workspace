@@ -2,11 +2,15 @@
 //! sheets, the clipboard, find and replace, and undo. Formulas are worked out again after each
 //! change.
 
+use std::collections::HashMap;
+
 use office_core::drawing::{Color, Rgb};
-use office_core::model::{CellRef, Range, Sheet, SheetCell, SheetRow, Value};
+use office_core::model::{CellRef, Origin, Range, Sheet, SheetCell, SheetRow, Value};
+use office_core::xml::ns;
 use serde::Deserialize;
 
 use super::{CStep, SheetSel, SheetsView};
+use crate::formula::{RefPart, Reference};
 use crate::{format_of, set_format};
 
 /// A change to cells' formatting, from the inspector.
@@ -162,8 +166,12 @@ impl SheetsView {
         } else if let Some(n) = parse_number(trimmed) {
             if trimmed.ends_with('%') {
                 format = Some("0%");
-            } else if trimmed.starts_with(['$', '€', '£']) || trimmed.starts_with("-$") {
-                format = Some("\"$\"#,##0.00");
+            } else if let Some(sym) = trimmed.trim_start_matches(['-', '(']).chars().next().filter(|c| matches!(c, '$' | '€' | '£')) {
+                format = Some(match sym {
+                    '€' => "\"€\"#,##0.00",
+                    '£' => "\"£\"#,##0.00",
+                    _ => "\"$\"#,##0.00",
+                });
             }
             (Value::Number(n), None)
         } else if let Some((date, fmt)) = parse_date(trimmed) {
@@ -311,6 +319,10 @@ impl SheetsView {
     pub fn shift_rows(&mut self, sheet: usize, at: u32, n: i64) {
         self.change_sheet(sheet, |v| {
             let Some(s) = v.sheets_mut().get_mut(sheet) else { return };
+            // Shared followers keep their formula only on the group's origin. Copy every formula in a
+            // group that this shift touches before those origins are cleared, and move references the
+            // way inserting or deleting rows does.
+            prepare_shift(s, Axis::Row, at, n);
             if n < 0 {
                 let end = at as i64 - n;
                 s.rows.retain(|r| (r.index as i64) < at as i64 || r.index as i64 >= end);
@@ -339,6 +351,7 @@ impl SheetsView {
     pub fn shift_cols(&mut self, sheet: usize, at: u32, n: i64) {
         self.change_sheet(sheet, |v| {
             let Some(s) = v.sheets_mut().get_mut(sheet) else { return };
+            prepare_shift(s, Axis::Col, at, n);
             for r in &mut s.rows {
                 if n < 0 {
                     let end = at as i64 - n;
@@ -646,10 +659,480 @@ fn parse_date(s: &str) -> Option<(crate::DateTime, &'static str)> {
     } else {
         return None;
     };
-    if !(1..=12).contains(&m) || !(1..=31).contains(&d) || !(1900..=9999).contains(&y) {
+    if !(1900..=9999).contains(&y) || !(1..=12).contains(&m) {
+        return None;
+    }
+    // 1900 is not a leap year. A day the month doesn't have stays text, as Excel keeps it.
+    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    if !(1..=days[m as usize - 1]).contains(&d) {
         return None;
     }
     Some((crate::DateTime::date(y, m as u32, d as u32), fmt))
+}
+
+#[derive(Clone, Copy)]
+enum Axis {
+    Row,
+    Col,
+}
+
+struct SharedBuild {
+    master: Option<(u32, u32, String)>,
+    members: Vec<(u32, u32)>,
+}
+
+/// The row or column this shift moves.
+fn axis_index(axis: Axis, row: u32, col: u32) -> u32 {
+    match axis {
+        Axis::Row => row,
+        Axis::Col => col,
+    }
+}
+
+/// A shared formula's group id, and whether this cell is the one that carries the text (`ref`).
+fn shared_mark(origin: &Origin) -> Option<(String, bool)> {
+    let f = origin.get()?.child(ns::X, "f")?;
+    if f.attr("t") != Some("shared") {
+        return None;
+    }
+    Some((f.attr("si").unwrap_or("").to_string(), f.attr("ref").is_some()))
+}
+
+/// Drops the stored `<f>` so a materialized formula is written as an ordinary formula.
+fn drop_formula_markup(origin: &mut Origin) {
+    let Some(el) = origin.get() else { return };
+    if el.child(ns::X, "f").is_none() {
+        return;
+    }
+    let mut el = el.clone();
+    el.remove_children(ns::X, "f");
+    *origin = Origin::new(el);
+}
+
+/// Copies shared formulas onto every cell of a group this shift will break, then moves every
+/// formula's references. Followers whose leader is deleted keep the formula they had.
+fn prepare_shift(sheet: &mut Sheet, axis: Axis, at: u32, n: i64) {
+    let name = sheet.name.clone();
+    let mut order = Vec::new();
+    let mut groups: HashMap<String, SharedBuild> = HashMap::new();
+    for row in &sheet.rows {
+        for c in &row.cells {
+            let Some((si, is_master)) = shared_mark(&c.origin) else { continue };
+            if !groups.contains_key(&si) {
+                order.push(si.clone());
+            }
+            let g = groups.entry(si).or_insert_with(|| SharedBuild { master: None, members: Vec::new() });
+            g.members.push((row.index, c.col));
+            if is_master {
+                if let Some(text) = &c.formula {
+                    g.master = Some((row.index, c.col, text.clone()));
+                }
+            }
+        }
+    }
+    let mut strip = Vec::new();
+    for si in order {
+        let Some(g) = groups.remove(&si) else { continue };
+        let Some((mr, mc, text)) = g.master else { continue };
+        // A group breaks when any cell moves or is deleted (its origin is about to go), or when
+        // inserting rows inside a copied range would make one cell's formula no longer the
+        // leader's formula shifted by the same offset.
+        let structural = g.members.iter().any(|&(r, c)| axis_index(axis, r, c) >= at);
+        let refs_move = g.members.iter().any(|&(r, c)| {
+            crate::formula::shift(&text, r as i64 - mr as i64, c as i64 - mc as i64)
+                .is_ok_and(|f| adjust_formula(&f, &name, axis, at, n) != f)
+        });
+        if !structural && !refs_move {
+            continue;
+        }
+        for (r, c) in g.members {
+            let base = crate::formula::shift(&text, r as i64 - mr as i64, c as i64 - mc as i64).unwrap_or_else(|_| text.clone());
+            sheet.cell_mut(CellRef::new(r, c)).formula = Some(base);
+            strip.push((r, c));
+        }
+    }
+    for row in &mut sheet.rows {
+        for c in &mut row.cells {
+            let Some(current) = c.formula.clone() else { continue };
+            let next = adjust_formula(&current, &name, axis, at, n);
+            if next != current {
+                c.formula = Some(next);
+            }
+        }
+    }
+    for (r, c) in strip {
+        drop_formula_markup(&mut sheet.cell_mut(CellRef::new(r, c)).origin);
+    }
+}
+
+const MAX_ROW: u32 = 1_048_575;
+const MAX_COL: u32 = 16_383;
+
+fn map_point(i: u32, at: u32, n: i64, max: u32) -> Option<u32> {
+    let i = i as i64;
+    let at = at as i64;
+    let v = if n > 0 {
+        if i >= at {
+            i.checked_add(n)?
+        } else {
+            i
+        }
+    } else if n < 0 {
+        let count = n.checked_neg()?;
+        if i < at {
+            i
+        } else if i >= at.checked_add(count)? {
+            i.checked_sub(count)?
+        } else {
+            return None;
+        }
+    } else {
+        i
+    };
+    u32::try_from(v).ok().filter(|v| *v <= max)
+}
+
+/// How a range's ends move. An insertion inside the range expands it; a deletion that covers
+/// only part of it shrinks it; a range that disappears entirely is `None`.
+fn map_span(a: u32, b: u32, at: u32, n: i64, max: u32) -> Option<(u32, u32)> {
+    let (lo, hi, flipped) = if a <= b { (a, b, false) } else { (b, a, true) };
+    let (nlo, nhi) = if n > 0 {
+        let add = u32::try_from(n).ok()?;
+        if lo >= at {
+            (lo.checked_add(add)?, hi.checked_add(add)?)
+        } else if hi >= at {
+            (lo, hi.checked_add(add)?)
+        } else {
+            (lo, hi)
+        }
+    } else if n < 0 {
+        let count = u32::try_from(-n).ok()?;
+        let end = at.checked_add(count)?;
+        let nlo = if lo < at {
+            lo
+        } else if lo >= end {
+            lo - count
+        } else if end <= hi {
+            at
+        } else {
+            return None;
+        };
+        let nhi = if hi < at {
+            hi
+        } else if hi >= end {
+            hi - count
+        } else if lo < at {
+            at.checked_sub(1)?
+        } else {
+            return None;
+        };
+        if nlo > nhi {
+            return None;
+        }
+        (nlo, nhi)
+    } else {
+        (lo, hi)
+    };
+    if nlo > max || nhi > max {
+        return None;
+    }
+    if flipped {
+        Some((nhi, nlo))
+    } else {
+        Some((nlo, nhi))
+    }
+}
+
+fn shift_point(p: RefPart, axis: Axis, at: u32, n: i64) -> Option<RefPart> {
+    let max = match axis {
+        Axis::Row => MAX_ROW,
+        Axis::Col => MAX_COL,
+    };
+    match axis {
+        Axis::Row => {
+            let row = match p.row {
+                Some(r) => Some(map_point(r, at, n, max)?),
+                None => None,
+            };
+            Some(RefPart { row, ..p })
+        }
+        Axis::Col => {
+            let col = match p.col {
+                Some(c) => Some(map_point(c, at, n, max)?),
+                None => None,
+            };
+            Some(RefPart { col, ..p })
+        }
+    }
+}
+
+fn shift_ends(start: RefPart, end: Option<RefPart>, axis: Axis, at: u32, n: i64) -> Option<(RefPart, Option<RefPart>)> {
+    let Some(end) = end else {
+        return Some((shift_point(start, axis, at, n)?, None));
+    };
+    let max = match axis {
+        Axis::Row => MAX_ROW,
+        Axis::Col => MAX_COL,
+    };
+    let (start, end) = match axis {
+        Axis::Row => match (start.row, end.row) {
+            (Some(r1), Some(r2)) => {
+                let (r1, r2) = map_span(r1, r2, at, n, max)?;
+                (RefPart { row: Some(r1), ..start }, RefPart { row: Some(r2), ..end })
+            }
+            _ => (start, end),
+        },
+        Axis::Col => match (start.col, end.col) {
+            (Some(c1), Some(c2)) => {
+                let (c1, c2) = map_span(c1, c2, at, n, max)?;
+                (RefPart { col: Some(c1), ..start }, RefPart { col: Some(c2), ..end })
+            }
+            _ => (start, end),
+        },
+    };
+    Some((start, Some(end)))
+}
+
+fn write_part(p: &RefPart) -> String {
+    let mut s = String::new();
+    if let Some(c) = p.col {
+        if p.col_abs {
+            s.push('$');
+        }
+        s.push_str(&CellRef::column_name(c));
+    }
+    if let Some(r) = p.row {
+        if p.row_abs {
+            s.push('$');
+        }
+        s.push_str(&(r + 1).to_string());
+    }
+    s
+}
+
+fn write_coords(start: &RefPart, end: Option<&RefPart>) -> String {
+    match end {
+        None => write_part(start),
+        Some(end) => format!("{}:{}", write_part(start), write_part(end)),
+    }
+}
+
+/// Moves references in `src` for a row or column insert (`n > 0`) or delete (`n < 0`) at `at`.
+/// Absolute references move when the cell they name moves. A reference on another sheet stays.
+/// Same rules as Excel: a range grows when rows are inserted inside it and shrinks when rows
+/// are deleted from it.
+fn adjust_formula(src: &str, sheet_name: &str, axis: Axis, at: u32, n: i64) -> String {
+    let b = src.as_bytes();
+    let mut out = String::with_capacity(src.len());
+    let mut i = 0;
+    while i < b.len() {
+        let c = src[i..].chars().next().unwrap();
+        match c {
+            '"' => {
+                out.push('"');
+                i += 1;
+                while i < b.len() {
+                    if b[i] == b'"' {
+                        out.push('"');
+                        i += 1;
+                        if b.get(i) == Some(&b'"') {
+                            out.push('"');
+                            i += 1;
+                        } else {
+                            break;
+                        }
+                    } else {
+                        let ch = src[i..].chars().next().unwrap();
+                        out.push(ch);
+                        i += ch.len_utf8();
+                    }
+                }
+            }
+            '#' => {
+                const ERRORS: [&str; 8] = ["#NULL!", "#DIV/0!", "#VALUE!", "#REF!", "#NAME?", "#NUM!", "#N/A", "#GETTING_DATA"];
+                if let Some(e) = ERRORS.iter().find(|e| src[i..].to_ascii_uppercase().starts_with(**e)) {
+                    out.push_str(&src[i..i + e.len()]);
+                    i += e.len();
+                } else {
+                    out.push('#');
+                    i += 1;
+                }
+            }
+            '\'' => {
+                if let Some((sheet, coord)) = quoted_sheet(src, i) {
+                    if let Some((r, len)) = parse_ref(src, coord, Some(sheet)) {
+                        rewrite(&mut out, src, i, coord, coord + len, r, sheet_name, axis, at, n);
+                        i = coord + len;
+                        continue;
+                    }
+                }
+                out.push('\'');
+                i += 1;
+            }
+            c if c == '$' || c == '_' || c == '\\' || c.is_alphabetic() => {
+                let word_end = scan_word(src, i);
+                if word_end > i && b.get(word_end) == Some(&b'!') {
+                    let sheet = src[i..word_end].to_string();
+                    if let Some((r, len)) = parse_ref(src, word_end + 1, Some(sheet)) {
+                        rewrite(&mut out, src, i, word_end + 1, word_end + 1 + len, r, sheet_name, axis, at, n);
+                        i = word_end + 1 + len;
+                        continue;
+                    }
+                }
+                if let Some((r, len)) = parse_ref(src, i, None) {
+                    rewrite(&mut out, src, i, i, i + len, r, sheet_name, axis, at, n);
+                    i += len;
+                    continue;
+                }
+                let end = if word_end > i { word_end } else { i + c.len_utf8() };
+                out.push_str(&src[i..end]);
+                i = end;
+            }
+            '0'..='9' | '.' => {
+                if let Some((r, len)) = parse_ref(src, i, None) {
+                    rewrite(&mut out, src, i, i, i + len, r, sheet_name, axis, at, n);
+                    i += len;
+                } else {
+                    out.push(c);
+                    i += c.len_utf8();
+                }
+            }
+            _ => {
+                out.push(c);
+                i += c.len_utf8();
+            }
+        }
+    }
+    out
+}
+
+fn quoted_sheet(src: &str, i: usize) -> Option<(String, usize)> {
+    let b = src.as_bytes();
+    let mut j = i + 1;
+    let mut name = String::new();
+    loop {
+        match b.get(j) {
+            Some(b'\'') if b.get(j + 1) == Some(&b'\'') => {
+                name.push('\'');
+                j += 2;
+            }
+            Some(b'\'') => break,
+            Some(_) => {
+                let ch = src[j..].chars().next().unwrap();
+                name.push(ch);
+                j += ch.len_utf8();
+            }
+            None => return None,
+        }
+    }
+    if b.get(j + 1) != Some(&b'!') {
+        return None;
+    }
+    Some((name, j + 2))
+}
+
+fn scan_word(src: &str, i: usize) -> usize {
+    let mut j = i;
+    while j < src.len() {
+        let ch = src[j..].chars().next().unwrap();
+        if ch.is_alphanumeric() || matches!(ch, '_' | '.' | '\\' | '$') {
+            j += ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+    j
+}
+
+fn rewrite(
+    out: &mut String,
+    src: &str,
+    start: usize,
+    coord: usize,
+    end: usize,
+    reference: Reference,
+    sheet_name: &str,
+    axis: Axis,
+    at: u32,
+    n: i64,
+) {
+    let same_sheet = reference.sheet.as_ref().map(|s| s.eq_ignore_ascii_case(sheet_name)).unwrap_or(true);
+    if !same_sheet {
+        out.push_str(&src[start..end]);
+        return;
+    }
+    let Some((a, b)) = shift_ends(reference.start, reference.end, axis, at, n) else {
+        out.push_str("#REF!");
+        return;
+    };
+    let coords = write_coords(&a, b.as_ref());
+    if coords == src[coord..end] {
+        out.push_str(&src[start..end]);
+    } else {
+        out.push_str(&src[start..coord]);
+        out.push_str(&coords);
+    }
+}
+
+/// A reference at `at`, matching the formula parser: `A1`, `$A$1`, `A1:B2`, `A:C`, `1:3`.
+fn parse_ref(src: &str, at: usize, sheet: Option<String>) -> Option<(Reference, usize)> {
+    let s = src.as_bytes();
+    let (first, n1) = parse_part(s, at)?;
+    let mut len = n1;
+    let mut end = None;
+    if s.get(at + len) == Some(&b':') {
+        if let Some((second, n2)) = parse_part(s, at + len + 1) {
+            let kind = |p: &RefPart| (p.row.is_some(), p.col.is_some());
+            if kind(&first) == kind(&second) {
+                end = Some(second);
+                len += 1 + n2;
+            }
+        }
+    }
+    if end.is_none() && (first.row.is_none() || first.col.is_none()) {
+        return None;
+    }
+    let next = src[at + len..].chars().next();
+    if next.is_some_and(|c| c == '(' || c.is_alphanumeric() || c == '_' || c == '.') {
+        return None;
+    }
+    Some((Reference { sheet, start: first, end }, len))
+}
+
+fn parse_part(s: &[u8], mut i: usize) -> Option<(RefPart, usize)> {
+    let start = i;
+    let col_abs = s.get(i) == Some(&b'$');
+    if col_abs {
+        i += 1;
+    }
+    let cs = i;
+    while i < s.len() && s[i].is_ascii_alphabetic() {
+        i += 1;
+    }
+    let col = if i > cs && i - cs <= 3 {
+        Some(s[cs..i].iter().fold(0u32, |n, c| n * 26 + (c.to_ascii_uppercase() - b'A' + 1) as u32) - 1)
+    } else if i == cs {
+        None
+    } else {
+        return None;
+    };
+    let row_abs = s.get(i) == Some(&b'$');
+    let ri = if row_abs { i + 1 } else { i };
+    let mut j = ri;
+    while j < s.len() && s[j].is_ascii_digit() {
+        j += 1;
+    }
+    let row = if j > ri { std::str::from_utf8(&s[ri..j]).ok()?.parse::<u32>().ok().filter(|r| *r >= 1).map(|r| r - 1) } else { None };
+    if j > ri {
+        i = j;
+    } else if row_abs {
+        return None;
+    }
+    if col.is_none() && row.is_none() || col.is_some_and(|c| c > 16_383) || row.is_some_and(|r| r > 1_048_575) {
+        return None;
+    }
+    Some((RefPart { row, col, row_abs: row_abs && row.is_some(), col_abs: col_abs && col.is_some() }, i - start))
 }
 
 fn replace_ci(text: &str, query: &str, by: &str) -> String {
@@ -681,11 +1164,44 @@ mod tests {
         assert_eq!(parse_number("1,234.5"), Some(1234.5));
         assert_eq!(parse_number("12%"), Some(0.12));
         assert_eq!(parse_number("$9.99"), Some(9.99));
+        assert_eq!(parse_number("€5"), Some(5.0));
+        assert_eq!(parse_number("£2.5"), Some(2.5));
+        assert_eq!(parse_number("(€4)"), Some(-4.0));
         assert_eq!(parse_number("(4)"), Some(-4.0));
         assert_eq!(parse_number("12,34"), None);
         assert_eq!(parse_number("abc"), None);
         assert!(parse_date("2026-01-31").is_some());
         assert!(parse_date("1/31/2026").is_some());
+        assert!(parse_date("2024-02-29").is_some(), "a leap day");
+        assert!(parse_date("2000-02-29").is_some(), "a century divisible by 400");
+        assert!(parse_date("2026-02-29").is_none(), "2026 is not a leap year");
+        assert!(parse_date("2026-02-31").is_none());
+        assert!(parse_date("2/31/2026").is_none());
+        assert!(parse_date("4/31/2026").is_none(), "April has 30 days");
+        assert!(parse_date("1900-02-29").is_none(), "1900 is not a Gregorian leap year");
         assert!(parse_date("31/31/2026").is_none());
+    }
+
+    fn adj(src: &str, axis: Axis, at: u32, n: i64) -> String {
+        adjust_formula(src, "Data", axis, at, n)
+    }
+
+    #[test]
+    fn inserted_and_deleted_rows_move_references() {
+        assert_eq!(adj("$A$1+A5", Axis::Row, 3, 1), "$A$1+A6");
+        assert_eq!(adj("SUM(A1:A10)", Axis::Row, 4, 1), "SUM(A1:A11)", "an insertion inside a range expands it");
+        assert_eq!(adj("SUM(Z6:Z8)", Axis::Row, 5, 1), "SUM(Z7:Z9)", "a range at the insertion point moves with it");
+        assert_eq!(adj("SUM(A1:A10)", Axis::Row, 0, -1), "SUM(A1:A9)");
+        assert_eq!(adj("A1", Axis::Row, 0, -1), "#REF!");
+        assert_eq!(adj("Other!A5+A5", Axis::Row, 0, 1), "Other!A5+A6");
+        assert_eq!(adj("\"A1\"&A1", Axis::Row, 0, 1), "\"A1\"&A2");
+        assert_eq!(adj("Data!A1", Axis::Row, 0, 1), "Data!A2");
+        assert_eq!(adj("'Data'!$B$2", Axis::Row, 0, 2), "'Data'!$B$4");
+        assert_eq!(adj("'Bob''s'!A1", Axis::Row, 0, 1), "'Bob''s'!A1", "another sheet, even with a quote in the name");
+        assert_eq!(adj("Z:Z", Axis::Row, 0, 1), "Z:Z");
+        assert_eq!(adj("2:3", Axis::Row, 1, 1), "3:4");
+        assert_eq!(adj("A1+B1", Axis::Col, 1, 1), "A1+C1");
+        assert_eq!(adj("SUM(B1:D1)", Axis::Col, 2, -1), "SUM(B1:C1)");
+        assert_eq!(adj("SUM(A1:A3)+\"A1\"+Other!B2", Axis::Row, 10, 1), "SUM(A1:A3)+\"A1\"+Other!B2");
     }
 }

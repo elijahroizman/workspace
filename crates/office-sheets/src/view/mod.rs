@@ -556,8 +556,11 @@ impl SheetsView {
                 let f = format_of(&self.doc, sheet, at);
                 let mut text = crate::numfmt::format(&c.value, &f.number_format, system).text;
                 // General numbers give up decimals to fit, so a long one needn't widen the column.
-                if matches!(c.value, Value::Number(_)) && text.len() > 9 {
-                    text.truncate(9);
+                // Cut on a character: `123.45 €` is only eight characters, but byte 9 is inside `€`.
+                if matches!(c.value, Value::Number(_)) {
+                    if let Some((i, _)) = text.char_indices().nth(9) {
+                        text.truncate(i);
+                    }
                 }
                 cells.push((c.col, f, text));
             }

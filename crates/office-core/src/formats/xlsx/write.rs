@@ -355,7 +355,10 @@ pub fn write(doc: &Document) -> Result<Package> {
         out.pkg.put(&part, splice(sst, &body), types::XLSX_SHARED_STRINGS);
         ctx.relate(kind::SHARED_STRINGS, &part);
     }
-    put_if_changed(&mut out.pkg, &main, workbook, types::XLSX_MAIN)?;
+    // A same-package save of a macro-enabled workbook (.xlsm) must keep that main-part type.
+    // Replacing it with the plain xlsx type makes Excel drop the macros. A new workbook is xlsx.
+    let main_type = if same { out.pkg.content_type(&main).unwrap_or(types::XLSX_MAIN).to_string() } else { types::XLSX_MAIN.to_string() };
+    put_if_changed(&mut out.pkg, &main, workbook, &main_type)?;
     ctx.finish(&mut out.pkg);
     doc.properties.write(&mut out.pkg)?;
     Ok(std::mem::take(&mut out.pkg))
