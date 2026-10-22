@@ -28,6 +28,9 @@ pub enum Op {
     Div,
     Pow,
     Concat,
+    Range,
+    Intersect,
+    Union,
     Eq,
     Ne,
     Lt,
@@ -68,6 +71,8 @@ enum Tok {
     Close,
     Comma,
     Semi,
+    Space,
+    Colon,
     OpenBrace,
     CloseBrace,
 }
@@ -75,18 +80,20 @@ enum Tok {
 const ERRORS: [&str; 8] = ["#NULL!", "#DIV/0!", "#VALUE!", "#REF!", "#NAME?", "#NUM!", "#N/A", "#GETTING_DATA"];
 
 /// Splits formula text into tokens with where each one is (so references can be rewritten in
-/// place). Whitespace is left out.
+/// place). Spaces between reference operands are intersection operators.
 fn lex(src: &str) -> Result<Vec<(Tok, std::ops::Range<usize>)>, String> {
     let b = src.as_bytes();
     let mut out = Vec::new();
     let mut i = 0;
     while i < b.len() {
         let start = i;
-        let c = b[i] as char;
+        let c = src[i..].chars().next().unwrap();
         let tok = match c {
             ' ' | '\t' | '\n' | '\r' => {
-                i += 1;
-                continue;
+                while b.get(i).is_some_and(u8::is_ascii_whitespace) {
+                    i += 1;
+                }
+                Tok::Space
             }
             '"' => {
                 let mut s = String::new();
@@ -125,6 +132,10 @@ fn lex(src: &str) -> Result<Vec<(Tok, std::ops::Range<usize>)>, String> {
                 i += 1;
                 Tok::Comma
             }
+            ':' => {
+                i += 1;
+                Tok::Colon
+            }
             ';' => {
                 i += 1;
                 Tok::Semi
@@ -138,8 +149,8 @@ fn lex(src: &str) -> Result<Vec<(Tok, std::ops::Range<usize>)>, String> {
                 Tok::CloseBrace
             }
             '<' | '>' => {
-                let two = &src[i..(i + 2).min(src.len())];
-                let op = if two == "<=" || two == ">=" || two == "<>" { two } else { &src[i..i + 1] };
+                let len = if b.get(i + 1) == Some(&b'=') || c == '<' && b.get(i + 1) == Some(&b'>') { 2 } else { 1 };
+                let op = &src[i..i + len];
                 i += op.len();
                 Tok::Op(op.to_string())
             }
@@ -200,37 +211,45 @@ fn lex(src: &str) -> Result<Vec<(Tok, std::ops::Range<usize>)>, String> {
                 i = j + 2 + len;
                 Tok::Ref(r)
             }
-            c if c == '$' || c == '_' || c == '\\' || c.is_alphabetic() || !c.is_ascii() => {
-                if let Some((r, len)) = reference(src, i, None) {
+            c if c == '$' || c == '_' || c == '\\' || c.is_alphabetic() => {
+                let mut j = i;
+                while j < src.len() {
+                    let ch = src[j..].chars().next().unwrap();
+                    if ch.is_alphanumeric() || matches!(ch, '_' | '.' | '\\' | '$') {
+                        j += ch.len_utf8();
+                    } else {
+                        break;
+                    }
+                }
+                // Sheet prefixes take priority over cell-like names such as Q1.
+                if b.get(j) == Some(&b'!') {
+                    let (r, len) = reference(src, j + 1, Some(src[i..j].to_string())).ok_or("no reference after the sheet name")?;
+                    i = j + 1 + len;
+                    Tok::Ref(r)
+                } else if let Some((r, len)) = reference(src, i, None) {
                     i += len;
                     Tok::Ref(r)
                 } else {
-                    let mut j = i;
-                    while j < src.len() {
-                        let ch = src[j..].chars().next().unwrap();
-                        if ch.is_alphanumeric() || ch == '_' || ch == '.' || ch == '\\' || ch == '$' {
-                            j += ch.len_utf8();
-                        } else {
-                            break;
-                        }
-                    }
-                    let word = &src[i..j];
-                    // Sheet1!A1
-                    if b.get(j) == Some(&b'!') {
-                        let (r, len) = reference(src, j + 1, Some(word.to_string())).ok_or("no reference after the sheet name")?;
-                        i = j + 1 + len;
-                        Tok::Ref(r)
-                    } else {
-                        i = j;
-                        Tok::Ident(word.to_string())
-                    }
+                    let word = src[i..j].to_string();
+                    i = j;
+                    Tok::Ident(word)
                 }
             }
             c => return Err(format!("unexpected {c:?}")),
         };
+        if i <= start {
+            return Err("tokenizer made no progress".into());
+        }
         out.push((tok, start..i));
     }
-    Ok(out)
+    let significant = |at: usize| {
+        let before = at.checked_sub(1).and_then(|i| out.get(i)).map(|(t, _)| t);
+        let after = out.get(at + 1).map(|(t, _)| t);
+        matches!(before, Some(Tok::Ref(_) | Tok::Ident(_) | Tok::Close))
+            && matches!(after, Some(Tok::Ref(_) | Tok::Ident(_) | Tok::Open))
+            && !matches!((before, after), (Some(Tok::Ident(_)), Some(Tok::Open)))
+    };
+    Ok(out.iter().enumerate().filter(|(i, (t, _))| *t != Tok::Space || significant(*i)).map(|(_, t)| t.clone()).collect())
 }
 
 /// A reference at `at`: `A1`, `$A$1`, `A1:B2`, `A:C`, `1:3`. Not when it's a function's name
@@ -299,7 +318,7 @@ fn reference(src: &str, at: usize, sheet: Option<String>) -> Option<(Reference, 
 /// Parses formula text (without its `=`).
 pub fn parse(src: &str) -> Result<Expr, String> {
     let toks = lex(src)?;
-    let mut p = Parser { toks: toks.into_iter().map(|(t, _)| t).collect(), at: 0 };
+    let mut p = Parser { toks: toks.into_iter().map(|(t, _)| t).collect(), at: 0, union_allowed: true };
     let e = p.compare()?;
     if p.at != p.toks.len() {
         return Err(format!("unexpected {:?}", p.toks[p.at]));
@@ -310,6 +329,7 @@ pub fn parse(src: &str) -> Result<Expr, String> {
 struct Parser {
     toks: Vec<Tok>,
     at: usize,
+    union_allowed: bool,
 }
 
 impl Parser {
@@ -381,8 +401,35 @@ impl Parser {
                 let e = self.unary()?;
                 Ok(if o == "-" { Expr::Neg(Box::new(e)) } else { e })
             }
-            None => self.primary(),
+            None => self.reference_union(),
         }
+    }
+
+    fn reference_union(&mut self) -> Result<Expr, String> {
+        let mut e = self.intersection()?;
+        while self.union_allowed && self.peek() == Some(&Tok::Comma) {
+            self.at += 1;
+            e = Expr::Binary(Op::Union, Box::new(e), Box::new(self.intersection()?));
+        }
+        Ok(e)
+    }
+
+    fn intersection(&mut self) -> Result<Expr, String> {
+        let mut e = self.range()?;
+        while self.peek() == Some(&Tok::Space) {
+            self.at += 1;
+            e = Expr::Binary(Op::Intersect, Box::new(e), Box::new(self.range()?));
+        }
+        Ok(e)
+    }
+
+    fn range(&mut self) -> Result<Expr, String> {
+        let mut e = self.primary()?;
+        while self.peek() == Some(&Tok::Colon) {
+            self.at += 1;
+            e = Expr::Binary(Op::Range, Box::new(e), Box::new(self.primary()?));
+        }
+        Ok(e)
     }
 
     fn primary(&mut self) -> Result<Expr, String> {
@@ -394,11 +441,16 @@ impl Parser {
             Tok::Error(e) => Expr::Error(e),
             Tok::Ref(r) => Expr::Ref(r),
             Tok::Open => {
+                let previous = self.union_allowed;
+                self.union_allowed = true;
                 let e = self.compare()?;
                 self.expect(Tok::Close)?;
+                self.union_allowed = previous;
                 e
             }
             Tok::OpenBrace => {
+                let previous = self.union_allowed;
+                self.union_allowed = false;
                 let mut rows = vec![Vec::new()];
                 loop {
                     rows.last_mut().unwrap().push(self.unary()?);
@@ -412,11 +464,17 @@ impl Parser {
                     }
                 }
                 self.expect(Tok::CloseBrace)?;
+                if rows.iter().any(|r| r.len() != rows[0].len()) {
+                    return Err("ragged array".into());
+                }
+                self.union_allowed = previous;
                 Expr::Array(rows)
             }
             Tok::Ident(name) => {
                 if self.peek() == Some(&Tok::Open) {
                     self.at += 1;
+                    let previous = self.union_allowed;
+                    self.union_allowed = false;
                     let mut args = Vec::new();
                     if self.peek() != Some(&Tok::Close) {
                         loop {
@@ -433,6 +491,7 @@ impl Parser {
                         }
                     }
                     self.expect(Tok::Close)?;
+                    self.union_allowed = previous;
                     let upper = name.to_ascii_uppercase();
                     // Newer functions are saved with a prefix older Excel ignores.
                     let upper = ["_XLFN.", "_XLWS."].iter().fold(upper.as_str(), |n, p| n.strip_prefix(p).unwrap_or(n)).to_string();
@@ -514,7 +573,11 @@ pub fn shift(src: &str, rows: i64, cols: i64) -> Result<String, String> {
             _ => "#REF!".to_string(),
         };
         if let Some(sheet) = &r.sheet {
-            out.push_str(&write_sheet(sheet));
+            if src[span.start..].starts_with('\'') {
+                out.push_str(&format!("'{}'!", sheet.replace('\'', "''")));
+            } else {
+                out.push_str(&write_sheet(sheet));
+            }
         }
         out.push_str(&text);
     }
