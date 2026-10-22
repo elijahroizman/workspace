@@ -62,7 +62,7 @@
 .sc-slide {
   position: absolute;
   background: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 6px 20px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12), 0 14px 36px rgba(0, 0, 0, 0.18);
   overflow: hidden;
 }
 
