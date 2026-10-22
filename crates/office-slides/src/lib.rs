@@ -146,7 +146,7 @@ pub fn add_slide(doc: &mut Document, layout: &str) -> Option<usize> {
             description: None,
             hidden: false,
             shape: Default::default(),
-            placeholder: Some(Ph { kind: (p.kind != "body").then(|| p.kind.clone()), index: p.index }),
+            placeholder: Some(Ph { kind: (p.kind != "obj").then(|| p.kind.clone()), index: p.index }),
             content: FrameContent::Shape {
                 text: Some(TextBody { paragraphs: vec![Paragraph::default()], origin: Origin::default() }),
                 connector: false,
@@ -184,7 +184,7 @@ pub fn resolve(doc: &Document, slide: &Slide, frame: &Frame) -> Resolved {
     let layout = template(doc, slide.layout.as_deref());
     let master =
         template(doc, layout.and_then(|l| l.master.as_deref())).or_else(|| ppt(doc)?.templates.iter().find(|t| t.layout_type.is_none()));
-    let ph = frame.placeholder.as_ref().map(|p| (p.kind.clone().unwrap_or_else(|| "body".into()), p.index));
+    let ph = frame.placeholder.as_ref().map(|p| (p.kind.clone().unwrap_or_else(|| "obj".into()), p.index));
     let from_layout = ph.as_ref().and_then(|(k, i)| layout?.matching(k, *i));
     let from_master = ph.as_ref().and_then(|(k, _)| master?.matching(&from_layout.map(|p| p.kind.clone()).unwrap_or(k.clone()), None));
     let xfrm =
@@ -221,6 +221,9 @@ pub fn resolve(doc: &Document, slide: &Slide, frame: &Frame) -> Resolved {
                 }
             }
             para.overlay(&p.props);
+            if let Some(default) = p.origin.get().and_then(|o| o.path(ns::A, &["pPr", "defRPr"])) {
+                run.overlay(&office_core::formats::dml::read_run_props(default));
+            }
             let runs = p
                 .runs()
                 .map(|r| {
@@ -255,11 +258,16 @@ pub fn color(doc: &Document, slide: &Slide, c: &Color) -> Rgba {
         .and_then(|o| o.child(ns::A, "overrideClrMapping"))
         .map(|m| m.attrs.iter().filter(|a| !a.is_ns_decl()).map(|a| (a.local.clone(), a.value.clone())).collect())
         .unwrap_or_default();
-    let maps: Vec<&[(String, String)]> =
-        [Some(slide_map.as_slice()), layout.map(|l| l.color_map.as_slice()), master.map(|m| m.color_map.as_slice())]
-            .into_iter()
-            .flatten()
-            .collect();
+    let use_master =
+        slide.origin.get().and_then(|o| o.child(ns::P, "clrMapOvr")).is_some_and(|o| o.child(ns::A, "masterClrMapping").is_some());
+    let maps: Vec<&[(String, String)]> = [
+        Some(slide_map.as_slice()),
+        layout.filter(|_| !use_master).map(|l| l.color_map.as_slice()),
+        master.map(|m| m.color_map.as_slice()),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
     let theme = master.and_then(|m| m.theme.as_ref()).or(doc.theme.as_ref());
     c.resolve(&|name| {
         let mapped = maps.iter().find_map(|m| m.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str())).unwrap_or(name);
@@ -465,6 +473,13 @@ pub fn transition(slide: &Slide) -> Option<Transition> {
 /// Sets (or, for `None`, removes) a slide's transition.
 pub fn set_transition(slide: &mut Slide, t: Option<&Transition>) {
     let mut root = slide.origin.get().cloned().filter(|o| o.is(ns::P, "sld")).unwrap_or_else(|| Element::new(ns::P, "sld"));
+    let old = root.child(ns::P, "transition").cloned().or_else(|| {
+        root.children_named(ns::MC, "AlternateContent").flat_map(|a| a.elements()).find_map(|c| c.child(ns::P, "transition")).cloned()
+    });
+    let old_fallback = root
+        .children_named(ns::MC, "AlternateContent")
+        .find_map(|a| a.child(ns::MC, "Fallback").and_then(|f| f.child(ns::P, "transition")))
+        .cloned();
     root.remove_children(ns::P, "transition");
     root.children
         .retain(|n| !matches!(n, Node::Element(e) if e.is(ns::MC, "AlternateContent") && e.descendant(ns::P, "transition").is_some()));
@@ -490,13 +505,70 @@ pub fn set_transition(slide: &mut Slide, t: Option<&Transition>) {
             el.set_attr("", "advTm", a.to_string());
         }
         if !t.kind.is_empty() {
-            let mut effect = Element::new(ns::P, &t.kind);
+            let mut effect = old.as_ref().and_then(|o| o.elements().find(|e| e.local == t.kind)).cloned().unwrap_or_else(|| {
+                let namespace = if [
+                    "vortex",
+                    "ripple",
+                    "glitter",
+                    "honeycomb",
+                    "prism",
+                    "shred",
+                    "switch",
+                    "ferris",
+                    "gallery",
+                    "doors",
+                    "window",
+                    "reveal",
+                    "flythrough",
+                    "warp",
+                    "flash",
+                ]
+                .contains(&t.kind.as_str())
+                {
+                    P14
+                } else {
+                    ns::P
+                };
+                Element::new(namespace, &t.kind)
+            });
+            effect.remove_attr("", "dir");
             if let Some(d) = &t.direction {
                 effect.set_attr("", "dir", d);
             }
             el.push(effect);
         }
-        root.place(el, &[&["cSld"], &["clrMapOvr"], &["transition"], &["timing"], &["extLst"]]);
+        let modern_effect = el.elements().any(|e| !e.in_ns(ns::P));
+        let content = if t.duration_ms.is_some() || modern_effect {
+            let mut fallback = if modern_effect {
+                old_fallback.unwrap_or_else(|| Element::new(ns::P, "transition").with_child(Element::new(ns::P, "fade")))
+            } else {
+                el.clone()
+            };
+            fallback.remove_attr(P14, "dur");
+            for name in ["spd", "advClick", "advTm"] {
+                fallback.remove_attr("", name);
+                if let Some(value) = el.attr(name) {
+                    fallback.set_attr("", name, value);
+                }
+            }
+            if let Some(duration) = t.duration_ms {
+                el.set_attr(P14, "dur", duration.to_string());
+            }
+            root.declare(Some("p14"), P14);
+            root.declare(Some("mc"), ns::MC);
+            let mut ignorable: Vec<&str> = root.attr_ns(ns::MC, "Ignorable").unwrap_or("").split_whitespace().collect();
+            if !ignorable.contains(&"p14") {
+                ignorable.push("p14");
+            }
+            let ignorable = ignorable.join(" ");
+            root.set_attr(ns::MC, "Ignorable", ignorable);
+            Element::new(ns::MC, "AlternateContent")
+                .with_child(Element::new(ns::MC, "Choice").with_attr("", "Requires", "p14").with_child(el))
+                .with_child(Element::new(ns::MC, "Fallback").with_child(fallback))
+        } else {
+            el
+        };
+        root.place(content, &[&["cSld"], &["clrMapOvr"], &["transition", "AlternateContent"], &["timing"], &["extLst"]]);
     }
     slide.origin = Origin::new(root);
 }
