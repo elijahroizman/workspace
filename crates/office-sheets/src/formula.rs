@@ -59,6 +59,62 @@ pub enum Expr {
     Missing,
 }
 
+thread_local! {
+    static EXPR_DROP: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Clears [`EXPR_DROP`] if dropping a chain panics halfway through.
+struct ExprDropWalk;
+impl Drop for ExprDropWalk {
+    fn drop(&mut self) {
+        EXPR_DROP.with(|d| d.set(false));
+    }
+}
+
+/// A long sum is a left-nested `Binary` chain. Derived drop walks that chain
+/// with one call per term, which overflows a small stack, so the children are
+/// taken out and dropped from a heap list.
+impl Drop for Expr {
+    fn drop(&mut self) {
+        if EXPR_DROP.with(std::cell::Cell::get) || !expr_has_child(self) {
+            return;
+        }
+        EXPR_DROP.with(|d| d.set(true));
+        let _walk = ExprDropWalk;
+        let mut stack = Vec::new();
+        detach_expr(self, &mut stack);
+        while let Some(mut child) = stack.pop() {
+            detach_expr(&mut child, &mut stack);
+        }
+    }
+}
+
+fn expr_has_child(expr: &Expr) -> bool {
+    match expr {
+        Expr::Neg(_) | Expr::Percent(_) | Expr::Binary(_, _, _) => true,
+        Expr::Call(_, args) => !args.is_empty(),
+        Expr::Array(rows) => rows.iter().any(|row| !row.is_empty()),
+        _ => false,
+    }
+}
+
+fn detach_expr(expr: &mut Expr, stack: &mut Vec<Expr>) {
+    match expr {
+        Expr::Neg(inner) | Expr::Percent(inner) => stack.push(std::mem::replace(inner.as_mut(), Expr::Missing)),
+        Expr::Binary(_, left, right) => {
+            stack.push(std::mem::replace(left.as_mut(), Expr::Missing));
+            stack.push(std::mem::replace(right.as_mut(), Expr::Missing));
+        }
+        Expr::Call(_, args) => stack.extend(std::mem::take(args)),
+        Expr::Array(rows) => {
+            for row in rows {
+                stack.extend(std::mem::take(row));
+            }
+        }
+        _ => {}
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 enum Tok {
     Number(f64),
@@ -318,7 +374,7 @@ fn reference(src: &str, at: usize, sheet: Option<String>) -> Option<(Reference, 
 /// Parses formula text (without its `=`).
 pub fn parse(src: &str) -> Result<Expr, String> {
     let toks = lex(src)?;
-    let mut p = Parser { toks: toks.into_iter().map(|(t, _)| t).collect(), at: 0, union_allowed: true };
+    let mut p = Parser { toks: toks.into_iter().map(|(t, _)| t).collect(), at: 0, union_allowed: true, depth: 0 };
     let e = p.compare()?;
     if p.at != p.toks.len() {
         return Err(format!("unexpected {:?}", p.toks[p.at]));
@@ -326,10 +382,18 @@ pub fn parse(src: &str) -> Result<Expr, String> {
     Ok(e)
 }
 
+/// How deep parentheses and unary prefixes may nest. A flat sum does not count:
+/// its operators sit on a heap stack. This is above the evaluator's 128, so a
+/// formula the evaluator can nest still parses. 160 keeps the recursive calls
+/// on a WASM stack. A few thousand parentheses fit in Excel's 8,192 characters
+/// and would overflow that stack.
+const MAX_PARSE_DEPTH: usize = 160;
+
 struct Parser {
     toks: Vec<Tok>,
     at: usize,
     union_allowed: bool,
+    depth: usize,
 }
 
 impl Parser {
@@ -344,47 +408,71 @@ impl Parser {
         }
     }
 
-    fn binary(&mut self, ops: &[&str], next: fn(&mut Parser) -> Result<Expr, String>) -> Result<Expr, String> {
-        let mut left = next(self)?;
-        while let Some(o) = self.op(ops) {
-            self.at += 1;
-            let right = next(self)?;
-            let op = match o.as_str() {
-                "=" => Op::Eq,
-                "<>" => Op::Ne,
-                "<" => Op::Lt,
-                "<=" => Op::Le,
-                ">" => Op::Gt,
-                ">=" => Op::Ge,
-                "&" => Op::Concat,
-                "+" => Op::Add,
-                "-" => Op::Sub,
-                "*" => Op::Mul,
-                "/" => Op::Div,
-                _ => Op::Pow,
-            };
-            left = Expr::Binary(op, Box::new(left), Box::new(right));
+    fn enter(&mut self) -> Result<(), String> {
+        self.depth += 1;
+        if self.depth > MAX_PARSE_DEPTH {
+            self.depth -= 1;
+            Err("the formula is nested too deeply".into())
+        } else {
+            Ok(())
         }
-        Ok(left)
     }
 
     fn compare(&mut self) -> Result<Expr, String> {
-        self.binary(&["=", "<>", "<", "<=", ">", ">="], Parser::concat)
-    }
-    fn concat(&mut self) -> Result<Expr, String> {
-        self.binary(&["&"], Parser::additive)
-    }
-    fn additive(&mut self) -> Result<Expr, String> {
-        self.binary(&["+", "-"], Parser::multiplicative)
-    }
-    fn multiplicative(&mut self) -> Result<Expr, String> {
-        self.binary(&["*", "/"], Parser::power)
-    }
-    fn power(&mut self) -> Result<Expr, String> {
-        self.binary(&["^"], Parser::percent)
+        self.enter()?;
+        let e = self.infix();
+        self.depth -= 1;
+        e
     }
 
-    fn percent(&mut self) -> Result<Expr, String> {
+    /// Infix operators, left-associative, loosest tier first. The operator stack
+    /// is on the heap, so a long sum does not grow the call stack. Parentheses
+    /// come back through [`Parser::compare`].
+    fn infix(&mut self) -> Result<Expr, String> {
+        let mut values = vec![self.operand()?];
+        let mut ops: Vec<(u8, Op)> = Vec::new();
+        while let Some((prec, op)) = self.infix_op() {
+            self.at += 1;
+            while ops.last().is_some_and(|(p, _)| *p >= prec) {
+                let (_, prev) = ops.pop().unwrap();
+                let right = values.pop().unwrap();
+                let left = values.pop().unwrap();
+                values.push(Expr::Binary(prev, Box::new(left), Box::new(right)));
+            }
+            ops.push((prec, op));
+            values.push(self.operand()?);
+        }
+        while let Some((_, op)) = ops.pop() {
+            let right = values.pop().unwrap();
+            let left = values.pop().unwrap();
+            values.push(Expr::Binary(op, Box::new(left), Box::new(right)));
+        }
+        Ok(values.pop().unwrap())
+    }
+
+    fn infix_op(&self) -> Option<(u8, Op)> {
+        let symbol = match self.peek() {
+            Some(Tok::Op(symbol)) => symbol.as_str(),
+            _ => return None,
+        };
+        Some(match symbol {
+            "=" => (1, Op::Eq),
+            "<>" => (1, Op::Ne),
+            "<" => (1, Op::Lt),
+            "<=" => (1, Op::Le),
+            ">" => (1, Op::Gt),
+            ">=" => (1, Op::Ge),
+            "&" => (2, Op::Concat),
+            "+" => (3, Op::Add),
+            "-" => (3, Op::Sub),
+            "*" => (4, Op::Mul),
+            "/" => (4, Op::Div),
+            "^" => (5, Op::Pow),
+            _ => return None,
+        })
+    }
+
+    fn operand(&mut self) -> Result<Expr, String> {
         let mut e = self.unary()?;
         while self.op(&["%"]).is_some() {
             self.at += 1;
@@ -393,41 +481,40 @@ impl Parser {
         Ok(e)
     }
 
-    /// Excel's minus binds tighter than ^: -2^2 is 4.
+    /// Excel's minus binds tighter than ^: -2^2 is 4. Prefixes recurse. The
+    /// reference operators below them stay in this frame.
     fn unary(&mut self) -> Result<Expr, String> {
-        match self.op(&["-", "+"]) {
-            Some(o) => {
-                self.at += 1;
-                let e = self.unary()?;
-                Ok(if o == "-" { Expr::Neg(Box::new(e)) } else { e })
-            }
-            None => self.reference_union(),
+        if let Some(o) = self.op(&["-", "+"]) {
+            self.at += 1;
+            self.enter()?;
+            let e = self.unary();
+            self.depth -= 1;
+            return e.map(|e| if o == "-" { Expr::Neg(Box::new(e)) } else { e });
         }
-    }
-
-    fn reference_union(&mut self) -> Result<Expr, String> {
-        let mut e = self.intersection()?;
+        macro_rules! ranges {
+            ($parser:ident) => {{
+                let mut e = $parser.primary()?;
+                while $parser.peek() == Some(&Tok::Colon) {
+                    $parser.at += 1;
+                    e = Expr::Binary(Op::Range, Box::new(e), Box::new($parser.primary()?));
+                }
+                e
+            }};
+        }
+        macro_rules! intersections {
+            ($parser:ident) => {{
+                let mut e = ranges!($parser);
+                while $parser.peek() == Some(&Tok::Space) {
+                    $parser.at += 1;
+                    e = Expr::Binary(Op::Intersect, Box::new(e), Box::new(ranges!($parser)));
+                }
+                e
+            }};
+        }
+        let mut e = intersections!(self);
         while self.union_allowed && self.peek() == Some(&Tok::Comma) {
             self.at += 1;
-            e = Expr::Binary(Op::Union, Box::new(e), Box::new(self.intersection()?));
-        }
-        Ok(e)
-    }
-
-    fn intersection(&mut self) -> Result<Expr, String> {
-        let mut e = self.range()?;
-        while self.peek() == Some(&Tok::Space) {
-            self.at += 1;
-            e = Expr::Binary(Op::Intersect, Box::new(e), Box::new(self.range()?));
-        }
-        Ok(e)
-    }
-
-    fn range(&mut self) -> Result<Expr, String> {
-        let mut e = self.primary()?;
-        while self.peek() == Some(&Tok::Colon) {
-            self.at += 1;
-            e = Expr::Binary(Op::Range, Box::new(e), Box::new(self.primary()?));
+            e = Expr::Binary(Op::Union, Box::new(e), Box::new(intersections!(self)));
         }
         Ok(e)
     }
@@ -614,14 +701,17 @@ mod tests {
     #[test]
     fn parses_references_and_calls() {
         assert_eq!(parse("A1").unwrap(), Expr::Ref(Reference { sheet: None, start: cell(0, 0), end: None }));
-        let Expr::Ref(r) = parse("'My Sheet'!$B$2:C10").unwrap() else { panic!() };
+        let sheet = parse("'My Sheet'!$B$2:C10").unwrap();
+        let Expr::Ref(r) = &sheet else { panic!() };
         assert_eq!(r.sheet.as_deref(), Some("My Sheet"));
         assert!(r.start.row_abs && r.start.col_abs);
-        assert_eq!(r.end, Some(cell(9, 2)));
-        let Expr::Ref(r) = parse("Data!A:A").unwrap() else { panic!() };
+        assert_eq!(r.end.as_ref(), Some(&cell(9, 2)));
+        let column = parse("Data!A:A").unwrap();
+        let Expr::Ref(r) = &column else { panic!() };
         assert_eq!((r.start.row, r.start.col), (None, Some(0)));
-        let Expr::Ref(r) = parse("2:3").unwrap() else { panic!() };
-        assert_eq!((r.start.row, r.end.unwrap().row), (Some(1), Some(2)));
+        let rows = parse("2:3").unwrap();
+        let Expr::Ref(r) = &rows else { panic!() };
+        assert_eq!((r.start.row, r.end.as_ref().and_then(|part| part.row)), (Some(1), Some(2)));
         assert_eq!(
             parse("SUM(A1:A3,5)").unwrap(),
             Expr::Call(
@@ -646,6 +736,9 @@ mod tests {
             parse("{1,2;3,4}").unwrap(),
             Expr::Array(vec![vec![Expr::Number(1.0), Expr::Number(2.0)], vec![Expr::Number(3.0), Expr::Number(4.0)]])
         );
+        assert!(matches!(parse("(A1,A2)").unwrap(), Expr::Binary(Op::Union, _, _)));
+        assert!(matches!(parse("A1:A2 A1:B1").unwrap(), Expr::Binary(Op::Intersect, _, _)));
+        assert!(matches!(parse("(A1):(B1)").unwrap(), Expr::Binary(Op::Range, _, _)));
         assert_eq!(parse("#N/A").unwrap(), Expr::Error("#N/A".into()));
         assert_eq!(parse("1.5E+3").unwrap(), Expr::Number(1500.0));
         assert!(parse("SUM(1").is_err());
@@ -660,5 +753,47 @@ mod tests {
         assert_eq!(shift("A:A", 5, 1).unwrap(), "B:B");
         assert_eq!(shift("A1-1", -1, 0).unwrap(), "#REF!-1");
         assert_eq!(shift("\"A1\"&A1", 1, 0).unwrap(), "\"A1\"&A2", "text that looks like a reference isn't one");
+    }
+
+    fn add_links(expr: &Expr) -> usize {
+        let mut n = 0;
+        let mut expr = expr;
+        while let Expr::Binary(Op::Add, left, _) = expr {
+            n += 1;
+            expr = left;
+        }
+        n
+    }
+
+    #[test]
+    fn long_flat_chain_parses() {
+        // Longer than the evaluator's old 128-link ceiling, and still one flat sum.
+        let terms = 300;
+        let sum = (1..=terms).map(|n| n.to_string()).collect::<Vec<_>>().join("+");
+        let expr = parse(&sum).unwrap();
+        assert_eq!(add_links(&expr), terms - 1);
+        let cat = std::iter::repeat("\"x\"").take(terms).collect::<Vec<_>>().join("&");
+        assert!(matches!(parse(&cat).unwrap(), Expr::Binary(Op::Concat, _, _)));
+    }
+
+    #[test]
+    fn nested_parentheses_and_unary_prefixes_have_a_limit() {
+        assert_eq!(parse(&format!("{}1{}", "(".repeat(128), ")".repeat(128))).unwrap(), Expr::Number(1.0));
+        assert!(parse(&format!("{}1{}", "(".repeat(300), ")".repeat(300))).unwrap_err().contains("nested too deeply"));
+        assert!(parse(&format!("{}1", "-".repeat(128))).is_ok());
+        assert!(parse(&format!("{}1", "+".repeat(128))).is_ok());
+        let err = parse(&format!("{}1", "-".repeat(300))).unwrap_err();
+        assert!(err.contains("nested too deeply"), "{err}");
+        assert!(parse(&format!("{}1", "+".repeat(300))).is_err());
+    }
+
+    #[test]
+    fn deep_binary_tree_drops() {
+        // Far past a thread's stack, if drop walked the left spine by recursion.
+        let mut expr = Expr::Number(1.0);
+        for _ in 0..20_000 {
+            expr = Expr::Binary(Op::Add, Box::new(expr), Box::new(Expr::Number(1.0)));
+        }
+        drop(expr);
     }
 }

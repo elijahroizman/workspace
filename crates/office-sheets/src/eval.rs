@@ -167,10 +167,7 @@ fn eval_unchecked(expr: &Expr, book: &mut Context<'_>) -> R {
         }
         Expr::Neg(e) => V::Num(-num(&scalar(eval_inner(e, book)?))?),
         Expr::Percent(e) => V::Num(num(&scalar(eval_inner(e, book)?))? / 100.0),
-        Expr::Binary(op, a, b) => {
-            let (a, b) = (scalar(eval_inner(a, book)?), scalar(eval_inner(b, book)?));
-            binary(*op, &a, &b)?
-        }
+        Expr::Binary(op, a, b) => eval_chain(*op, a, b, book)?,
         Expr::Array(rows) => {
             let width = rows.first().map_or(0, Vec::len);
             if rows.iter().any(|r| r.len() != width) {
@@ -180,6 +177,28 @@ fn eval_unchecked(expr: &Expr, book: &mut Context<'_>) -> R {
         }
         Expr::Call(name, args) => call(name, args, book)?,
     })
+}
+
+/// `A1+A2+...+A130` is left-nested, and each `eval_inner` used to take one depth
+/// slot, so the sum came out as `#REF!`. A chain is not nested: walk its left
+/// spine in a loop. The leftmost operand still runs first, and an error there
+/// still skips every operand to its right. Range, intersection and union stay
+/// on the recursive path.
+fn eval_chain(op: Op, left: &Expr, right: &Expr, book: &mut Context<'_>) -> R {
+    let mut spine = vec![(op, right)];
+    let mut left = left;
+    while let Expr::Binary(next, lower, rhs) = left {
+        if matches!(next, Op::Range | Op::Intersect | Op::Union) {
+            break;
+        }
+        spine.push((*next, rhs.as_ref()));
+        left = lower.as_ref();
+    }
+    let mut acc = scalar(eval_inner(left, book)?);
+    for (op, rhs) in spine.into_iter().rev() {
+        acc = binary(op, &acc, &scalar(eval_inner(rhs, book)?))?;
+    }
+    Ok(acc)
 }
 
 fn reference(r: &Reference, book: &mut Context<'_>) -> R {
@@ -1046,5 +1065,84 @@ mod tests {
         assert_eq!(ev("WEEKDAY(45000)"), V::Num(4.0), "a Wednesday");
         assert_eq!(ev("TIME(18,0,0)"), V::Num(0.75));
         assert_eq!(ev("TODAY()"), V::Err("#N/A"), "no clock given");
+    }
+
+    fn nested_ones(terms: usize) -> String {
+        let mut formula = String::from("1");
+        for _ in 1..terms {
+            formula = format!("1+({formula})");
+        }
+        formula
+    }
+
+    #[test]
+    fn long_flat_sums_and_concatenation() {
+        // A1:A5 are 1..5. A6:A130 are empty, and an empty cell is 0 in arithmetic.
+        let cells = (1..=130).map(|row| format!("A{row}")).collect::<Vec<_>>().join("+");
+        assert_eq!(ev(&cells), V::Num(15.0));
+
+        let ones = std::iter::repeat("1").take(200).collect::<Vec<_>>().join("+");
+        assert_eq!(ev(&ones), V::Num(200.0));
+        let triangle = (1..=200).map(|n| n.to_string()).collect::<Vec<_>>().join("+");
+        assert_eq!(ev(&triangle), V::Num((200 * 201 / 2) as f64));
+
+        let cat = std::iter::repeat("\"ab\"").take(130).collect::<Vec<_>>().join("&");
+        assert_eq!(ev(&cat), V::Text("ab".repeat(130)));
+    }
+
+    #[test]
+    fn spine_keeps_operator_order() {
+        assert_eq!(ev("1-2-3"), V::Num(-4.0));
+        assert_eq!(ev("2^3^2"), V::Num(64.0));
+        assert_eq!(ev("1+2*3+4*5"), V::Num(27.0));
+        assert_eq!(ev("\"a\"&1+2&\"b\""), V::Text("a3b".into()));
+    }
+
+    #[test]
+    fn nested_additions_hit_the_depth_guard() {
+        // Real nesting still counts. 128 ones fit. 140 do not.
+        assert_eq!(ev(&nested_ones(128)), V::Num(128.0));
+        assert_eq!(ev(&nested_ones(140)), V::Err("#REF!"));
+    }
+
+    #[test]
+    fn deep_unary_hits_the_depth_guard() {
+        assert_eq!(ev(&format!("{}1", "-".repeat(127))), V::Num(-1.0));
+        assert_eq!(ev(&format!("{}1", "-".repeat(140))), V::Err("#REF!"));
+    }
+
+    #[test]
+    fn chain_skips_operands_after_an_error() {
+        struct Clock(std::cell::Cell<u32>);
+        impl Book for Clock {
+            fn cell(&mut self, _: Option<&str>, _: u32, _: u32) -> V {
+                V::Num(1.0)
+            }
+            fn extent(&self, _: Option<&str>) -> Option<(u32, u32)> {
+                None
+            }
+            fn name(&self, _: &str) -> Option<Expr> {
+                None
+            }
+            fn date_system(&self) -> DateSystem {
+                DateSystem::From1900
+            }
+            fn now(&self) -> Option<f64> {
+                self.0.set(self.0.get() + 1);
+                Some(10.0)
+            }
+        }
+
+        let mut clock = Clock(std::cell::Cell::new(0));
+        assert_eq!(eval(&parse("1/0+NOW()+NOW()").unwrap(), &mut clock), V::Err("#DIV/0!"));
+        assert_eq!(clock.0.get(), 0, "nothing after the failing left operand runs");
+
+        let mut chain = std::iter::repeat("1").take(100).collect::<Vec<_>>().join("+");
+        chain.push_str("+1/0+NOW()");
+        assert_eq!(eval(&parse(&chain).unwrap(), &mut clock), V::Err("#DIV/0!"));
+        assert_eq!(clock.0.get(), 0);
+
+        assert_eq!(eval(&parse("NOW()+1/0+NOW()").unwrap(), &mut clock), V::Err("#DIV/0!"));
+        assert_eq!(clock.0.get(), 1, "the operand before the error did run, and the one after it did not");
     }
 }
