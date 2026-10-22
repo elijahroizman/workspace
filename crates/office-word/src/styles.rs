@@ -4,9 +4,52 @@
 
 use office_core::drawing::Theme;
 use office_core::formats::docx::{read_para_props, read_run_props, val};
-use office_core::model::{ParaProps, RunProps};
+use office_core::model::{ParaProps, RunProps, Strike};
 use office_core::xml::{ns, Element, XmlDoc};
 use serde::{Deserialize, Serialize};
+
+/// Word toggles not all represented in the shared run model yet. Kept here so style
+/// resolution preserves them without changing office-core's model.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunToggles {
+    pub strike: Option<bool>,
+    pub double_strike: Option<bool>,
+    pub outline: Option<bool>,
+    pub shadow: Option<bool>,
+    pub emboss: Option<bool>,
+    pub imprint: Option<bool>,
+    pub vanish: Option<bool>,
+}
+
+impl RunToggles {
+    fn read(rpr: &Element) -> Self {
+        let toggle = |name: &str| rpr.child(ns::W, name).map(|e| val(e).and_then(office_core::units::parse_bool).unwrap_or(true));
+        Self {
+            strike: toggle("strike"),
+            double_strike: toggle("dstrike"),
+            outline: toggle("outline"),
+            shadow: toggle("shadow"),
+            emboss: toggle("emboss"),
+            imprint: toggle("imprint"),
+            vanish: toggle("vanish"),
+        }
+    }
+
+    fn apply(&mut self, over: &Self, style: bool) {
+        macro_rules! take { ($($f:ident),*) => { $(if let Some(v) = over.$f {
+            self.$f = Some(if style { self.$f.unwrap_or(false) ^ v } else { v });
+        })* }; }
+        take!(strike, double_strike, outline, shadow, emboss, imprint, vanish);
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedRun {
+    pub props: RunProps,
+    pub toggles: RunToggles,
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +78,8 @@ pub struct Style {
     pub para: ParaProps,
     #[serde(default)]
     pub run: RunProps,
+    #[serde(default)]
+    pub run_toggles: RunToggles,
     /// The list a paragraph style puts its paragraphs in (`w:numPr/w:numId`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub num_id: Option<String>,
@@ -49,6 +94,7 @@ pub struct Styles {
     /// The document defaults (`w:docDefaults`).
     pub default_para: ParaProps,
     pub default_run: RunProps,
+    pub default_run_toggles: RunToggles,
 }
 
 impl Styles {
@@ -58,7 +104,8 @@ impl Styles {
         let default_run = defaults.and_then(|d| d.path(ns::W, &["rPrDefault", "rPr"])).map(read_run_props).unwrap_or_default();
         let default_para = defaults.and_then(|d| d.path(ns::W, &["pPrDefault", "pPr"])).map(read_para_props).unwrap_or_default();
         let styles = root.children_named(ns::W, "style").filter_map(parse_style).collect();
-        Styles { styles, default_para, default_run }
+        let default_run_toggles = defaults.and_then(|d| d.path(ns::W, &["rPrDefault", "rPr"])).map(RunToggles::read).unwrap_or_default();
+        Styles { styles, default_para, default_run, default_run_toggles }
     }
 
     pub fn get(&self, id: &str) -> Option<&Style> {
@@ -107,29 +154,60 @@ impl Styles {
     /// styles toggle, as Word has it: a character style's bold on a bold heading makes it plain
     /// again. Theme fonts (`+mn-lt`) are turned into their names.
     pub fn resolve_run(&self, para: &ParaProps, direct: &RunProps, theme: Option<&Theme>) -> RunProps {
-        let para_style = para.style.clone().or_else(|| self.default_of(StyleKind::Paragraph).map(|s| s.id.clone()));
-        let collect = |id: Option<&str>| {
-            let mut r = RunProps::default();
-            for s in id.map(|id| self.chain(id)).unwrap_or_default() {
-                over_run(&mut r, &s.run);
-            }
-            r
-        };
-        let from_para = collect(para_style.as_deref());
-        let from_char = collect(direct.style.as_deref());
+        self.resolve_run_with_toggles(para, direct, None, theme).props
+    }
+
+    /// Full Word run formatting, including toggles awaiting fields in the shared model.
+    /// `direct_xml` is the run's raw w:rPr for those additional direct properties.
+    pub fn resolve_run_with_toggles(
+        &self,
+        para: &ParaProps,
+        direct: &RunProps,
+        direct_xml: Option<&Element>,
+        theme: Option<&Theme>,
+    ) -> ResolvedRun {
+        let para_style = para.style.as_deref().or_else(|| self.default_of(StyleKind::Paragraph).map(|s| s.id.as_str()));
         let mut r = self.default_run.clone();
-        over_run(&mut r, &from_para);
-        over_run(&mut r, &from_char);
-        // Toggles: the two styles' values combine by exclusive or, on top of the defaults.
-        let toggle = |p: Option<bool>, c: Option<bool>, base: Option<bool>| match (p, c) {
-            (Some(a), Some(b)) => Some(a ^ b),
-            (a, None) => a.or(base),
-            (None, b) => b.or(base),
+        let mut toggles = self.default_run_toggles.clone();
+        if toggles.strike.is_none() && toggles.double_strike.is_none() {
+            match r.strike {
+                Some(Strike::Single) => toggles.strike = Some(true),
+                Some(Strike::Double) => toggles.double_strike = Some(true),
+                Some(Strike::None) => {
+                    toggles.strike = Some(false);
+                    toggles.double_strike = Some(false);
+                }
+                None => {}
+            }
+        }
+        for id in [para_style, direct.style.as_deref()].into_iter().flatten() {
+            for s in self.chain(id) {
+                let (bold, italic, caps, small_caps) = (r.bold, r.italic, r.caps, r.small_caps);
+                over_run(&mut r, &s.run);
+                let toggle = |base: Option<bool>, over: Option<bool>| over.map(|v| base.unwrap_or(false) ^ v).or(base);
+                r.bold = toggle(bold, s.run.bold);
+                r.italic = toggle(italic, s.run.italic);
+                r.caps = toggle(caps, s.run.caps);
+                r.small_caps = toggle(small_caps, s.run.small_caps);
+                toggles.apply(&s.run_toggles, true);
+            }
+        }
+        r.strike = if toggles.double_strike == Some(true) {
+            Some(Strike::Double)
+        } else if toggles.strike == Some(true) {
+            Some(Strike::Single)
+        } else if toggles.strike.is_some() || toggles.double_strike.is_some() {
+            Some(Strike::None)
+        } else {
+            None
         };
-        r.bold = toggle(from_para.bold, from_char.bold, self.default_run.bold);
-        r.italic = toggle(from_para.italic, from_char.italic, self.default_run.italic);
-        r.caps = toggle(from_para.caps, from_char.caps, self.default_run.caps);
-        r.small_caps = toggle(from_para.small_caps, from_char.small_caps, self.default_run.small_caps);
+        if let Some(strike) = direct.strike {
+            toggles.strike = Some(strike == Strike::Single);
+            toggles.double_strike = Some(strike == Strike::Double);
+        }
+        if let Some(xml) = direct_xml {
+            toggles.apply(&RunToggles::read(xml), false);
+        }
         over_run(&mut r, direct);
         r.style = direct.style.clone();
         if let Some(theme) = theme {
@@ -139,7 +217,7 @@ impl Styles {
                 }
             }
         }
-        r
+        ResolvedRun { props: r, toggles }
     }
 }
 
@@ -162,6 +240,7 @@ fn parse_style(el: &Element) -> Option<Style> {
         default: el.attr_ns(ns::W, "default").and_then(office_core::units::parse_bool).unwrap_or(false),
         para: ppr.map(read_para_props).unwrap_or_default(),
         run: el.child(ns::W, "rPr").map(read_run_props).unwrap_or_default(),
+        run_toggles: el.child(ns::W, "rPr").map(RunToggles::read).unwrap_or_default(),
         num_id: ppr.and_then(|p| p.path(ns::W, &["numPr", "numId"])).and_then(val).map(str::to_string),
         quick: el.child(ns::W, "qFormat").is_some(),
     })

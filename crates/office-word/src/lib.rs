@@ -177,6 +177,16 @@ pub fn resolved_run(doc: &Document, p: &Paragraph, r: &Run) -> RunProps {
     }
 }
 
+/// Full Word run formatting, including outline, shadow, emboss, imprint and vanish.
+pub fn resolved_word_run(doc: &Document, p: &Paragraph, r: &Run) -> styles::ResolvedRun {
+    match word(doc) {
+        Some(w) => {
+            w.styles.resolve_run_with_toggles(&p.props, &r.props, r.origin.get().and_then(|o| o.child(ns::W, "rPr")), doc.theme.as_ref())
+        }
+        None => styles::ResolvedRun { props: r.props.clone(), ..Default::default() },
+    }
+}
+
 // ---- lists ----
 
 /// The list a paragraph is in and its level: its own `w:numPr`, or its style's.
@@ -188,7 +198,16 @@ pub fn list_of(doc: &Document, p: &Paragraph) -> Option<(String, u8)> {
         w.styles.chain(&id).iter().rev().find_map(|s| s.num_id.clone())
     };
     let num = own.or_else(style_num)?;
-    Some((num, p.props.level.unwrap_or(0)))
+    let level = p
+        .props
+        .level
+        .or_else(|| {
+            let w = word(doc)?;
+            let style = p.props.style.as_deref().or_else(|| w.styles.default_of(StyleKind::Paragraph).map(|s| s.id.as_str()))?;
+            w.numbering.levels(&num)?.iter().position(|l| l.paragraph_style.as_deref() == Some(style)).map(|i| i as u8)
+        })
+        .unwrap_or(0);
+    Some((num, level))
 }
 
 /// Each body paragraph's list label ("1.", "a)", "•"), in [`paragraphs`] order; `None` for
@@ -226,6 +245,10 @@ pub fn set_list(doc: &mut Document, index: usize, list: Option<(&str, u8)>) {
             p.props.style = Some("ListParagraph".into());
         }
     } else {
+        ppr.place(
+            Element::new(ns::W, "numPr").with_child(Element::new(ns::W, "numId").with_attr(ns::W, "val", "0")),
+            office_core::formats::docx::PPR,
+        );
         p.props.level = None;
     }
     // The core writes pPr from the origin, patching only what the model changes.
