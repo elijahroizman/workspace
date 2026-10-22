@@ -337,7 +337,7 @@ impl Workbook<'_> {
             // A circular reference.
             return V::Num(0.0);
         }
-        if self.working.len() > MAX_DEPTH {
+        if self.working.len() > MAX_DEPTH || eval::depth() >= 64 {
             self.working.remove(&key);
             self.deep = Some(key);
             return V::Empty;
@@ -428,6 +428,7 @@ pub fn set_column_width(doc: &mut Document, sheet_index: usize, col: u32, width:
     let mut cols: Vec<Element> = root.child(ns::X, "cols").map(|c| c.children_named(ns::X, "col").cloned().collect()).unwrap_or_default();
     // Split whatever range covers the column, so it can have its own entry.
     let mut kept = Vec::new();
+    let mut covering = None;
     for c in cols.drain(..) {
         let get = |k: &str| c.attr(k).and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
         let (min, max) = (get("min"), get("max"));
@@ -435,6 +436,7 @@ pub fn set_column_width(doc: &mut Document, sheet_index: usize, col: u32, width:
             kept.push(c);
             continue;
         }
+        covering = Some(c.clone());
         if min < n {
             kept.push(c.clone().with_attr("", "max", (n - 1).to_string()));
         }
@@ -442,14 +444,18 @@ pub fn set_column_width(doc: &mut Document, sheet_index: usize, col: u32, width:
             kept.push(c.clone().with_attr("", "min", (n + 1).to_string()));
         }
     }
+    let mut entry = covering.unwrap_or_else(|| Element::new(ns::X, "col"));
+    entry.set_attr("", "min", n.to_string());
+    entry.set_attr("", "max", n.to_string());
     if let Some(w) = width {
-        kept.push(
-            Element::new(ns::X, "col")
-                .with_attr("", "min", n.to_string())
-                .with_attr("", "max", n.to_string())
-                .with_attr("", "width", office_core::model::format_number(w))
-                .with_attr("", "customWidth", "1"),
-        );
+        entry.set_attr("", "width", office_core::model::format_number(w));
+        entry.set_attr("", "customWidth", "1");
+    } else {
+        entry.remove_attr("", "width");
+        entry.remove_attr("", "customWidth");
+    }
+    if width.is_some() || entry.attrs.iter().any(|a| !matches!(a.local.as_str(), "min" | "max")) {
+        kept.push(entry);
     }
     kept.sort_by_key(|c| c.attr("min").and_then(|v| v.parse::<u32>().ok()).unwrap_or(0));
     root.remove_children(ns::X, "cols");

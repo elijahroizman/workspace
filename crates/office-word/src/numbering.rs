@@ -19,8 +19,9 @@ pub struct Level {
     /// The label, with `%1`…`%9` for each level's number: `%1.%2.`, or the bullet character.
     pub text: String,
     pub start: u32,
-    /// Whether this level counts from its start again after a shallower level (Word's default).
-    pub restart: bool,
+    /// The zero-based level that restarts this one. None means never restart.
+    pub restart: Option<u8>,
+    pub paragraph_style: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -29,6 +30,8 @@ pub struct Numbering {
     pub abstracts: HashMap<String, Vec<Level>>,
     /// `w:num`s: their abstract definition and any levels that start elsewhere.
     pub nums: HashMap<String, (String, HashMap<u8, u32>)>,
+    /// Fully resolved levels for each numbering instance, including full level overrides.
+    pub instances: HashMap<String, Vec<Level>>,
 }
 
 impl Numbering {
@@ -36,35 +39,38 @@ impl Numbering {
         let mut n = Numbering::default();
         for a in doc.root.children_named(ns::W, "abstractNum") {
             let Some(id) = a.attr_ns(ns::W, "abstractNumId") else { continue };
-            let mut levels = vec![Level { format: "decimal".into(), text: String::new(), start: 1, restart: true }; 9];
+            let mut levels: Vec<Level> = (0..9).map(default_level).collect();
             for l in a.children_named(ns::W, "lvl") {
                 let Some(i) = l.attr_ns(ns::W, "ilvl").and_then(|v| v.parse::<usize>().ok()).filter(|i| *i < 9) else { continue };
-                let child = |local: &str| l.child(ns::W, local).and_then(val).map(str::to_string);
-                levels[i] = Level {
-                    format: child("numFmt").unwrap_or_else(|| "decimal".into()),
-                    text: child("lvlText").unwrap_or_default(),
-                    start: child("start").and_then(|s| s.parse().ok()).unwrap_or(1),
-                    restart: child("lvlRestart").is_none_or(|r| r != "0"),
-                };
+                levels[i] = read_level(l, i as u8);
             }
             n.abstracts.insert(id.to_string(), levels);
         }
         for num in doc.root.children_named(ns::W, "num") {
             let (Some(id), Some(abs)) = (num.attr_ns(ns::W, "numId"), num.child(ns::W, "abstractNumId").and_then(val)) else { continue };
-            let overrides = num
-                .children_named(ns::W, "lvlOverride")
-                .filter_map(|o| {
-                    Some((o.attr_ns(ns::W, "ilvl")?.parse().ok()?, o.child(ns::W, "startOverride").and_then(val)?.parse().ok()?))
-                })
-                .collect();
+            let mut overrides = HashMap::new();
+            let mut levels = n.abstracts.get(abs).cloned().unwrap_or_else(|| (0..9).map(default_level).collect());
+            for o in num.children_named(ns::W, "lvlOverride") {
+                let Some(i) = o.attr_ns(ns::W, "ilvl").and_then(|v| v.parse::<u8>().ok()).filter(|i| *i < 9) else { continue };
+                if let Some(l) = o.child(ns::W, "lvl") {
+                    levels[i as usize] = read_level(l, i);
+                }
+                if let Some(start) = o.child(ns::W, "startOverride").and_then(val).and_then(|v| v.parse().ok()) {
+                    overrides.insert(i, start);
+                    levels[i as usize].start = start;
+                }
+            }
+            n.instances.insert(id.to_string(), levels);
             n.nums.insert(id.to_string(), (abs.to_string(), overrides));
         }
         n
     }
 
     pub fn levels(&self, num_id: &str) -> Option<&[Level]> {
-        let (abs, _) = self.nums.get(num_id)?;
-        self.abstracts.get(abs).map(Vec::as_slice)
+        self.instances.get(num_id).map(Vec::as_slice).or_else(|| {
+            let (abs, _) = self.nums.get(num_id)?;
+            self.abstracts.get(abs).map(Vec::as_slice)
+        })
     }
 
     /// Labels for paragraphs in document order: `(num_id, level)` for each one that's in a
@@ -84,7 +90,7 @@ impl Numbering {
                 out.push(None);
                 continue;
             };
-            let Some(levels) = self.abstracts.get(abs) else {
+            let Some(levels) = self.levels(&num) else {
                 out.push(None);
                 continue;
             };
@@ -102,7 +108,7 @@ impl Numbering {
             let start = |l: usize| overrides.get(&(l as u8)).copied().unwrap_or(levels[l].start);
             c[level] = Some(c[level].map(|n| n + 1).unwrap_or(start(level)));
             for (l, counter) in c.iter_mut().enumerate().skip(level + 1) {
-                if levels[l].restart {
+                if levels[l].restart.is_some_and(|restart| level as u8 <= restart) {
                     *counter = None;
                 }
             }
@@ -118,6 +124,26 @@ impl Numbering {
             out.push(Some(if levels[level].format == "none" { String::new() } else { label }));
         }
         out
+    }
+}
+
+fn default_level(i: u8) -> Level {
+    Level { format: "decimal".into(), text: String::new(), start: 1, restart: i.checked_sub(1), paragraph_style: None }
+}
+
+fn read_level(l: &Element, i: u8) -> Level {
+    let child = |local: &str| l.child(ns::W, local).and_then(val);
+    let restart = match child("lvlRestart").and_then(|v| v.parse::<u8>().ok()) {
+        Some(0) => None,
+        Some(n) if n <= i => Some(n - 1),
+        _ => i.checked_sub(1),
+    };
+    Level {
+        format: child("numFmt").unwrap_or("decimal").to_string(),
+        text: child("lvlText").unwrap_or("").to_string(),
+        start: child("start").and_then(|s| s.parse().ok()).unwrap_or(1),
+        restart,
+        paragraph_style: child("pStyle").map(str::to_string),
     }
 }
 

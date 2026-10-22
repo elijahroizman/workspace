@@ -113,10 +113,27 @@ pub fn to_serial(dt: DateTime, system: DateSystem) -> f64 {
 pub fn date(year: i64, month: i64, day: i64, system: DateSystem) -> f64 {
     // Years 0–1899 mean 1900–3799.
     let year = if (0..1900).contains(&year) { year + 1900 } else { year };
-    let months = year * 12 + month - 1;
+    if !(1900..=9999).contains(&year) {
+        return f64::NAN;
+    }
+    let Some(months) = year.checked_mul(12).and_then(|y| y.checked_add(month)).and_then(|m| m.checked_sub(1)) else {
+        return f64::NAN;
+    };
     let (y, m) = (months.div_euclid(12), months.rem_euclid(12) + 1);
-    let first = to_serial(DateTime::date(y as i32, m as u32, 1), system);
-    first + (day - 1) as f64
+    let Ok(y) = i32::try_from(y) else {
+        return f64::NAN;
+    };
+    let first = to_serial(DateTime::date(y, m as u32, 1), system);
+    let Some(offset) = day.checked_sub(1) else {
+        return f64::NAN;
+    };
+    let serial = first + offset as f64;
+    let max = to_serial(DateTime::date(9999, 12, 31), system);
+    if (0.0..=max).contains(&serial) {
+        serial
+    } else {
+        f64::NAN
+    }
 }
 
 #[cfg(test)]

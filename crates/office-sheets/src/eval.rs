@@ -1,7 +1,7 @@
 //! Working formulas out: Excel's values and how they turn into one another, references
 //! through a [`Book`], and the functions people use most.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use office_core::model::{format_number, Value};
 
@@ -68,15 +68,73 @@ pub trait Book {
 
 type R = Result<V, &'static str>;
 
-/// Works out `expr`.
-pub fn eval(expr: &Expr, book: &mut dyn Book) -> V {
-    match eval_inner(expr, book) {
-        Ok(v) => v,
-        Err(e) => V::Err(e),
+/// Evaluation state for names. Cell evaluation can re-enter through Book, so the depth
+/// guard is shared by nested evaluators on this thread as well.
+struct Context<'a> {
+    book: &'a mut dyn Book,
+    names: HashSet<String>,
+}
+
+impl Book for Context<'_> {
+    fn cell(&mut self, sheet: Option<&str>, row: u32, col: u32) -> V {
+        self.book.cell(sheet, row, col)
+    }
+    fn extent(&self, sheet: Option<&str>) -> Option<(u32, u32)> {
+        self.book.extent(sheet)
+    }
+    fn name(&self, name: &str) -> Option<Expr> {
+        self.book.name(name)
+    }
+    fn date_system(&self) -> DateSystem {
+        self.book.date_system()
+    }
+    fn now(&self) -> Option<f64> {
+        self.book.now()
     }
 }
 
-fn eval_inner(expr: &Expr, book: &mut dyn Book) -> R {
+thread_local! { static DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) }; }
+pub(crate) fn depth() -> usize {
+    DEPTH.with(std::cell::Cell::get)
+}
+struct Depth;
+impl Depth {
+    fn enter() -> Result<Self, &'static str> {
+        if DEPTH.with(|d| {
+            if d.get() >= 128 {
+                false
+            } else {
+                d.set(d.get() + 1);
+                true
+            }
+        }) {
+            Ok(Self)
+        } else {
+            Err("#REF!")
+        }
+    }
+}
+impl Drop for Depth {
+    fn drop(&mut self) {
+        DEPTH.with(|d| d.set(d.get() - 1));
+    }
+}
+
+/// Works out `expr`.
+pub fn eval(expr: &Expr, book: &mut dyn Book) -> V {
+    eval_inner(expr, &mut Context { book, names: HashSet::new() }).unwrap_or_else(V::Err)
+}
+
+fn eval_inner(expr: &Expr, book: &mut Context<'_>) -> R {
+    let _depth = Depth::enter()?;
+    let value = eval_unchecked(expr, book)?;
+    match value {
+        V::Num(n) => finite(n),
+        other => Ok(other),
+    }
+}
+
+fn eval_unchecked(expr: &Expr, book: &mut Context<'_>) -> R {
     Ok(match expr {
         Expr::Number(n) => V::Num(*n),
         Expr::Text(t) => V::Text(t.clone()),
@@ -84,22 +142,47 @@ fn eval_inner(expr: &Expr, book: &mut dyn Book) -> R {
         Expr::Error(e) => V::Err(error_name(e)),
         Expr::Missing => V::Empty,
         Expr::Ref(r) => reference(r, book)?,
-        Expr::Name(n) => match book.name(n) {
-            Some(e) => eval_inner(&e, book)?,
-            None => return Err("#NAME?"),
-        },
+        Expr::Name(n) => {
+            let key = n.to_uppercase();
+            if !book.names.insert(key.clone()) {
+                return Err("#REF!");
+            }
+            let value = match book.name(n) {
+                Some(e) => eval_inner(&e, book),
+                None => Err("#NAME?"),
+            };
+            book.names.remove(&key);
+            value?
+        }
+        Expr::Binary(Op::Range | Op::Intersect | Op::Union, _, _) => {
+            let refs = references(expr, book)?;
+            let mut rows = Vec::new();
+            for r in refs {
+                match reference(&r, book)? {
+                    V::Range(r) => rows.extend(r),
+                    v => rows.push(vec![v]),
+                }
+            }
+            V::Range(rows)
+        }
         Expr::Neg(e) => V::Num(-num(&scalar(eval_inner(e, book)?))?),
         Expr::Percent(e) => V::Num(num(&scalar(eval_inner(e, book)?))? / 100.0),
         Expr::Binary(op, a, b) => {
             let (a, b) = (scalar(eval_inner(a, book)?), scalar(eval_inner(b, book)?));
             binary(*op, &a, &b)?
         }
-        Expr::Array(rows) => V::Range(rows.iter().map(|r| r.iter().map(|e| eval(e, book)).collect()).collect()),
+        Expr::Array(rows) => {
+            let width = rows.first().map_or(0, Vec::len);
+            if rows.iter().any(|r| r.len() != width) {
+                return Err("#VALUE!");
+            }
+            V::Range(rows.iter().map(|r| r.iter().map(|e| eval_inner(e, book).unwrap_or_else(V::Err)).collect()).collect())
+        }
         Expr::Call(name, args) => call(name, args, book)?,
     })
 }
 
-fn reference(r: &Reference, book: &mut dyn Book) -> R {
+fn reference(r: &Reference, book: &mut Context<'_>) -> R {
     let sheet = r.sheet.as_deref();
     let Some(end) = r.end else {
         let (row, col) = (r.start.row.ok_or("#REF!")?, r.start.col.ok_or("#REF!")?);
@@ -240,14 +323,87 @@ fn finite(n: f64) -> R {
     }
 }
 
+fn is_reference(expr: &Expr, book: &Context<'_>, depth: usize) -> bool {
+    match expr {
+        Expr::Ref(_) | Expr::Binary(Op::Range | Op::Intersect | Op::Union, _, _) => true,
+        Expr::Name(n) if depth < 128 => book.name(n).is_some_and(|e| is_reference(&e, book, depth + 1)),
+        _ => false,
+    }
+}
+
+/// Resolve reference operators before fetching cells, so intersection never materializes
+/// the non-overlapping parts of either operand.
+fn references(expr: &Expr, book: &mut Context<'_>) -> Result<Vec<Reference>, &'static str> {
+    let _depth = Depth::enter()?;
+    match expr {
+        Expr::Ref(r) => Ok(vec![r.clone()]),
+        Expr::Name(n) => {
+            let key = n.to_uppercase();
+            if !book.names.insert(key.clone()) {
+                return Err("#REF!");
+            }
+            let result = book.name(n).ok_or("#NAME?").and_then(|e| references(&e, book));
+            book.names.remove(&key);
+            result
+        }
+        Expr::Binary(op @ (Op::Range | Op::Intersect | Op::Union), a, b) => {
+            let mut a = references(a, book)?;
+            let b = references(b, book)?;
+            if *op == Op::Union {
+                a.extend(b);
+                return Ok(a);
+            }
+            let bounds = |r: &Reference| {
+                let end = r.end.unwrap_or(r.start);
+                let extent = if [r.start.row, r.start.col, end.row, end.col].iter().any(Option::is_none) {
+                    book.extent(r.sheet.as_deref()).unwrap_or((0, 0))
+                } else {
+                    (0, 0)
+                };
+                (
+                    r.start.row.unwrap_or(0).min(end.row.unwrap_or(0)),
+                    r.start.row.unwrap_or(extent.0).max(end.row.unwrap_or(extent.0)),
+                    r.start.col.unwrap_or(0).min(end.col.unwrap_or(0)),
+                    r.start.col.unwrap_or(extent.1).max(end.col.unwrap_or(extent.1)),
+                )
+            };
+            let mut out = Vec::new();
+            for x in &a {
+                for y in &b {
+                    if x.sheet != y.sheet {
+                        continue;
+                    }
+                    let (xr0, xr1, xc0, xc1) = bounds(x);
+                    let (yr0, yr1, yc0, yc1) = bounds(y);
+                    let (r0, r1, c0, c1) = if *op == Op::Intersect {
+                        (xr0.max(yr0), xr1.min(yr1), xc0.max(yc0), xc1.min(yc1))
+                    } else {
+                        (xr0.min(yr0), xr1.max(yr1), xc0.min(yc0), xc1.max(yc1))
+                    };
+                    if r0 <= r1 && c0 <= c1 {
+                        let part = |r, c| RefPart { row: Some(r), col: Some(c), row_abs: false, col_abs: false };
+                        out.push(Reference { sheet: x.sheet.clone(), start: part(r0, c0), end: Some(part(r1, c1)) });
+                    }
+                }
+            }
+            if out.is_empty() {
+                Err("#NULL!")
+            } else {
+                Ok(out)
+            }
+        }
+        _ => Err("#VALUE!"),
+    }
+}
+
 /// Every value in the arguments, ranges flattened, with whether each came from a range (range
 /// cells and direct arguments count differently in SUM, COUNT and the like).
-fn flatten(args: &[Expr], book: &mut dyn Book) -> Result<Vec<(V, bool)>, &'static str> {
+fn flatten(args: &[Expr], book: &mut Context<'_>) -> Result<Vec<(V, bool)>, &'static str> {
     let mut out = Vec::new();
     for a in args {
         match eval_inner(a, book)? {
             V::Range(rows) => out.extend(rows.into_iter().flatten().map(|v| (v, true))),
-            v => out.push((v, false)),
+            v => out.push((v, is_reference(a, book, 0))),
         }
     }
     Ok(out)
@@ -255,7 +411,7 @@ fn flatten(args: &[Expr], book: &mut dyn Book) -> Result<Vec<(V, bool)>, &'stati
 
 /// The numbers SUM, AVERAGE, MIN and MAX use: in ranges only numbers; as direct arguments,
 /// numbers, booleans and numeric text. An error anywhere is the answer.
-fn numbers(args: &[Expr], book: &mut dyn Book) -> Result<Vec<f64>, &'static str> {
+fn numbers(args: &[Expr], book: &mut Context<'_>) -> Result<Vec<f64>, &'static str> {
     let mut out = Vec::new();
     for (v, in_range) in flatten(args, book)? {
         match (&v, in_range) {
@@ -269,7 +425,7 @@ fn numbers(args: &[Expr], book: &mut dyn Book) -> Result<Vec<f64>, &'static str>
 }
 
 /// Rows of values from an argument that should be a range (or a single value, as a 1×1).
-fn grid(arg: &Expr, book: &mut dyn Book) -> Result<Vec<Vec<V>>, &'static str> {
+fn grid(arg: &Expr, book: &mut Context<'_>) -> Result<Vec<Vec<V>>, &'static str> {
     Ok(match eval_inner(arg, book)? {
         V::Range(r) => r,
         V::Err(e) => return Err(e),
@@ -326,18 +482,24 @@ fn matches_criterion(v: &V, criterion: &V) -> bool {
 
 /// `*` any run, `?` any one character, `~` escapes.
 fn wildcard(pattern: &str, s: &str) -> bool {
-    let p: Vec<char> = pattern.chars().collect();
     let s: Vec<char> = s.chars().collect();
-    fn go(p: &[char], s: &[char]) -> bool {
-        match p.first() {
-            None => s.is_empty(),
-            Some('*') => (0..=s.len()).any(|i| go(&p[1..], &s[i..])),
-            Some('?') => !s.is_empty() && go(&p[1..], &s[1..]),
-            Some('~') if p.len() > 1 => s.first() == Some(&p[1]) && go(&p[2..], &s[1..]),
-            Some(c) => s.first() == Some(c) && go(&p[1..], &s[1..]),
+    let mut matched = vec![false; s.len() + 1];
+    matched[0] = true;
+    let mut chars = pattern.chars();
+    while let Some(c) = chars.next() {
+        if c == '*' {
+            for i in 1..=s.len() {
+                matched[i] |= matched[i - 1];
+            }
+        } else {
+            let literal = if c == '~' { chars.next().unwrap_or('~') } else { c };
+            for i in (1..=s.len()).rev() {
+                matched[i] = matched[i - 1] && (c == '?' || s[i - 1] == literal);
+            }
+            matched[0] = false;
         }
     }
-    go(&p, &s)
+    matched[s.len()]
 }
 
 fn round_to(n: f64, digits: i32, how: fn(f64) -> f64) -> f64 {
@@ -351,9 +513,9 @@ fn round_half_away(x: f64) -> f64 {
     x.signum() * (x.abs() + 0.5).floor()
 }
 
-fn call(name: &str, args: &[Expr], book: &mut dyn Book) -> R {
-    let arg = |i: usize, book: &mut dyn Book| -> R { args.get(i).map(|a| eval_inner(a, book).map(scalar)).unwrap_or(Ok(V::Empty)) };
-    let n_arg = |i: usize, book: &mut dyn Book| -> Result<f64, &'static str> { num(&arg(i, book)?) };
+fn call(name: &str, args: &[Expr], book: &mut Context<'_>) -> R {
+    let arg = |i: usize, book: &mut Context<'_>| -> R { args.get(i).map(|a| eval_inner(a, book).map(scalar)).unwrap_or(Ok(V::Empty)) };
+    let n_arg = |i: usize, book: &mut Context<'_>| -> Result<f64, &'static str> { num(&arg(i, book)?) };
     let need = |min: usize, max: usize| if args.len() < min || args.len() > max { Err("#VALUE!") } else { Ok(()) };
     let sys = book.date_system();
     Ok(match name {
@@ -422,8 +584,13 @@ fn call(name: &str, args: &[Expr], book: &mut dyn Book) -> R {
         "SUMPRODUCT" => {
             let grids: Vec<Vec<Vec<V>>> = args.iter().map(|a| grid(a, book)).collect::<Result<_, _>>()?;
             let shape = grids.first().map(|g| (g.len(), g.first().map_or(0, Vec::len))).unwrap_or((0, 0));
-            if grids.iter().any(|g| (g.len(), g.first().map_or(0, Vec::len)) != shape) {
+            if grids.iter().any(|g| g.len() != shape.0 || g.iter().any(|r| r.len() != shape.1)) {
                 return Err("#VALUE!");
+            }
+            for v in grids.iter().flatten().flatten() {
+                if let V::Err(e) = v {
+                    return Err(e);
+                }
             }
             let mut total = 0.0;
             for r in 0..shape.0 {
@@ -501,9 +668,12 @@ fn call(name: &str, args: &[Expr], book: &mut dyn Book) -> R {
         "NOT" => V::Bool(!truthy(&arg(0, book)?)?),
         "TRUE" => V::Bool(true),
         "FALSE" => V::Bool(false),
-        "ISBLANK" => V::Bool(matches!(arg(0, book)?, V::Empty)),
-        "ISNUMBER" => V::Bool(matches!(arg(0, book)?, V::Num(_))),
-        "ISTEXT" => V::Bool(matches!(arg(0, book)?, V::Text(_))),
+        "ISBLANK" => V::Bool(matches!(arg(0, book), Ok(V::Empty))),
+        "ISNUMBER" => V::Bool(matches!(arg(0, book), Ok(V::Num(_)))),
+        "ISTEXT" => V::Bool(matches!(arg(0, book), Ok(V::Text(_)))),
+        "ISNONTEXT" => V::Bool(!matches!(arg(0, book), Ok(V::Text(_)))),
+        "ISLOGICAL" => V::Bool(matches!(arg(0, book), Ok(V::Bool(_)))),
+        "ISERR" => V::Bool(matches!(arg(0, book), Ok(V::Err(e)) | Err(e) if e != "#N/A")),
         "ISERROR" => V::Bool(matches!(arg(0, book), Ok(V::Err(_)) | Err(_))),
         "ISNA" => V::Bool(matches!(arg(0, book), Ok(V::Err("#N/A")) | Err("#N/A"))),
         "NA" => return Err("#N/A"),
@@ -659,7 +829,7 @@ fn call(name: &str, args: &[Expr], book: &mut dyn Book) -> R {
             V::Num(if name == "ROWS" { g.len() } else { g.first().map_or(0, Vec::len) } as f64)
         }
         // ---- dates ----
-        "DATE" => V::Num(dates::date(n_arg(0, book)? as i64, n_arg(1, book)? as i64, n_arg(2, book)? as i64, sys)),
+        "DATE" => finite(dates::date(n_arg(0, book)? as i64, n_arg(1, book)? as i64, n_arg(2, book)? as i64, sys))?,
         "YEAR" | "MONTH" | "DAY" | "WEEKDAY" | "HOUR" | "MINUTE" | "SECOND" => {
             let dt = dates::from_serial(n_arg(0, book)?, sys).ok_or("#NUM!")?;
             V::Num(match name {
@@ -824,7 +994,8 @@ mod tests {
     #[test]
     fn aggregates() {
         assert_eq!(ev("SUM(A1:A5)"), V::Num(15.0));
-        assert_eq!(ev("SUM(A1:A5,C1,D1)"), V::Num(19.0), "direct arguments count text and TRUE");
+        assert_eq!(ev("SUM(A1:A5,C1,D1)"), V::Num(15.0), "cell references ignore text and TRUE");
+        assert_eq!(ev("SUM(A1:A5,\"3\",TRUE)"), V::Num(19.0), "literal arguments count text and TRUE");
         assert_eq!(ev("SUM(A1:D1)"), V::Num(1.0), "in ranges only numbers count");
         assert_eq!(ev("AVERAGE(A1:A4)"), V::Num(2.5));
         assert_eq!(ev("MAX(A:A)"), V::Num(5.0));

@@ -31,7 +31,7 @@ pub fn levels(el: Option<&Element>) -> Levels {
 
 #[derive(Clone, Debug)]
 pub struct Placeholder {
-    /// `title`, `body`, `ctrTitle`, `subTitle`, `dt`, `ftr`, `sldNum`, `pic`, `obj`… (`body`
+    /// `title`, `body`, `ctrTitle`, `subTitle`, `dt`, `ftr`, `sldNum`, `pic`, `obj`… (`obj`
     /// when the file doesn't say).
     pub kind: String,
     pub index: Option<u32>,
@@ -100,13 +100,11 @@ impl Template {
         })
     }
 
-    /// The placeholder a slide's placeholder (`kind`, `index`) takes from here: the same
-    /// index, else the same kind (titles match titles; anything else, the body).
+    /// Slides match layout placeholders by idx (omitted means zero). Layouts match
+    /// master placeholders by type, with title/body families as fallbacks.
     pub fn matching(&self, kind: &str, index: Option<u32>) -> Option<&Placeholder> {
-        if let Some(i) = index {
-            if let Some(p) = self.placeholders.iter().find(|p| p.index == Some(i)) {
-                return Some(p);
-            }
+        if self.layout_type.is_some() {
+            return self.placeholders.iter().find(|p| p.index.unwrap_or(0) == index.unwrap_or(0));
         }
         let fam = family(kind);
         self.placeholders
@@ -128,11 +126,22 @@ pub fn family(kind: &str) -> &'static str {
 fn read_placeholder(el: &Element) -> Option<Placeholder> {
     let nv = el.elements().find(|e| e.in_ns(ns::P) && e.local.starts_with("nv"))?;
     let ph = nv.path(ns::P, &["nvPr", "ph"])?;
+    let body = el.path(ns::P, &["txBody"]);
+    let mut inherited = levels(body.and_then(|b| b.child(ns::A, "lstStyle")));
+    for p in body.into_iter().flat_map(|b| b.children_named(ns::A, "p")) {
+        if let Some(pp) = p.child(ns::A, "pPr") {
+            let level = pp.attr("lvl").and_then(|v| v.parse::<usize>().ok()).unwrap_or(0).min(8);
+            inherited[level].0.overlay(&read_para_props(pp));
+            if let Some(rp) = pp.child(ns::A, "defRPr") {
+                inherited[level].1.overlay(&read_run_props(rp));
+            }
+        }
+    }
     Some(Placeholder {
-        kind: ph.attr("type").unwrap_or("body").to_string(),
+        kind: ph.attr("type").unwrap_or("obj").to_string(),
         index: ph.attr("idx").and_then(|i| i.parse().ok()),
         name: nv.child(ns::P, "cNvPr").and_then(|c| c.attr("name")).unwrap_or("").to_string(),
         xfrm: el.child(ns::P, "spPr").and_then(|s| s.child(ns::A, "xfrm")).map(Xfrm::parse),
-        levels: levels(el.path(ns::P, &["txBody"]).and_then(|b| b.child(ns::A, "lstStyle"))),
+        levels: inherited,
     })
 }

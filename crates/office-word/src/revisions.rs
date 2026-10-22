@@ -89,11 +89,17 @@ fn list_blocks(blocks: &[Block], out: &mut Vec<Revision>) {
         match b {
             Block::Paragraph(p) => list_paragraph(p, out),
             Block::Table(t) => {
+                if let Some(o) = t.origin.get() {
+                    find_marks(o, out, false);
+                }
                 for row in &t.rows {
                     if let Some(o) = row.origin.get() {
                         find_marks(o, out, false);
                     }
                     for cell in &row.cells {
+                        if let Some(o) = cell.origin.get() {
+                            find_marks(o, out, false);
+                        }
                         list_blocks(&cell.blocks, out);
                     }
                 }
@@ -311,13 +317,37 @@ fn resolve_run_change(i: &mut Inline, accept: bool, count: &mut usize) {
     run.origin = Origin::new(o);
 }
 
+/// Resolve a property snapshot in the object's shell, returning restored properties so
+/// the modeled values can be refreshed along with the preserved XML.
+fn resolve_properties(origin: &mut Origin, property: &str, accept: bool, count: &mut usize) -> Option<Element> {
+    let mut shell = origin.get()?.clone();
+    let props = shell.child_mut(ns::W, property)?;
+    let change_name = format!("{property}Change");
+    let change = props.child(ns::W, &change_name)?.clone();
+    *count += 1;
+    let restored = if accept {
+        props.remove_children(ns::W, &change_name);
+        None
+    } else {
+        let old = change.child(ns::W, property).cloned().unwrap_or_else(|| Element::new(ns::W, property));
+        *props = old.clone();
+        Some(old)
+    };
+    *origin = Origin::new(shell);
+    restored
+}
+
 fn resolve_table(doc: &mut Document, part: &str, t: &mut Table, accept: bool, count: &mut usize) -> Result<()> {
+    if let Some(old) = resolve_properties(&mut t.origin, "tblPr", accept, count) {
+        t.style = old.child(ns::W, "tblStyle").and_then(office_core::formats::docx::val).map(str::to_string);
+    }
     let row_change = |r: &office_core::model::Row| -> Option<String> {
         let trpr = r.origin.get()?.child(ns::W, "trPr")?;
         trpr.elements().find(|e| e.is(ns::W, "ins") || e.is(ns::W, "del")).map(|e| e.local.clone())
     };
     let mut kept = Vec::new();
-    for mut row in std::mem::take(&mut t.rows) {
+    let mut original_indices = Vec::new();
+    for (index, mut row) in std::mem::take(&mut t.rows).into_iter().enumerate() {
         match (row_change(&row).as_deref(), accept) {
             (Some("del"), true) | (Some("ins"), false) => {
                 *count += 1;
@@ -334,17 +364,35 @@ fn resolve_table(doc: &mut Document, part: &str, t: &mut Table, accept: bool, co
             }
             _ => {}
         }
+        if let Some(old) = resolve_properties(&mut row.origin, "trPr", accept, count) {
+            row.height = old
+                .child(ns::W, "trHeight")
+                .and_then(|h| h.attr_ns(ns::W, "val"))
+                .and_then(|v| office_core::units::Emu::parse(v, office_core::units::Emu::PER_TWIP));
+            row.header = old
+                .child(ns::W, "tblHeader")
+                .is_some_and(|e| office_core::formats::docx::val(e).and_then(office_core::units::parse_bool).unwrap_or(true));
+        }
         for cell in &mut row.cells {
+            if let Some(old) = resolve_properties(&mut cell.origin, "tcPr", accept, count) {
+                cell.fill = old
+                    .child(ns::W, "shd")
+                    .and_then(|s| s.attr_ns(ns::W, "fill"))
+                    .and_then(office_core::drawing::Rgb::parse)
+                    .map(office_core::drawing::Color::rgb);
+            }
             resolve_blocks(doc, part, &mut cell.blocks, accept, count)?;
         }
+        original_indices.push(index);
         kept.push(row);
     }
+    // Count surviving rows in each original span, including deletions in the middle.
     // A row span that reached into a removed row stops where the rows end.
     for r in 0..kept.len() {
         for c in 0..kept[r].cells.len() {
-            let left = (kept.len() - r) as u32;
-            let cell = &mut kept[r].cells[c];
-            cell.row_span = cell.row_span.min(left).max(1);
+            let end = original_indices[r].saturating_add(kept[r].cells[c].row_span as usize);
+            let span = original_indices[r..].iter().take_while(|&&i| i < end).count().max(1) as u32;
+            kept[r].cells[c].row_span = span;
         }
     }
     t.rows = kept;

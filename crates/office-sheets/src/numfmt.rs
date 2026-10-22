@@ -85,7 +85,10 @@ pub fn is_date_format(code: &str) -> bool {
 }
 
 fn format_number_with(n: f64, sections: &[String], system: DateSystem) -> Formatted {
-    if sections.is_empty() || sections[0].eq_ignore_ascii_case("general") {
+    if !n.is_finite() {
+        return Formatted { text: "#NUM!".into(), color: None };
+    }
+    if sections.is_empty() {
         return Formatted { text: general(n), color: None };
     }
     let parsed: Vec<Vec<Token>> = sections.iter().map(|s| tokenize(s)).collect();
@@ -109,7 +112,9 @@ fn format_number_with(n: f64, sections: &[String], system: DateSystem) -> Format
     };
     let tokens = &parsed[index.min(parsed.len() - 1)];
     let value = if abs { -n } else { n };
-    let mut out = if tokens.iter().any(|t| matches!(t, Token::Date(_) | Token::Elapsed(..))) {
+    let mut out = if tokens.iter().any(|t| matches!(t, Token::General)) {
+        Formatted { text: general(value), color: None }
+    } else if tokens.iter().any(|t| matches!(t, Token::Date(_) | Token::Elapsed(..))) {
         render_date(tokens, value, system)
     } else {
         render_number(tokens, value)
@@ -123,6 +128,9 @@ fn format_number_with(n: f64, sections: &[String], system: DateSystem) -> Format
 /// General: whole numbers as they are, others to ten significant digits, and an exponent
 /// when the number won't fit in eleven characters, as Excel's General does.
 pub fn general(n: f64) -> String {
+    if !n.is_finite() {
+        return "#NUM!".into();
+    }
     if n == 0.0 {
         return "0".into();
     }
@@ -138,9 +146,13 @@ pub fn general(n: f64) -> String {
     }
     let s = format!("{:.5E}", n);
     // Rust writes 1.23457E11; Excel writes 1.23457E+11, without trailing zeros.
-    let (mantissa, exp) = s.split_once('E').unwrap();
+    let Some((mantissa, exp)) = s.split_once('E') else {
+        return s;
+    };
     let mantissa = mantissa.trim_end_matches('0').trim_end_matches('.');
-    let exp: i32 = exp.parse().unwrap();
+    let Ok(exp) = exp.parse::<i32>() else {
+        return s;
+    };
     format!("{mantissa}E{}{:02}", if exp < 0 { '-' } else { '+' }, exp.abs())
 }
 
@@ -167,6 +179,7 @@ impl Condition {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Token {
+    General,
     Literal(String),
     /// `0`, `#` or `?`.
     Digit(char),
@@ -233,6 +246,10 @@ fn tokenize(section: &str) -> Vec<Token> {
         let rest: String = chars[i..].iter().collect();
         let lower = rest.to_ascii_lowercase();
         match c {
+            _ if lower.starts_with("general") => {
+                out.push(Token::General);
+                i += 7;
+            }
             '"' => {
                 let end = chars[i + 1..].iter().position(|&c| c == '"').map(|p| i + 1 + p).unwrap_or(chars.len());
                 lit(&mut out, &chars[i + 1..end].iter().collect::<String>());
@@ -401,12 +418,12 @@ fn render_number(tokens: &[Token], n: f64) -> Formatted {
         exp = (value.log10().floor() as i32).div_euclid(step) * step;
         value /= 10f64.powi(exp);
         // Rounding can carry the mantissa up a place: 9.996 as 0.00E+00 is 1.00E+01.
-        if format!("{:.*}", decimals, value).parse::<f64>().unwrap_or(value) >= 10f64.powi(step) {
+        if format!("{:.*}", decimals, round_decimal(value, decimals)).parse::<f64>().unwrap_or(value) >= 10f64.powi(step) {
             exp += step;
             value /= 10f64.powi(step);
         }
     }
-    let rounded = format!("{:.*}", decimals, value);
+    let rounded = format!("{:.*}", decimals, round_decimal(value, decimals));
     let (int_part, dec_part) = rounded.split_once('.').unwrap_or((&rounded, ""));
     // A value that rounds to zero shows no sign.
     let negative = n < 0.0 && rounded.bytes().any(|b| (b'1'..=b'9').contains(&b));
@@ -499,6 +516,18 @@ fn render_number(tokens: &[Token], n: f64) -> Formatted {
     Formatted { text: out, color: None }
 }
 
+/// Round decimal ties away from zero, tolerating the representation error in values such
+/// as 1.005. The correction is at most one floating-point rounding unit.
+fn round_decimal(value: f64, decimals: usize) -> f64 {
+    let factor = 10f64.powi(decimals.min(309) as i32);
+    let scaled = value * factor;
+    if !scaled.is_finite() || factor == 0.0 || scaled.abs() >= (1u64 << 52) as f64 {
+        return value;
+    }
+    let rounded = (scaled.abs() + scaled.abs() * f64::EPSILON).round().copysign(value);
+    rounded / factor
+}
+
 fn group_thousands(s: &str) -> String {
     // Group the run of digits, leaving literals around it alone.
     let start = s.find(|c: char| c.is_ascii_digit());
@@ -542,21 +571,24 @@ fn render_fraction(tokens: &[Token], value: f64, negative: bool) -> String {
     let whole_part = groups.len() >= 2;
     let denominator: String = tokens[slash + 1..]
         .iter()
-        .filter_map(|t| match t {
-            Token::Digit(_) => Some('?'),
-            Token::Literal(l) if l.chars().all(|c| c.is_ascii_digit()) => Some(l.chars().next()?),
-            _ => None,
+        .take_while(|t| matches!(t, Token::Digit(_) | Token::Literal(_)))
+        .map(|t| match t {
+            Token::Digit(c) => c.to_string(),
+            Token::Literal(l) => l.clone(),
+            _ => unreachable!(),
         })
         .collect();
-    let fixed: Option<u64> = tokens[slash + 1..].iter().find_map(|t| if let Token::Literal(l) = t { l.trim().parse().ok() } else { None });
+    let fixed = if denominator.chars().all(|c| c.is_ascii_digit()) { denominator.parse::<u64>().ok().filter(|d| *d > 0) } else { None };
+    let places = denominator.chars().filter(|c| matches!(c, '0' | '?' | '#')).count();
+    let max_den = 10u64.checked_pow(places.max(1).try_into().unwrap_or(u32::MAX)).unwrap_or(u64::MAX).saturating_sub(1);
     let (whole, frac) = if whole_part { (value.trunc(), value.fract()) } else { (0.0, value) };
     let (num, den) = match fixed {
         Some(d) => ((frac * d as f64).round() as u64, d),
-        None => best_fraction(frac, 10u64.pow(denominator.len().max(1) as u32) - 1),
+        None => best_fraction(frac, max_den),
     };
     let (mut whole, mut num) = (whole as u64, num);
     if num == den && whole_part {
-        whole += 1;
+        whole = whole.saturating_add(1);
         num = 0;
     }
     let sign = if negative { "-" } else { "" };
@@ -575,16 +607,40 @@ fn render_fraction(tokens: &[Token], value: f64, negative: bool) -> String {
 
 /// The fraction nearest `x` (0–1) with a denominator no bigger than `max`, by continued fractions.
 fn best_fraction(x: f64, max: u64) -> (u64, u64) {
-    let (mut best, mut err) = ((x.round() as u64, 1u64), (x - x.round()).abs());
-    for den in 1..=max {
-        let num = (x * den as f64).round();
-        let e = (x - num / den as f64).abs();
-        if e < err - 1e-12 {
-            best = (num as u64, den);
-            err = e;
+    let max = max.max(1);
+    let (mut p0, mut q0, mut p1, mut q1) = (0u64, 1u64, 1u64, 0u64);
+    let mut remaining = x;
+    for _ in 0..128 {
+        let a = remaining.floor();
+        if !a.is_finite() || a >= u64::MAX as f64 {
+            break;
         }
+        let a = a as u64;
+        let Some(q2) = a.checked_mul(q1).and_then(|q| q.checked_add(q0)).filter(|q| *q <= max) else {
+            break;
+        };
+        let Some(p2) = a.checked_mul(p1).and_then(|p| p.checked_add(p0)) else {
+            break;
+        };
+        (p0, q0, p1, q1) = (p1, q1, p2, q2);
+        if (x - p1 as f64 / q1 as f64).abs() <= f64::EPSILON * x.abs().max(1.0) {
+            return (p1, q1);
+        }
+        let tail = remaining - a as f64;
+        if tail == 0.0 {
+            return (p1, q1);
+        }
+        remaining = 1.0 / tail;
     }
-    best
+    if q1 == 0 {
+        return (x.round() as u64, 1);
+    }
+    let k = (max - q0) / q1;
+    let bound = k.checked_mul(p1).and_then(|p| p.checked_add(p0)).zip(k.checked_mul(q1).and_then(|q| q.checked_add(q0)));
+    match bound {
+        Some((p, q)) if q > 0 && (x - p as f64 / q as f64).abs() < (x - p1 as f64 / q1 as f64).abs() => (p, q),
+        _ => (p1, q1),
+    }
 }
 
 const MONTHS: [&str; 12] =
@@ -684,6 +740,20 @@ mod tests {
 
     fn f(n: f64, code: &str) -> String {
         format(&Value::Number(n), code, DateSystem::From1900).text
+    }
+
+    #[test]
+    fn bounded_fractions_match_exhaustive_small_denominators() {
+        for max in [1, 9, 99] {
+            for i in 0..1000 {
+                let x = i as f64 / 997.0;
+                let (p, q) = best_fraction(x, max);
+                assert!((1..=max).contains(&q));
+                let error = (x - p as f64 / q as f64).abs();
+                let expected = (1..=max).map(|d| (x - (x * d as f64).round() / d as f64).abs()).fold(f64::INFINITY, f64::min);
+                assert!(error <= expected + 1e-14, "{x}: {p}/{q} bounded by {max}");
+            }
+        }
     }
 
     #[test]
