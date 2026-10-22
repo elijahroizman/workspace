@@ -46,6 +46,8 @@ struct Part {
     /// Entry in the source zip, while the part is unchanged.
     entry: Option<usize>,
     data: Arc<OnceLock<Vec<u8>>>,
+    /// The bytes parsed, once something asks for them shared (see [`Package::xml_shared`]).
+    parsed: Arc<OnceLock<Arc<XmlDoc>>>,
 }
 
 impl std::fmt::Debug for Package {
@@ -83,7 +85,7 @@ impl Package {
                 let bucket: &mut Vec<usize> = index.entry(name_hash(&name)).or_default();
                 if !bucket.iter().any(|&at| parts[at].name.eq_ignore_ascii_case(&name)) {
                     bucket.push(parts.len());
-                    parts.push(Part { name, entry: Some(i), data: Arc::new(OnceLock::new()) });
+                    parts.push(Part { name, entry: Some(i), data: Arc::new(OnceLock::new()), parsed: Arc::default() });
                 }
             }
         }
@@ -172,6 +174,18 @@ impl Package {
         xml::parse(self.part(name)?).map_err(|message| Error::Xml { part: name.into(), message })
     }
 
+    /// A part, parsed once and kept: copies of the package (each save makes one) share it until
+    /// the part is replaced. For large parts read more than once, such as a document's body,
+    /// which reading parses and saving compares against.
+    pub fn xml_shared(&self, name: &str) -> Result<Arc<XmlDoc>> {
+        let part = &self.parts[self.find(name).ok_or_else(|| Error::MissingPart(name.into()))?];
+        if let Some(doc) = part.parsed.get() {
+            return Ok(doc.clone());
+        }
+        let doc = Arc::new(self.xml(name)?);
+        Ok(part.parsed.get_or_init(|| doc).clone())
+    }
+
     pub fn content_types(&self) -> &ContentTypes {
         &self.content_types
     }
@@ -224,10 +238,11 @@ impl Package {
                 let part = &mut self.parts[i];
                 part.entry = None;
                 part.data = data;
+                part.parsed = Arc::default();
             }
             None => {
                 self.index.entry(name_hash(name)).or_default().push(self.parts.len());
-                self.parts.push(Part { name: name.to_string(), entry: None, data });
+                self.parts.push(Part { name: name.to_string(), entry: None, data, parsed: Arc::default() });
             }
         }
         if self.content_types.get(name) != Some(media_type) {
@@ -245,6 +260,7 @@ impl Package {
         let i = self.find(name).ok_or_else(|| Error::MissingPart(name.into()))?;
         self.parts[i].entry = None;
         self.parts[i].data = Arc::new(OnceLock::from(data));
+        self.parts[i].parsed = Arc::default();
         Ok(())
     }
 

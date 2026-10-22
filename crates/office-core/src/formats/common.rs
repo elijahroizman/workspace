@@ -171,7 +171,7 @@ impl PartCtx {
 /// Writes a part unless it says the same as it does now, so an untouched part keeps its bytes.
 /// A part that's there already keeps its declaration and whatever surrounds its root.
 pub fn put_if_changed(pkg: &mut Package, part: &str, mut doc: crate::xml::XmlDoc, media: &str) -> crate::Result<()> {
-    if let Some(old) = pkg.has(part).then(|| pkg.xml(part).ok()).flatten() {
+    if let Some(old) = pkg.has(part).then(|| pkg.xml_shared(part).ok()).flatten() {
         doc.declaration = old.declaration.clone();
         doc.before = old.before.clone();
         doc.after = old.after.clone();

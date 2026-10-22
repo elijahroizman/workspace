@@ -87,7 +87,11 @@ impl Layer for Words {
         let main = pkg.main_part()?;
         // Built-in styles the document uses and its style sheet doesn't have.
         let used = used_styles(doc);
-        if let Some((_, part)) = pkg.related(&main, kind::STYLES)?.into_iter().next() {
+        // A file's style sheet was parsed on reading it; going back to the part (Word's runs to
+        // hundreds of kilobytes) is only worth it when one of those is missing from it.
+        let sheet_has = |id: &String| doc.package.is_some() && word(doc).is_some_and(|w| w.styles.get(id).is_some());
+        let missing = used.iter().any(|id| !sheet_has(id) && styles::builtin(id).is_some());
+        if let Some((_, part)) = pkg.related(&main, kind::STYLES)?.into_iter().next().filter(|_| missing) {
             let mut sheet = pkg.xml(&part)?;
             if styles::add_missing(&mut sheet, &used) {
                 pkg.put_xml(&part, &sheet, types::DOCX_STYLES);

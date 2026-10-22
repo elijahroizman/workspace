@@ -18,7 +18,7 @@ pub(super) fn hyperlink_origin<'a>(doc: &'a Document, run: &Run) -> Option<&'a E
 
 pub fn read(pkg: Package) -> Result<Document> {
     let main = pkg.main_part()?;
-    let xml = pkg.xml(&main)?;
+    let xml = pkg.xml_shared(&main)?;
     let rels = PartRels::new(&pkg, &main)?;
     let mut doc = Document::new(Kind::Word);
     doc.properties = Properties::read(&pkg)?;

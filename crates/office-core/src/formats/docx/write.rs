@@ -30,17 +30,20 @@ pub fn write(doc: &Document) -> Result<Package> {
     let pkg = if same { doc.package.clone().unwrap() } else { scaffold(&theme)? };
     let mut out = Out::new(doc, pkg, same, "word/media");
     let main = out.pkg.main_part()?;
-    let source = out.pkg.xml(&main)?;
     // Another package's document can't bring its headers and footers (the parts its r:ids
     // name) along; anything else about it can come, such as a page setup made in code.
-    let mut root = origin_as(&doc.origin, ns::W, "document").filter(|o| same || !names_parts(o)).unwrap_or_else(|| {
-        // The scaffold's document, or the source without its blocks.
-        let mut r = source.root.clone();
-        if let Some(body) = r.child_mut(ns::W, "body") {
-            body.children.retain(|n| matches!(n, Node::Element(e) if e.is(ns::W, "sectPr")));
+    let root = origin_as(&doc.origin, ns::W, "document").filter(|o| same || !names_parts(o));
+    let mut root = match root {
+        Some(root) => root,
+        None => {
+            // The scaffold's document, or the source without its blocks.
+            let mut r = out.pkg.xml(&main)?.root;
+            if let Some(body) = r.child_mut(ns::W, "body") {
+                body.children.retain(|n| matches!(n, Node::Element(e) if e.is(ns::W, "sectPr")));
+            }
+            r
         }
-        r
-    });
+    };
     let mut ctx = Ctx { rels: PartCtx::load(&out.pkg, &main)?, out: &mut out, theme, next_pic: 1, used_pics: None };
 
     let mut els = Vec::new();
