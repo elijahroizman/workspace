@@ -41,3 +41,6 @@ pub fn write(doc: &Document, kind: Kind) -> Result<Output> {
         Kind::Sheets => xlsx::write(doc).map(Output::Package),
     }
 }
+
+#[cfg(test)]
+mod review_tests;
