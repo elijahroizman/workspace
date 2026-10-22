@@ -213,6 +213,29 @@ export function Segmented<T extends string>({
   )
 }
 
+/** Illustrated choices with native radio-button keyboard navigation. */
+export function ChoiceTiles<T extends string>({ label, value, options, onChange }: {
+  label: string
+  value: T
+  options: { value: T; label: string; icon: ReactNode }[]
+  onChange: (value: T) => void
+}) {
+  const name = useId()
+  return (
+    <div className="choice-tiles" role="radiogroup" aria-label={label}>
+      {options.map((option) => (
+        <label className="choice-tile" key={option.value}>
+          <input type="radio" name={name} value={option.value} checked={value === option.value} onChange={() => onChange(option.value)} />
+          <span className="choice-tile-content">
+            {option.icon}
+            <span>{option.label}</span>
+          </span>
+        </label>
+      ))}
+    </div>
+  )
+}
+
 /** Numeric input that commits on Enter/blur, with arrow-key nudging (⇧ for ×10). */
 export function NumberField({
   label,

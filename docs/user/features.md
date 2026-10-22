@@ -86,6 +86,8 @@ Word documents use open-licensed stand-ins for Calibri, Cambria, Arial, Times Ne
 
 **Settings › Appearance** picks light, dark or the system's setting (⇧⌘L switches), and a color theme for each. You can make your own themes: two tones and an accent.
 
+**App icon** offers Dark (the default), Blue and Light. On macOS, it changes the Dock icon while the app is open. Finder always uses the default, as does the Dock when the app is closed. On Windows and Linux, it changes the window and taskbar icon. The choice is saved and applied each time the app opens.
+
 ## Command line
 
 Like `code` for VS Code, `writan` opens things from a terminal:

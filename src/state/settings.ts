@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 
+export type AppIcon = 'dark' | 'blue' | 'light'
+
 export interface AutosaveSettings {
   /** When false, nothing autosaves. Files still save with the Save command. */
   enabled: boolean
@@ -10,6 +12,7 @@ export interface AutosaveSettings {
 }
 
 export interface Settings {
+  appIcon: AppIcon
   autosave: AutosaveSettings
   /** Seconds after typing stops before a slow preview (a LaTeX compile) rebuilds. */
   previewDelay: number
@@ -20,6 +23,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  appIcon: 'dark',
   autosave: {
     enabled: true,
     delay: 3,
@@ -50,10 +54,11 @@ function load(): Settings {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(KEY) || '{}')
     if (!isRecord(parsed)) return DEFAULT_SETTINGS
+    const appIcon = parsed.appIcon === 'blue' || parsed.appIcon === 'light' ? parsed.appIcon : DEFAULT_SETTINGS.appIcon
     const previewDelay = typeof parsed.previewDelay === 'number' && PREVIEW_DELAYS.includes(parsed.previewDelay) ? parsed.previewDelay : DEFAULT_SETTINGS.previewDelay
     const history = typeof parsed.history === 'boolean' ? parsed.history : DEFAULT_SETTINGS.history
     const recentDays = typeof parsed.recentDays === 'number' && RECENT_DAYS.includes(parsed.recentDays) ? parsed.recentDays : DEFAULT_SETTINGS.recentDays
-    if (!isRecord(parsed.autosave)) return { ...DEFAULT_SETTINGS, previewDelay, history, recentDays }
+    if (!isRecord(parsed.autosave)) return { ...DEFAULT_SETTINGS, appIcon, previewDelay, history, recentDays }
     const old = parsed.autosave
     const defaults = DEFAULT_SETTINGS.autosave
     const kinds = { ...defaults.kinds }
@@ -68,7 +73,7 @@ function load(): Settings {
     let enabled = defaults.enabled
     if (typeof old.enabled === 'boolean') enabled = old.enabled
     else if ('root' in old) enabled = typeof old.root === 'string' && old.root.length > 0
-    return { autosave: { enabled, delay, kinds }, previewDelay, history, recentDays }
+    return { autosave: { enabled, delay, kinds }, appIcon, previewDelay, history, recentDays }
   } catch {
     return DEFAULT_SETTINGS
   }
@@ -87,11 +92,12 @@ interface SettingsState extends Settings {
   setPreviewDelay(seconds: number): void
   setHistory(on: boolean): void
   setRecentDays(days: number): void
+  setAppIcon(icon: AppIcon): void
 }
 
 const persist = () => {
-  const { autosave, previewDelay, history, recentDays } = useSettings.getState()
-  localStorage.setItem(KEY, JSON.stringify({ version: VERSION, autosave, previewDelay, history, recentDays } satisfies Settings & { version: number }))
+  const { autosave, appIcon, previewDelay, history, recentDays } = useSettings.getState()
+  localStorage.setItem(KEY, JSON.stringify({ version: VERSION, autosave, appIcon, previewDelay, history, recentDays } satisfies Settings & { version: number }))
 }
 
 export const useSettings = create<SettingsState>((set, get) => ({
@@ -115,6 +121,10 @@ export const useSettings = create<SettingsState>((set, get) => ({
   },
   setRecentDays: (recentDays) => {
     set({ recentDays })
+    persist()
+  },
+  setAppIcon: (appIcon) => {
+    set({ appIcon })
     persist()
   },
 }))

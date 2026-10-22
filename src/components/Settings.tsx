@@ -23,7 +23,7 @@ import { useFolder } from '../state/folder'
 import { useWorkspace } from '../state/workspace'
 import { PluginRow } from './PluginList'
 import { formatSize as formatVersionSize } from './VersionHistory'
-import { Button, Checkbox, DocBadge, IconButton, LinkButton, Modal, Segmented, SettingsRow, Spinner, Switch, TextField } from './ui'
+import { Button, Checkbox, ChoiceTiles, DocBadge, IconButton, LinkButton, Logo, Modal, Segmented, SettingsRow, Spinner, Switch, TextField } from './ui'
 
 const LicensesPage = lazy(() => import('./Licenses'))
 
@@ -510,6 +510,8 @@ function HistoryRows() {
 }
 
 function AppearancePage() {
+  const appIcon = useSettings((s) => s.appIcon)
+  const setAppIcon = useSettings((s) => s.setAppIcon)
   const mode = useWorkspace((s) => s.themeMode)
   const appearance = useWorkspace((s) => s.theme)
   const setThemeMode = useWorkspace((s) => s.setThemeMode)
@@ -534,6 +536,23 @@ function AppearancePage() {
             { value: 'system', label: 'System', icon: <Monitor size={14} /> },
             { value: 'light', label: 'Light', icon: <Sun size={14} /> },
             { value: 'dark', label: 'Dark', icon: <Moon size={14} /> },
+          ]}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        label="App icon"
+        column
+        hint={!isTauri ? 'Changes the icon in the desktop app. The browser icon stays the same.' : isMac ? 'Changes the Dock icon while the app is open. Finder always uses the default, as does the Dock when the app is closed.' : 'Changes the window and taskbar icon while the app is open.'}
+      >
+        <ChoiceTiles
+          label="App icon"
+          value={appIcon}
+          onChange={setAppIcon}
+          options={[
+            { value: 'dark', label: 'Dark', icon: <Logo variant="dark" size={48} /> },
+            { value: 'blue', label: 'Blue', icon: <Logo variant="blue" size={48} /> },
+            { value: 'light', label: 'Light', icon: <Logo variant="light" size={48} /> },
           ]}
         />
       </SettingsRow>
