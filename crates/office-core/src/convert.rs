@@ -38,6 +38,14 @@ pub fn to_kind(doc: &Document, kind: Kind) -> Result<Document> {
         (Body::Workbook { sheets }, Kind::Word) => Body::Flow { blocks: sheets_to_blocks(sheets)? },
         (Body::Workbook { sheets }, _) => sheets_to_slides(sheets)?,
     };
+    if doc.kind == Kind::Csv && kind == Kind::Sheets {
+        if let Body::Workbook { sheets } = &mut out.body {
+            let names = crate::formats::xlsx::generated_sheet_names(sheets)?;
+            for (sheet, name) in sheets.iter_mut().zip(names) {
+                sheet.name = name;
+            }
+        }
+    }
     // A CSV file's dialect only means something to CSV.
     if kind != Kind::Csv {
         out.extensions.remove::<crate::formats::csv::Dialect>();
@@ -76,7 +84,16 @@ fn text_value(text: String) -> Value {
 
 /// A sheet's used range as a table of text, its merged ranges as spans. Columns share `width`.
 pub fn sheet_to_table(sheet: &Sheet, width: Emu) -> Result<Table> {
-    let Some(used) = sheet.used_range().or_else(|| sheet.merges.first().copied()) else { return Ok(Table::default()) };
+    let used = sheet.merges.iter().copied().fold(sheet.used_range(), |used, merge| {
+        Some(match used {
+            Some(range) => Range {
+                start: CellRef::new(range.start.row.min(merge.start.row), range.start.col.min(merge.start.col)),
+                end: CellRef::new(range.end.row.max(merge.end.row), range.end.col.max(merge.end.col)),
+            },
+            None => merge,
+        })
+    });
+    let Some(used) = used else { return Ok(Table::default()) };
     sheet.check_laid_out(used.end)?;
     let (rows, cols) = (used.end.row as usize + 1, used.end.col as usize + 1);
     let text = sheet.to_text_rows()?;
@@ -84,7 +101,8 @@ pub fn sheet_to_table(sheet: &Sheet, width: Emu) -> Result<Table> {
     for row in &mut table.rows {
         row.cells.resize_with(cols, || Cell::text(""));
     }
-    table.columns.resize(cols, Emu(width.0 / cols.max(1) as i64));
+    table.columns.resize(cols, Emu::default());
+    table.columns.fill(Emu(width.0 / cols.max(1) as i64));
     for m in &sheet.merges {
         let (r0, c0) = (m.start.row as usize, m.start.col as usize);
         if r0 >= rows || c0 >= cols {
@@ -192,9 +210,57 @@ fn paragraph_height(p: &Paragraph) -> i64 {
         Some(LineSpacing::Multiple(m)) => m.fraction().max(1.0),
         _ => 1.0,
     };
-    let lines = 1.0 + p.plain_text().matches('\n').count() as f64;
+    let lines = 1.0 + p.runs().map(|r| r.text.bytes().filter(|&b| b == b'\n').count()).sum::<usize>() as f64;
     let around = p.props.space_before.unwrap_or_default().0 + p.props.space_after.unwrap_or_default().0;
     Emu::from_points(size * 1.2 * spacing * lines).0 + around
+}
+
+/// Splits explicit lines while preserving run formatting and hyperlinks in each fragment.
+fn split_paragraph(p: Paragraph, max_height: i64) -> impl Iterator<Item = Paragraph> {
+    let height = paragraph_height(&p);
+    if height <= max_height {
+        return Some(p).into_iter().chain(Vec::new());
+    }
+    let lines = 1 + p.runs().map(|r| r.text.bytes().filter(|&b| b == b'\n').count()).sum::<usize>() as i64;
+    let around = p.props.space_before.unwrap_or_default().0 + p.props.space_after.unwrap_or_default().0;
+    let line_height = ((height - around + lines - 1) / lines).max(1);
+    let per_part = ((max_height - around) / line_height).max(1);
+    let mut part = Paragraph { props: p.props.clone(), mark: p.mark.clone(), ..Default::default() };
+    let mut parts = Vec::new();
+    let mut count = 1;
+    for inline in p.content {
+        match inline {
+            Inline::Text(run) => {
+                let mut start = 0;
+                for (at, _) in run.text.match_indices('\n') {
+                    if count == per_part {
+                        if at > start {
+                            part.content.push(Inline::Text(Run {
+                                text: run.text[start..at].into(),
+                                props: run.props.clone(),
+                                link: run.link.clone(),
+                                origin: Origin::default(),
+                            }));
+                        }
+                        parts.push(std::mem::replace(
+                            &mut part,
+                            Paragraph { props: p.props.clone(), mark: p.mark.clone(), ..Default::default() },
+                        ));
+                        count = 1;
+                        start = at + 1;
+                    } else {
+                        count += 1;
+                    }
+                }
+                if start < run.text.len() {
+                    part.content.push(Inline::Text(Run { text: run.text[start..].into(), origin: Origin::default(), ..run }));
+                }
+            }
+            inline => part.content.push(inline),
+        }
+    }
+    parts.push(part);
+    None.into_iter().chain(parts)
 }
 
 /// A text box's insets, top and bottom.
@@ -245,7 +311,8 @@ impl Deck {
         }
         let mut chunk: Vec<Paragraph> = Vec::new();
         let mut height = INSETS;
-        for p in paragraphs {
+        let max_height = self.area.height.0 - INSETS;
+        for p in paragraphs.into_iter().flat_map(|p| split_paragraph(p, max_height)) {
             let h = paragraph_height(&p);
             if !chunk.is_empty() && height + h > self.room() {
                 self.flush_text(std::mem::take(&mut chunk), height);
@@ -262,7 +329,7 @@ impl Deck {
         if chunk.is_empty() {
             return;
         }
-        let (width, height) = (self.area.width.0, height.min(self.area.height.0));
+        let width = self.area.width.0;
         self.place(width, height, |id, xfrm| Frame::text_box(id, xfrm, chunk));
     }
 
@@ -375,21 +442,35 @@ fn flow_to_slides(blocks: &[Block]) -> Body {
     for b in blocks {
         match b {
             Block::Paragraph(p) => {
-                let starts = p.content.iter().any(|i| matches!(i, Inline::Break { kind: BreakKind::Page }))
-                    || matches!(p.props.style.as_deref(), Some("Title" | "Heading1"));
-                if starts {
+                if matches!(p.props.style.as_deref(), Some("Title" | "Heading1")) {
                     deck.text(std::mem::take(&mut text));
                     deck.new_slide();
                 }
-                let mut p = p.clone();
-                p.origin = Origin::default();
-                let images: Vec<Image> =
-                    p.content.iter().filter_map(|i| if let Inline::Image(img) = i { Some(img.clone()) } else { None }).collect();
-                p.content.retain(|i| !matches!(i, Inline::Image(_) | Inline::Break { .. }));
-                text.push(p);
-                for image in images {
-                    deck.text(std::mem::take(&mut text));
-                    deck.picture(image);
+                let mut part = Paragraph { props: p.props.clone(), mark: p.mark.clone(), ..Default::default() };
+                for inline in &p.content {
+                    match inline {
+                        Inline::Break { kind: BreakKind::Page } => {
+                            if !part.content.is_empty() {
+                                text.push(part.clone());
+                                part.content.clear();
+                            }
+                            deck.text(std::mem::take(&mut text));
+                            deck.new_slide();
+                        }
+                        Inline::Image(image) => {
+                            if !part.content.is_empty() {
+                                text.push(part.clone());
+                                part.content.clear();
+                            }
+                            deck.text(std::mem::take(&mut text));
+                            deck.picture(image.clone());
+                        }
+                        Inline::Break { .. } => part.content.push(Inline::Text(Run::new("\n"))),
+                        inline => part.content.push(inline.clone()),
+                    }
+                }
+                if !part.content.is_empty() {
+                    text.push(part);
                 }
             }
             Block::Table(t) => {
@@ -505,6 +586,10 @@ mod tests {
             for f in &s.frames {
                 let x = f.shape.xfrm.as_ref().unwrap();
                 assert!(x.y.0 + x.height.0 <= bottom, "a frame runs off the slide");
+                if let FrameContent::Shape { text: Some(body), .. } = &f.content {
+                    let needed = INSETS + body.paragraphs.iter().map(paragraph_height).sum::<i64>();
+                    assert!(needed <= x.height.0, "text needs {needed} EMU, frame has {}", x.height.0);
+                }
                 assert!(x.x.0 + x.width.0 <= size.width.0 - MARGIN, "or off its side");
             }
         }

@@ -184,11 +184,13 @@ fn read_cell(tc: &Element, rels: &PartRels) -> Cell {
     if let Some(body) = origin.child_mut(ns::A, "txBody") {
         body.remove_children(ns::A, "p");
     }
+    let covered = flag("hMerge") || flag("vMerge");
     Cell {
         blocks,
-        col_span: n("gridSpan"),
-        row_span: n("rowSpan"),
-        covered: flag("hMerge") || flag("vMerge"),
+        // Covered cells repeat span attributes in XML; only the owner carries them in the model.
+        col_span: if covered { 1 } else { n("gridSpan") },
+        row_span: if covered { 1 } else { n("rowSpan") },
+        covered,
         fill,
         origin: crate::model::Origin::new(origin),
     }

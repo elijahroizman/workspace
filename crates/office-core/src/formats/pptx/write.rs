@@ -43,13 +43,9 @@ pub fn write(doc: &Document) -> Result<Package> {
     }
 
     let old_ids = pres.root.child(ns::P, "sldIdLst").cloned();
-    let mut next_id = old_ids
-        .iter()
-        .flat_map(|l| l.children_named(ns::P, "sldId"))
-        .filter_map(|s| s.attr("id")?.parse::<u32>().ok())
-        .max()
-        .unwrap_or(255)
-        + 1;
+    let mut used_ids: std::collections::HashSet<u32> =
+        old_ids.iter().flat_map(|l| l.children_named(ns::P, "sldId")).filter_map(|s| s.attr("id")?.parse().ok()).collect();
+    let mut next_id = 256u32;
     let mut list = Element::new(ns::P, "sldIdLst");
     let mut layout = first_layout(&out.pkg, &main)?;
     let mut written: Vec<String> = Vec::new();
@@ -108,11 +104,19 @@ pub fn write(doc: &Document) -> Result<Package> {
         written.push(part);
         let existing =
             old_ids.iter().flat_map(|l| l.children_named(ns::P, "sldId")).find(|s| rel_attr(s, "id") == Some(rid.as_str())).cloned();
-        list.push(existing.unwrap_or_else(|| {
+        list.push(if let Some(existing) = existing {
+            existing
+        } else {
+            while used_ids.contains(&next_id) {
+                next_id = next_id
+                    .checked_add(1)
+                    .filter(|&id| id <= i32::MAX as u32)
+                    .ok_or_else(|| Error::Invalid("no slide ids remain".into()))?;
+            }
             let id = next_id;
-            next_id += 1;
+            used_ids.insert(id);
             Element::new(ns::P, "sldId").with_attr("", "id", id.to_string()).with_attr(ns::R, "id", rid.clone())
-        }));
+        });
     }
     const PRESENTATION: &[&[&str]] = &[
         &["sldMasterIdLst"],
@@ -433,15 +437,15 @@ fn write_table(table: &Table, ctx: &mut PartCtx) -> Element {
         let mut cells = Vec::new();
         for (c, cell) in row.cells.iter().enumerate() {
             let mut tc = origin_as(&cell.origin, ns::A, "tc").unwrap_or_else(|| Element::new(ns::A, "tc"));
-            let (h_merge, v_merge) = match (cell.covered, table.owner(r, c)) {
-                (true, Some((or, oc))) => (or == r && oc < c, or < r),
-                _ => (false, false),
-            };
+            let (or, oc) = if cell.covered { table.owner(r, c).unwrap_or((r, c)) } else { (r, c) };
+            let owner = &table.rows[or].cells[oc];
             let n = |v: u32| (v > 1).then(|| v.to_string());
-            crate::formats::dml::set_opt(&mut tc, "gridSpan", n(cell.col_span).filter(|_| !cell.covered));
-            crate::formats::dml::set_opt(&mut tc, "rowSpan", n(cell.row_span).filter(|_| !cell.covered));
-            crate::formats::dml::set_opt(&mut tc, "hMerge", h_merge.then(|| "1".to_string()));
-            crate::formats::dml::set_opt(&mut tc, "vMerge", (v_merge && !h_merge).then(|| "1".to_string()));
+            // Each row's left cell carries gridSpan, each column's top cell rowSpan.
+            // Interior cells participate in both merges.
+            crate::formats::dml::set_opt(&mut tc, "gridSpan", n(owner.col_span).filter(|_| c == oc));
+            crate::formats::dml::set_opt(&mut tc, "rowSpan", n(owner.row_span).filter(|_| r == or));
+            crate::formats::dml::set_opt(&mut tc, "hMerge", (c > oc).then(|| "1".to_string()));
+            crate::formats::dml::set_opt(&mut tc, "vMerge", (r > or).then(|| "1".to_string()));
             let mut body = tc.child(ns::A, "txBody").cloned().unwrap_or_else(|| {
                 Element::new(ns::A, "txBody").with_child(Element::new(ns::A, "bodyPr")).with_child(Element::new(ns::A, "lstStyle"))
             });
