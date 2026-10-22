@@ -53,11 +53,75 @@ impl Relationship {
 
 /// One part's relationships, in file order.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Relationships(pub Vec<Relationship>);
+pub struct Relationships(pub RelationshipList);
+
+/// Ordered relationships. Mutating the list invalidates its lookup index.
+#[derive(Clone, Debug, Default)]
+pub struct RelationshipList {
+    entries: Vec<Relationship>,
+    index: std::sync::OnceLock<RelIndex>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct RelIndex {
+    ids: std::collections::HashMap<String, usize>,
+    links: std::collections::HashMap<String, usize>,
+    next: usize,
+}
+
+impl RelationshipList {
+    fn index(&self) -> &RelIndex {
+        self.index.get_or_init(|| {
+            let mut index = RelIndex { next: 1, ..Default::default() };
+            for (i, r) in self.entries.iter().enumerate() {
+                index.ids.entry(r.id.clone()).or_insert(i);
+                if r.external && r.is(kind::HYPERLINK) {
+                    index.links.entry(r.target.clone()).or_insert(i);
+                }
+            }
+            index
+        })
+    }
+}
+
+impl From<Vec<Relationship>> for RelationshipList {
+    fn from(entries: Vec<Relationship>) -> Self {
+        Self { entries, index: std::sync::OnceLock::new() }
+    }
+}
+
+impl std::ops::Deref for RelationshipList {
+    type Target = Vec<Relationship>;
+    fn deref(&self) -> &Self::Target {
+        &self.entries
+    }
+}
+
+impl std::ops::DerefMut for RelationshipList {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.index.take();
+        &mut self.entries
+    }
+}
+
+impl PartialEq for RelationshipList {
+    fn eq(&self, other: &Self) -> bool {
+        self.entries == other.entries
+    }
+}
+impl Eq for RelationshipList {}
+
+impl<'a> IntoIterator for &'a RelationshipList {
+    type Item = &'a Relationship;
+    type IntoIter = std::slice::Iter<'a, Relationship>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.entries.iter()
+    }
+}
 
 impl Relationships {
     pub fn parse(doc: &XmlDoc) -> Relationships {
-        let rels = doc
+        let rels: Vec<Relationship> = doc
             .root
             .children_named(ns::PKG_REL, "Relationship")
             .filter_map(|r| {
@@ -69,7 +133,7 @@ impl Relationships {
                 })
             })
             .collect();
-        Relationships(rels)
+        Relationships(rels.into())
     }
 
     pub fn to_xml(&self) -> XmlDoc {
@@ -90,7 +154,7 @@ impl Relationships {
     }
 
     pub fn get(&self, id: &str) -> Option<&Relationship> {
-        self.0.iter().find(|r| r.id == id)
+        self.0.index().ids.get(id).map(|&i| &self.0.entries[i])
     }
 
     pub fn of_kind<'a>(&'a self, kind: &'a str) -> impl Iterator<Item = &'a Relationship> + 'a {
@@ -103,18 +167,36 @@ impl Relationships {
 
     /// Adds a relationship and returns its new id (`rId1`, `rId2`… whichever is free).
     pub fn add(&mut self, kind: &str, target: impl Into<String>, external: bool) -> String {
-        let id = self.free_id();
-        self.0.push(Relationship { id: id.clone(), rel_type: kind::uri(kind), target: target.into(), external });
+        self.0.index();
+        let index = self.0.index.get_mut().unwrap();
+        let id = loop {
+            let id = format!("rId{}", index.next);
+            index.next += 1;
+            if !index.ids.contains_key(&id) {
+                break id;
+            }
+        };
+        let target = target.into();
+        let at = self.0.entries.len();
+        index.ids.insert(id.clone(), at);
+        if external && kind == kind::HYPERLINK {
+            index.links.entry(target.clone()).or_insert(at);
+        }
+        self.0.entries.push(Relationship { id: id.clone(), rel_type: kind::uri(kind), target, external });
         id
     }
 
     pub fn remove(&mut self, id: &str) -> Option<Relationship> {
-        let i = self.0.iter().position(|r| r.id == id)?;
+        let i = *self.0.index().ids.get(id)?;
         Some(self.0.remove(i))
     }
 
-    fn free_id(&self) -> String {
-        (1..).map(|n| format!("rId{n}")).find(|id| self.get(id).is_none()).unwrap()
+    /// Reuses an external hyperlink, or adds one.
+    pub fn link(&mut self, url: &str) -> String {
+        if let Some(&i) = self.0.index().links.get(url) {
+            return self.0.entries[i].id.clone();
+        }
+        self.add(kind::HYPERLINK, url, true)
     }
 }
 

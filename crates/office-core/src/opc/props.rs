@@ -109,7 +109,16 @@ impl Properties {
                 (Some(v), None) => {
                     let mut el = Element::new(uri, local).with_text(v);
                     if uri == ns::DCTERMS {
-                        el.set_attr(ns::XSI, "type", "dcterms:W3CDTF");
+                        let bound = root
+                            .attrs
+                            .iter()
+                            .find(|a| a.is_ns_decl() && a.prefix.is_some() && a.value == ns::DCTERMS)
+                            .map(|a| a.local.as_str());
+                        let prefix = bound.unwrap_or("dcterms");
+                        if bound.is_none() {
+                            el.declare(Some(prefix), ns::DCTERMS);
+                        }
+                        el.set_attr(ns::XSI, "type", format!("{prefix}:W3CDTF"));
                     }
                     root.push(el);
                 }

@@ -9,6 +9,8 @@ pub mod names;
 pub mod props;
 pub mod rels;
 
+use std::collections::HashMap;
+use std::hash::Hasher;
 use std::io::{Cursor, Read, Write};
 use std::sync::{Arc, OnceLock};
 
@@ -33,6 +35,7 @@ pub struct Package {
     /// Entry of `[Content_Types].xml` in the source zip, while the types are unchanged.
     content_types_entry: Option<usize>,
     parts: Vec<Part>,
+    index: HashMap<u64, Vec<usize>>,
     /// The zip this package was read from; cloning one shares the parsed directory.
     source: Option<Archive>,
 }
@@ -42,7 +45,7 @@ struct Part {
     name: String,
     /// Entry in the source zip, while the part is unchanged.
     entry: Option<usize>,
-    data: OnceLock<Vec<u8>>,
+    data: Arc<OnceLock<Vec<u8>>>,
 }
 
 impl std::fmt::Debug for Package {
@@ -61,6 +64,7 @@ impl Package {
         let data: Arc<[u8]> = Arc::from(bytes);
         let mut archive = ZipArchive::new(Cursor::new(data))?;
         let mut parts: Vec<Part> = Vec::new();
+        let mut index = HashMap::new();
         let mut content_types_entry = None;
         let mut total = 0u64;
         for i in 0..archive.len() {
@@ -75,11 +79,15 @@ impl Package {
             let name = file.name().trim_start_matches('/').to_string();
             if name.eq_ignore_ascii_case(content_types::PART) {
                 content_types_entry = Some(i);
-            } else if !parts.iter().any(|p| p.name.eq_ignore_ascii_case(&name)) {
-                parts.push(Part { name, entry: Some(i), data: OnceLock::new() });
+            } else {
+                let bucket: &mut Vec<usize> = index.entry(name_hash(&name)).or_default();
+                if !bucket.iter().any(|&at| parts[at].name.eq_ignore_ascii_case(&name)) {
+                    bucket.push(parts.len());
+                    parts.push(Part { name, entry: Some(i), data: Arc::new(OnceLock::new()) });
+                }
             }
         }
-        let mut pkg = Package { content_types: ContentTypes::default(), content_types_entry, parts, source: Some(archive) };
+        let mut pkg = Package { content_types: ContentTypes::default(), content_types_entry, parts, index, source: Some(archive) };
         let entry = content_types_entry.ok_or_else(|| Error::MissingPart(content_types::PART.into()))?;
         let ct = pkg.decompress(entry)?;
         let doc = xml::parse(&ct).map_err(|message| Error::Xml { part: content_types::PART.into(), message })?;
@@ -134,7 +142,7 @@ impl Package {
 
     fn find(&self, name: &str) -> Option<usize> {
         let name = name.trim_start_matches('/');
-        self.parts.iter().position(|p| p.name == name).or_else(|| self.parts.iter().position(|p| p.name.eq_ignore_ascii_case(name)))
+        self.index.get(&name_hash(name))?.iter().copied().find(|&i| self.parts[i].name.eq_ignore_ascii_case(name))
     }
 
     // ---- reading ----
@@ -210,14 +218,17 @@ impl Package {
     /// Adds or replaces a part.
     pub fn put(&mut self, name: &str, data: Vec<u8>, media_type: &str) {
         let name = name.trim_start_matches('/');
-        let data = OnceLock::from(data);
+        let data = Arc::new(OnceLock::from(data));
         match self.find(name) {
             Some(i) => {
                 let part = &mut self.parts[i];
                 part.entry = None;
                 part.data = data;
             }
-            None => self.parts.push(Part { name: name.to_string(), entry: None, data }),
+            None => {
+                self.index.entry(name_hash(name)).or_default().push(self.parts.len());
+                self.parts.push(Part { name: name.to_string(), entry: None, data });
+            }
         }
         if self.content_types.get(name) != Some(media_type) {
             self.content_types.set(name, media_type);
@@ -233,7 +244,7 @@ impl Package {
     pub fn replace(&mut self, name: &str, data: Vec<u8>) -> Result<()> {
         let i = self.find(name).ok_or_else(|| Error::MissingPart(name.into()))?;
         self.parts[i].entry = None;
-        self.parts[i].data = OnceLock::from(data);
+        self.parts[i].data = Arc::new(OnceLock::from(data));
         Ok(())
     }
 
@@ -241,6 +252,12 @@ impl Package {
     pub fn remove(&mut self, name: &str) {
         let Some(i) = self.find(name) else { return };
         let part = self.parts.remove(i);
+        for bucket in self.index.values_mut() {
+            bucket.retain(|&slot| slot != i);
+            for slot in bucket.iter_mut().filter(|slot| **slot > i) {
+                *slot -= 1;
+            }
+        }
         let before = self.content_types.overrides.len();
         self.content_types.remove(&part.name);
         if self.content_types.overrides.len() != before {
@@ -290,3 +307,11 @@ fn write_all(zip: &mut ZipWriter<Cursor<Vec<u8>>>, data: &[u8]) -> Result<()> {
 
 #[cfg(test)]
 mod tests;
+
+fn name_hash(name: &str) -> u64 {
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    for byte in name.bytes() {
+        hash.write_u8(byte.to_ascii_lowercase());
+    }
+    hash.finish()
+}
