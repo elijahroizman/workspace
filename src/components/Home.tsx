@@ -44,11 +44,10 @@ export function Home() {
 
   return (
     <div className="home">
-      <div className="home-dots" aria-hidden />
       <div className="home-inner">
         <header className="home-header">
           <h1>
-            <Wordmark size={30} />
+            <Wordmark size={30} variant={theme === 'light' ? 'light' : 'dark'} />
           </h1>
           <div className="home-header-actions">
             <IconButton label={shortcut(withKeys(theme === 'dark' ? 'Switch to light' : 'Switch to dark', 'toggle-theme'))} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>

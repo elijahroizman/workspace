@@ -1629,19 +1629,6 @@ kbd.kbd {
   background: var(--canvas);
 }
 
-/* A dot grid in the top corners that fades out toward the middle; it scrolls away with the page. */
-.home-dots {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 420px;
-  pointer-events: none;
-  background-image: radial-gradient(circle, color-mix(in srgb, var(--fg) 30%, transparent) 1.1px, transparent 1.6px);
-  background-size: 18px 18px;
-  background-position: 9px 9px;
-  -webkit-mask-image: radial-gradient(420px 320px at 0 0, #000, transparent 75%), radial-gradient(420px 320px at 100% 0, #000, transparent 75%);
-  mask-image: radial-gradient(420px 320px at 0 0, #000, transparent 75%), radial-gradient(420px 320px at 100% 0, #000, transparent 75%);
-}
-
 .home-inner {
   position: relative;
   max-width: 920px;

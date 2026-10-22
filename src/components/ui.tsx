@@ -17,7 +17,18 @@ import { shortcut } from '../lib/platform'
  * The mark: a W made of three blue sheets of paper on a dark tile. The tile stays dark in both
  * themes; a faint white ring keeps it from sinking into dark backgrounds. Readable down to 16 px.
  */
-export function Logo({ size = 24, label, className = '' }: { size?: number; label?: string; className?: string }) {
+/** The app icon's three looks, from the brand board: dark tile (the default), accent blue, light tile. */
+export type LogoVariant = 'dark' | 'blue' | 'light'
+
+const LOGO_COLORS: Record<LogoVariant, { tile: string; left: string; right: string; front: string; back: string; edge?: string }> = {
+  dark: { tile: '#1C1C1C', left: '#7FAAFF', right: '#2F66D8', front: '#4F8CFF', back: '#3B74EA' },
+  blue: { tile: '#4F8CFF', left: '#FFFFFF', right: '#D5E3FF', front: '#F3F7FF', back: '#BFD3FF' },
+  light: { tile: '#F5F5F7', left: '#7FAAFF', right: '#2F66D8', front: '#4F8CFF', back: '#3B74EA', edge: '#CFCFD4' },
+}
+
+/** The app icon: a W made of three sheets of paper. */
+export function Logo({ size = 24, label, className = '', variant = 'dark' }: { size?: number; label?: string; className?: string; variant?: LogoVariant }) {
+  const c = LOGO_COLORS[variant]
   return (
     <svg
       className={`logo ${className}`}
@@ -28,24 +39,24 @@ export function Logo({ size = 24, label, className = '' }: { size?: number; labe
       aria-label={label}
       aria-hidden={label ? undefined : true}
     >
-      <rect width="200" height="200" rx="44" fill="#1C1C1C" />
+      {c.edge ? <rect x="1" y="1" width="198" height="198" rx="43" fill={c.tile} stroke={c.edge} strokeWidth="2" /> : <rect width="200" height="200" rx="44" fill={c.tile} />}
       <g transform="translate(100 102) scale(1.12) translate(-100 -102)" strokeLinejoin="round">
-        <path d="M45 56 H67 L93 148 H71 Z" fill="#7FAAFF" stroke="#7FAAFF" strokeWidth="4" />
-        <path d="M133 56 H155 L129 148 H107 Z" fill="#2F66D8" stroke="#2F66D8" strokeWidth="4" />
-        <path d="M71 148 L89 88 H111 L129 148 H107 L100 124.7 L93 148 Z" fill="#1C1C1C" stroke="#1C1C1C" strokeWidth="9" />
-        <path d="M71 148 L89 88 H100 V124.7 L93 148 Z" fill="#4F8CFF" stroke="#4F8CFF" strokeWidth="3" />
-        <path d="M100 88 H111 L129 148 H107 L100 124.7 Z" fill="#3B74EA" stroke="#3B74EA" strokeWidth="3" />
+        <path d="M45 56 H67 L93 148 H71 Z" fill={c.left} stroke={c.left} strokeWidth="4" />
+        <path d="M133 56 H155 L129 148 H107 Z" fill={c.right} stroke={c.right} strokeWidth="4" />
+        <path d="M71 148 L89 88 H111 L129 148 H107 L100 124.7 L93 148 Z" fill={c.tile} stroke={c.tile} strokeWidth="9" />
+        <path d="M71 148 L89 88 H100 V124.7 L93 148 Z" fill={c.front} stroke={c.front} strokeWidth="3" />
+        <path d="M100 88 H111 L129 148 H107 L100 124.7 Z" fill={c.back} stroke={c.back} strokeWidth="3" />
       </g>
-      <rect x="0.5" y="0.5" width="199" height="199" rx="43.5" fill="none" stroke="#FFFFFF" strokeOpacity="0.12" />
+      {variant === 'dark' && <rect x="0.5" y="0.5" width="199" height="199" rx="43.5" fill="none" stroke="#FFFFFF" strokeOpacity="0.12" />}
     </svg>
   )
 }
 
 /** The logo beside the name, as on Home and the welcome screen. `size` is the logo's. */
-export function Wordmark({ size = 32 }: { size?: number }) {
+export function Wordmark({ size = 32, variant }: { size?: number; variant?: LogoVariant }) {
   return (
     <span className="wordmark" style={{ '--wordmark-size': `${size}px` } as CSSProperties}>
-      <Logo size={size} />
+      <Logo size={size} variant={variant} />
       <span className="wordmark-name">Workspace</span>
     </span>
   )
