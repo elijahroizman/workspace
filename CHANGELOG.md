@@ -2,6 +2,13 @@
 
 Every release's notes. The release workflow copies a version's section into its GitHub release, and the app's update panel shows it.
 
+## 0.10.2 — 2026-10-23
+
+### Spreadsheets
+- Building a formula by clicking cells works for as many references as you like. Before, typing a comma or operator after a clicked reference could put it in the wrong place, and the next click left the formula instead of adding the cell.
+- New charts are bigger: 7 by 4 inches. The chart inspector has a **Size** section to set the width and height in inches.
+- The **Chart** section sits under **Alignment** in the inspector.
+
 ## 0.10.1 — 2026-10-23
 
 ### Spreadsheets
