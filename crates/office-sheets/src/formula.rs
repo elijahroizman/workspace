@@ -133,6 +133,25 @@ enum Tok {
     CloseBrace,
 }
 
+/// A typed formula with the brackets left open closed at its end, as Excel does on Enter.
+pub fn close_brackets(src: &str) -> String {
+    let (mut depth, mut quote) = (0usize, None);
+    for c in src.chars() {
+        match (quote, c) {
+            (Some(q), _) if c == q => quote = None,
+            (Some(_), _) => {}
+            (None, '"' | '\'') => quote = Some(c),
+            (None, '(') => depth += 1,
+            (None, ')') => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    if quote.is_some() {
+        return src.to_string();
+    }
+    format!("{src}{}", ")".repeat(depth))
+}
+
 /// Add Excel's future-function markers for new formulas without changing strings,
 /// references, whitespace, or markers already present in imported files.
 /// See MS-XLSX section 2.2.3, Functions.
@@ -739,6 +758,16 @@ mod tests {
 
     fn cell(row: u32, col: u32) -> RefPart {
         RefPart { row: Some(row), col: Some(col), row_abs: false, col_abs: false }
+    }
+
+    #[test]
+    fn closes_open_brackets() {
+        assert_eq!(close_brackets("SUM(A1:A3"), "SUM(A1:A3)");
+        assert_eq!(close_brackets("IF(A1>0,ROUND(A1,"), "IF(A1>0,ROUND(A1,))");
+        assert_eq!(close_brackets("LEN(\"(\")"), "LEN(\"(\")");
+        assert_eq!(close_brackets("SUM('a(b'!A1"), "SUM('a(b'!A1)");
+        assert_eq!(close_brackets("A1+B1"), "A1+B1");
+        assert_eq!(close_brackets("LEN(\"open"), "LEN(\"open");
     }
 
     #[test]

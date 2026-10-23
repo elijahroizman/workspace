@@ -177,7 +177,7 @@ impl SheetsView {
         let system = crate::excel(&self.doc).map(|x| x.date_system).unwrap_or_default();
         let mut format: Option<&str> = None;
         let (value, formula) = if let Some(f) = trimmed.strip_prefix('=').filter(|f| !f.is_empty()) {
-            (Value::Empty, Some(f.to_string()))
+            (Value::Empty, Some(crate::formula::close_brackets(f)))
         } else if trimmed.is_empty() {
             (Value::Empty, None)
         } else if trimmed.eq_ignore_ascii_case("true") || trimmed.eq_ignore_ascii_case("false") {
