@@ -728,18 +728,6 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
         <IconButton label="Redo (⇧⌘Z)" size="sm" disabled={!st.canRedo} onClick={() => run({ cmd: 'redo' })}>
           <Redo2 size={14} />
         </IconButton>
-        {!st.csv && (
-          <IconButton
-            label="Insert chart"
-            size="sm"
-            onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect()
-              chartTypeMenu(r.left, r.top - 8 - CHART_KINDS.length * 32)
-            }}
-          >
-            <ChartColumn size={14} />
-          </IconButton>
-        )}
         <span className="sep" />
         <span className="readout">{engine.sheets[sheet]?.name}</span>
         <span className="sep" />
