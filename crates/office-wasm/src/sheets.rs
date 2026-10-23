@@ -44,6 +44,7 @@ enum Cmd {
     RowHeight { sheet: usize, row: u32, px: Option<f64> },
     ShiftRows { sheet: usize, at: u32, n: i64 },
     ShiftCols { sheet: usize, at: u32, n: i64 },
+    SheetSize { sheet: usize, rows: u32, cols: u32 },
     Merge { sheet: usize, range: R },
     AddSheet,
     RenameSheet { sheet: usize, name: String },
@@ -179,6 +180,10 @@ impl SheetsDoc {
             }
             Cmd::ShiftCols { sheet, at, n } => {
                 v.shift_cols(sheet, at, n);
+                null
+            }
+            Cmd::SheetSize { sheet, rows, cols } => {
+                v.set_sheet_size(sheet, rows, cols);
                 null
             }
             Cmd::Merge { sheet, range } => {

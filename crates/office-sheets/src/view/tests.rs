@@ -298,3 +298,42 @@ fn shared_follower_range_expands_when_the_leader_does_not() {
     assert_eq!(formula_text(&back, CellRef::new(1, 0)).as_deref(), Some("SUM(Z2:Z6)"));
     assert_eq!(back.cell_info(0, CellRef::new(1, 0)).display, "11110");
 }
+
+#[test]
+fn sheet_size_is_kept_in_a_hidden_name_and_follows_the_sheet() {
+    let mut v = SheetsView::blank(Kind::Sheets);
+    v.set_input(0, CellRef::new(0, 0), "a");
+    // Without a size, room past what's used.
+    assert_eq!((v.grid(0).rows, v.grid(0).cols), (201, 52));
+    v.set_sheet_size(0, 30, 8);
+    assert_eq!((v.grid(0).rows, v.grid(0).cols), (30, 8));
+    v.undo();
+    assert_eq!(v.sheets()[0].size, None);
+    v.redo();
+    // Never fewer than what's there.
+    v.set_input(0, CellRef::new(39, 9), "far");
+    assert_eq!((v.grid(0).rows, v.grid(0).cols), (40, 10));
+    // Inserting and deleting rows and columns carry the size along.
+    v.shift_rows(0, 0, 2);
+    v.shift_cols(0, 0, -1);
+    assert_eq!(v.sheets()[0].size, Some((32, 7)));
+
+    v.add_sheet();
+    v.set_sheet_size(1, 5000, 40);
+    v.rename_sheet(1, "Big one");
+    let bytes = v.save().unwrap();
+    let workbook = sheet_xml(&bytes, "xl/workbook.xml");
+    assert!(workbook.contains(r#"<definedName name="Writan.SheetSize" localSheetId="1" hidden="1">{5000,40}</definedName>"#), "{workbook}");
+    let mut back = SheetsView::open(&bytes, "Book.xlsx").unwrap();
+    assert_eq!(back.sheets()[0].size, Some((32, 7)));
+    assert_eq!((back.grid(1).rows, back.grid(1).cols), (5000, 40));
+
+    // Deleting the first sheet moves the second's size to its new place; saving again keeps one name.
+    back.delete_sheet(0);
+    let again = back.save().unwrap();
+    let workbook = sheet_xml(&again, "xl/workbook.xml");
+    assert_eq!(workbook.matches("Writan.SheetSize").count(), 1, "{workbook}");
+    assert!(workbook.contains(r#"localSheetId="0" hidden="1">{5000,40}"#), "{workbook}");
+    let back = SheetsView::open(&again, "Book.xlsx").unwrap();
+    assert_eq!(back.sheets()[0].size, Some((5000, 40)));
+}

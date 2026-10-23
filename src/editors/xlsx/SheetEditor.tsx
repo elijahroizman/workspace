@@ -37,7 +37,7 @@ import type { SheetFunction } from '../../engine/sheets/functions'
 import { COMMON, FUNCTIONS, functionByName } from '../../engine/sheets/functions'
 import type { EditorHooks } from '../../engine/sheets/Grid'
 import { Grid } from '../../engine/sheets/Grid'
-import { shortcut } from '../../lib/platform'
+import { usePinchZoom } from '../../lib/pinch'
 import { FormulaHelp } from './FormulaHelp'
 import { registerEditor, useWorkspace } from '../../state/workspace'
 import './sheets.css'
@@ -58,14 +58,6 @@ const NUMBER_FORMATS = [
 ]
 const FONTS = ['Calibri', 'Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Georgia', 'Verdana', 'Aptos']
 const ZOOM_STEPS = [0.5, 0.67, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
-/** The sizes offered in the inspector. */
-const ZOOM_SIZES = ['1', '1.25', '1.5', '1.75'] as const
-/** Spreadsheets open at the last zoom chosen. */
-const ZOOM_KEY = 'workspace.sheetZoom'
-const savedZoom = () => {
-  const z = Number(localStorage.getItem(ZOOM_KEY))
-  return z >= ZOOM_STEPS[0] && z <= ZOOM_STEPS[ZOOM_STEPS.length - 1] ? z : 1
-}
 const CHART_KINDS: { kind: ChartKind; label: string; icon: React.ReactNode }[] = [
   { kind: 'column', label: 'Column', icon: <ChartColumn size={15} /> },
   { kind: 'bar', label: 'Bar', icon: <ChartBar size={15} /> },
@@ -125,11 +117,7 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
   const markDirty = useWorkspace((s) => s.markDirty)
   const [editing, setEditing] = useState<string | null>(null)
   const draft = useRef<{ text: string; original: string; sheet: number; row: number; col: number } | null>(null)
-  const [zoom, setZoomState] = useState(savedZoom)
-  const setZoom = (z: number) => {
-    setZoomState(z)
-    localStorage.setItem(ZOOM_KEY, String(z))
-  }
+  const [zoom, setZoom] = useState(1)
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuEntry[] } | null>(null)
   const [findOpen, setFindOpen] = useState<false | 'find' | 'replace'>(false)
   const [matches, setMatches] = useState<{ sheet: number; row: number; col: number }[]>([])
@@ -376,6 +364,16 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
       items: [{ label: 'Delete chart', icon: <Trash2 size={14} />, danger: true, onSelect: () => run({ cmd: 'deleteChart', sheet, index }) }],
     })
 
+  // A trackpad pinch (or ctrl-wheel) scales the grid while the fingers move, then zooms to it.
+  const gridRef = useRef<HTMLDivElement>(null)
+  usePinchZoom(gridRef, {
+    getZoom: () => zoomRef.current,
+    setZoom,
+    target: () => gridRef.current?.querySelector<HTMLElement>('.sg-space') ?? null,
+    min: ZOOM_STEPS[0],
+    max: ZOOM_STEPS[ZOOM_STEPS.length - 1],
+  })
+
   const zoomStep = (dir: 'in' | 'out' | 'fit' | 'reset') => {
     if (dir === 'fit' || dir === 'reset') return setZoom(1)
     const z = zoomRef.current
@@ -490,6 +488,7 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
     </nav>
   )
 
+  const geometry = engine.geometryOf(sheet)
   const size = range.r1 - range.r0 + 1
   const width = range.c1 - range.c0 + 1
 
@@ -515,14 +514,6 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
           <InspectorHeader kind={tab.kind}>{st.csv ? 'CSV file' : 'Workbook'}</InspectorHeader>
           <Section title={size * width > 1 ? `${size * width} cells` : `Cell ${cell?.address ?? ''}`}>
             <SelectField label="Number format" value={NUMBER_FORMATS.some((f) => f.value === cell?.numberFormat) ? (cell?.numberFormat ?? null) : null} placeholder={cell?.numberFormat || 'Custom'} options={NUMBER_FORMATS} onChange={(v) => format({ numberFormat: v })} />
-          </Section>
-          <Section title="Zoom">
-            <Segmented
-              value={ZOOM_SIZES.find((z) => Math.abs(Number(z) - zoom) < 0.001) ?? null}
-              onChange={(z) => setZoom(Number(z))}
-              options={ZOOM_SIZES.map((z) => ({ value: z, label: formatZoom(Number(z)), title: `Zoom to ${formatZoom(Number(z))}` }))}
-            />
-            <Hint tone="faint" as="p">{shortcut('Every spreadsheet opens at the size you pick. ⌘+ and ⌘− step through more.')}</Hint>
           </Section>
           <Section title="Text">
             <div className="docx-font-row">
@@ -596,6 +587,13 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
             </div>
           </Section>
           <Section title="Rows and columns">
+            <div className="grid-2">
+              <NumberField label="Rows" value={geometry.info.rows} min={1} max={1048576} onCommit={(rows) => run({ cmd: 'sheetSize', sheet, rows, cols: geometry.info.cols })} />
+              <NumberField label="Columns" value={geometry.info.cols} min={1} max={16384} onCommit={(cols) => run({ cmd: 'sheetSize', sheet, rows: geometry.info.rows, cols })} />
+            </div>
+            <Hint tone="faint" as="p">
+              {st.csv ? 'How many the sheet shows while it’s open. CSV files keep only cells.' : 'How many the sheet has, saved with the file. It never cuts off cells in use.'}
+            </Hint>
             <span className="field-caption">Rows</span>
             <div className="toggle-row">
               <IconButton label="Insert row above" onClick={() => run({ cmd: 'shiftRows', sheet, at: range.r0, n: 1 })}>
@@ -683,7 +681,7 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
             }}
           />
         </div>
-        <div className="sheet-grid">
+        <div className="sheet-grid" ref={gridRef}>
           <Grid
             engine={engine}
             zoom={zoom}

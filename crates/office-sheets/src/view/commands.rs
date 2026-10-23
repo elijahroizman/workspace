@@ -367,6 +367,10 @@ impl SheetsView {
                     }
                 }
             }
+            // A size someone set grows and shrinks with the rows.
+            if let Some((r, c)) = s.size {
+                s.size = Some(((r as i64 + n).clamp(1, crate::MAX_ROWS as i64) as u32, c));
+            }
         });
     }
 
@@ -399,6 +403,22 @@ impl SheetsView {
                         p.col = (p.col as i64 + n).max(at as i64) as u32;
                     }
                 }
+            }
+            if let Some((r, c)) = s.size {
+                s.size = Some((r, (c as i64 + n).clamp(1, crate::MAX_COLS as i64) as u32));
+            }
+        });
+    }
+
+    /// Sets how many rows and columns a sheet shows. It never shows fewer than it has in use.
+    pub fn set_sheet_size(&mut self, sheet: usize, rows: u32, cols: u32) {
+        let size = (rows.clamp(1, crate::MAX_ROWS), cols.clamp(1, crate::MAX_COLS));
+        if self.sheets().get(sheet).is_none_or(|s| s.size == Some(size)) {
+            return;
+        }
+        self.change_sheet(sheet, |v| {
+            if let Some(s) = v.sheets_mut().get_mut(sheet) {
+                s.size = Some(size);
             }
         });
     }

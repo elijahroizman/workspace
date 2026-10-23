@@ -1,7 +1,7 @@
 {
   "name": "workspace",
   "private": true,
-  "version": "0.10.3",
+  "version": "0.10.4",
   "type": "module",
   "scripts": {
     "predev": "node scripts/engine.mjs && node scripts/licenses.mjs && npm run plugins:bundled",

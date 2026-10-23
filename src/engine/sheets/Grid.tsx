@@ -314,8 +314,8 @@ export function Grid({
     const step = (dr: number, dc: number) => {
       // ⌘-arrow goes to the edge of the sheet's used cells, roughly as Excel does.
       if (mod) {
-        const nr = dr ? (dr > 0 ? g.info.rows - 201 : 0) : r
-        const nc = dc ? (dc > 0 ? g.info.cols - 27 : 0) : c
+        const nr = dr ? (dr > 0 ? g.info.content[0] - 1 : 0) : r
+        const nc = dc ? (dc > 0 ? g.info.content[1] - 1 : 0) : c
         return e.shiftKey ? select(st.anchor, [Math.max(nr, 0), Math.max(nc, 0)]) : select([Math.max(nr, 0), Math.max(nc, 0)], [Math.max(nr, 0), Math.max(nc, 0)])
       }
       const next: [number, number] = [r + dr, c + dc]

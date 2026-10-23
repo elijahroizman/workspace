@@ -11,6 +11,8 @@ import type { SheetsDoc } from '../wasm/office_wasm'
 export interface GridInfo {
   rows: number
   cols: number
+  /** The rows and columns in use (cells, merges, charts), from the top left. */
+  content: [number, number]
   defaultWidth: number
   defaultHeight: number
   widths: [number, number][]

@@ -116,6 +116,7 @@ fn read_sheet(pkg: &Package, part: &str, strings: &[Value], duplicate: &[bool]) 
         merges,
         hidden: false,
         charts: super::chart::read_charts(pkg, part)?,
+        size: None,
         part: Some(part.to_string()),
         origin: Origin::new(origin),
         read_as: Default::default(),

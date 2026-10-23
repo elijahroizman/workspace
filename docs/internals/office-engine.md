@@ -35,7 +35,7 @@ office-word        office-slides       office-sheets
 - **`office-word`, `office-slides`, `office-sheets`** each add a `view` module on top of their layer:
   - `WordView` paginates (widows and orphans, keep-with-next, page breaks), places headers, footers, footnotes and floating pictures, and handles the editing commands.
   - `SlidesView` resolves placeholders through layouts and masters, applies theme style references and table styles, and edits frames, text and slides.
-  - `SheetsView` turns a sheet into grid geometry, draws cells with Excel's number formats, overflow and merges, parses what's typed (numbers, percentages, currency, dates, formulas) and recalculates.
+  - `SheetsView` turns a sheet into grid geometry, draws cells with Excel's number formats, overflow and merges, parses what's typed (numbers, percentages, currency, dates, formulas) and recalculates. A sheet's size (the rows and columns someone set in the inspector) isn't something Excel has, so the sheets layer keeps it in a hidden name scoped to the sheet, `Writan.SheetSize`, holding a constant such as `{500,52}`. Excel keeps names it doesn't use, and a constant needs no change when the sheet is renamed. A sheet without one is 200 rows and 26 columns past what's in use.
 - **`office-wasm`** wraps the three views for JavaScript. Each has a JSON command interface (`{ cmd: "insertText", … }`), plus direct calls for the hot paths: paint, hit testing and state.
 
 ## Measuring

@@ -2,6 +2,13 @@
 
 Every release's notes. The release workflow copies a version's section into its GitHub release, and the app's update panel shows it.
 
+## 0.10.4 — 2026-10-23
+
+### Spreadsheets
+- Choose how many rows and columns a sheet has: **Rows and columns** in the inspector has a field for each, up to Excel's 1,048,576 rows and 16,384 columns. The size is saved in the file, inserting or deleting rows and columns changes it to match, and it never cuts off cells you've used. Excel opens these files as usual.
+- Pinch the trackpad to zoom the sheet.
+- The Zoom section from 0.10.3 is gone from the inspector, and spreadsheets open at 100% again.
+
 ## 0.10.3 — 2026-10-23
 
 ### Spreadsheets

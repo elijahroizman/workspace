@@ -63,6 +63,8 @@ impl Step for CStep {}
 pub struct Grid {
     pub rows: u32,
     pub cols: u32,
+    /// The rows and columns that have something in them (cells, merges, charts), from the top left.
+    pub content: (u32, u32),
     pub default_width: f64,
     pub default_height: f64,
     /// Columns with their own width: (column, pixels).
@@ -259,8 +261,15 @@ impl SheetsView {
         // Room for the charts too.
         let charts_end =
             s.charts.iter().map(|c| c.anchor.to.unwrap_or(c.anchor.from)).fold((0, 0), |a, p| (a.0.max(p.row), a.1.max(p.col)));
-        let rows = used.map(|u| u.end.row + 1).unwrap_or(0).max(merges_end.0 + 1).max(charts_end.0 + 1) + 200;
-        let cols = used.map(|u| u.end.col + 1).unwrap_or(0).max(merges_end.1 + 1).max(charts_end.1 + 1).max(26) + 26;
+        let content = (
+            used.map(|u| u.end.row + 1).unwrap_or(0).max(merges_end.0 + 1).max(charts_end.0 + 1),
+            used.map(|u| u.end.col + 1).unwrap_or(0).max(merges_end.1 + 1).max(charts_end.1 + 1),
+        );
+        // A size someone set, but never cutting off what's there; otherwise room to carry on.
+        let (rows, cols) = match s.size {
+            Some((r, c)) => (r.max(content.0), c.max(content.1)),
+            None => (content.0 + 200, content.1.max(26) + 26),
+        };
         let origin = s.origin.get();
         let fmt = origin.and_then(|o| o.child(ns::X, "sheetFormatPr"));
         let chars = |w: f64| (w * 7.0 + 5.0).round();
@@ -321,7 +330,7 @@ impl SheetsView {
             row_y.push(y);
             y += hmap.get(&rr).copied().unwrap_or(default_height);
         }
-        Grid { rows, cols, default_width, default_height, widths, heights, frozen, col_x, row_y }
+        Grid { rows, cols, content, default_width, default_height, widths, heights, frozen, col_x, row_y }
     }
 
     fn style_of(&mut self, f: &CellFormat) -> para::StyleId {

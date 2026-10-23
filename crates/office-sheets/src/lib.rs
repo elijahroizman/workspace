@@ -105,7 +105,14 @@ impl Layer for Sheets {
                     hidden: d.attr("hidden").and_then(parse_bool).unwrap_or(false),
                 })
             })
-            .collect();
+            .collect::<Vec<_>>();
+        if let Body::Workbook { sheets } = &mut doc.body {
+            for n in names.iter().filter(|n| n.name.eq_ignore_ascii_case(SIZE_NAME)) {
+                if let (Some(sheet), Some(size)) = (n.sheet.and_then(|i| sheets.get_mut(i)), parse_size(&n.formula)) {
+                    sheet.size = Some(size);
+                }
+            }
+        }
         doc.extensions.insert(Excel { styles: styles.unwrap_or_else(StyleSheet::new_default), date_system, names });
         Ok(())
     }
@@ -135,9 +142,87 @@ impl Layer for Sheets {
         if let Some(excel) = doc.extensions.get::<Excel>() {
             excel.styles.write(package)?;
         }
-        Ok(())
+        write_sizes(doc, package)
     }
 }
+
+/// The hidden, sheet-scoped name that holds a sheet's size (rows and columns) as `{500,52}`.
+/// Excel keeps names it doesn't use, and a constant needs nothing changed when the sheet is renamed.
+pub const SIZE_NAME: &str = "Writan.SheetSize";
+/// The most rows and columns an Excel sheet has.
+pub const MAX_ROWS: u32 = 1_048_576;
+pub const MAX_COLS: u32 = 16_384;
+
+fn parse_size(formula: &str) -> Option<(u32, u32)> {
+    let inner = formula.trim().trim_start_matches('=').trim().strip_prefix('{')?.strip_suffix('}')?;
+    let (r, c) = inner.split_once([',', ';'])?;
+    let (r, c) = (r.trim().parse::<u32>().ok()?, c.trim().parse::<u32>().ok()?);
+    (r >= 1 && c >= 1).then_some((r.min(MAX_ROWS), c.min(MAX_COLS)))
+}
+
+/// Puts each sheet's size in the workbook's names, by the sheet's position when written.
+fn write_sizes(doc: &Document, pkg: &mut Package) -> Result<()> {
+    let Body::Workbook { sheets } = &doc.body else { return Ok(()) };
+    let main = pkg.main_part()?;
+    let mut workbook = pkg.xml(&main)?;
+    let wanted: Vec<Element> = sheets
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| {
+            let (rows, cols) = s.size?;
+            Some(
+                Element::new(ns::X, "definedName")
+                    .with_attr("", "name", SIZE_NAME)
+                    .with_attr("", "localSheetId", i.to_string())
+                    .with_attr("", "hidden", "1")
+                    .with_text(format!("{{{rows},{cols}}}")),
+            )
+        })
+        .collect();
+    let named = |e: &Element| e.attr("name").is_some_and(|v| v.eq_ignore_ascii_case(SIZE_NAME));
+    let is_size = |n: &Node| matches!(n, Node::Element(e) if named(e));
+    let existing: Vec<Element> =
+        workbook.root.child(ns::X, "definedNames").map(|d| d.elements().filter(|e| named(e)).cloned().collect()).unwrap_or_default();
+    if existing == wanted {
+        return Ok(());
+    }
+    let mut names = workbook.root.child(ns::X, "definedNames").cloned().unwrap_or_else(|| Element::new(ns::X, "definedNames"));
+    names.children.retain(|n| !is_size(n));
+    for e in wanted {
+        names.push(e);
+    }
+    if names.elements().next().is_some() {
+        workbook.root.place(names, WORKBOOK_ORDER);
+    } else {
+        workbook.root.remove_children(ns::X, "definedNames");
+    }
+    let media = pkg.content_type(&main).unwrap_or("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml").to_string();
+    pkg.put_xml(&main, &workbook, &media);
+    Ok(())
+}
+
+/// The children of `workbook`, in schema order.
+const WORKBOOK_ORDER: &[&[&str]] = &[
+    &["fileVersion"],
+    &["fileSharing"],
+    &["workbookPr"],
+    &["workbookProtection"],
+    &["bookViews"],
+    &["sheets"],
+    &["functionGroups"],
+    &["externalReferences"],
+    &["definedNames"],
+    &["calcPr"],
+    &["oleSize"],
+    &["customWorkbookViews"],
+    &["pivotCaches"],
+    &["smartTagPr"],
+    &["smartTagTypes"],
+    &["webPublishing"],
+    &["fileRecoveryPr"],
+    &["webPublishObjects"],
+    &["extLst"],
+];
 
 /// The layer's data on a workbook, if it has been read with the layer or given formats.
 pub fn excel(doc: &Document) -> Option<&Excel> {
