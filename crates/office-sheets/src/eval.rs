@@ -467,6 +467,7 @@ fn matches_criterion(v: &V, criterion: &V) -> bool {
             };
             (if op.is_empty() { "=" } else { op }, operand)
         }
+        V::Empty => ("=", V::Num(0.0)),
         other => ("=", other.clone()),
     };
     // Equality with text uses wildcards; numbers compare only with numbers.
@@ -484,7 +485,7 @@ fn matches_criterion(v: &V, criterion: &V) -> bool {
                 !m
             }
         }
-        (V::Num(_), V::Num(_)) | (V::Bool(_), V::Bool(_)) | (V::Text(_), V::Text(_)) => match compare(v, &operand) {
+        (V::Num(_), V::Num(_) | V::Empty) | (V::Bool(_), V::Bool(_)) | (V::Text(_), V::Text(_)) => match compare(v, &operand) {
             Ok(o) => match op {
                 "=" => o.is_eq(),
                 "<>" => o.is_ne(),
@@ -535,9 +536,508 @@ fn round_half_away(x: f64) -> f64 {
 fn call(name: &str, args: &[Expr], book: &mut Context<'_>) -> R {
     let arg = |i: usize, book: &mut Context<'_>| -> R { args.get(i).map(|a| eval_inner(a, book).map(scalar)).unwrap_or(Ok(V::Empty)) };
     let n_arg = |i: usize, book: &mut Context<'_>| -> Result<f64, &'static str> { num(&arg(i, book)?) };
+    let optional_num = |i: usize, default: f64, book: &mut Context<'_>| -> Result<f64, &'static str> {
+        if args.get(i).is_none_or(|a| matches!(a, Expr::Missing)) {
+            Ok(default)
+        } else {
+            n_arg(i, book)
+        }
+    };
     let need = |min: usize, max: usize| if args.len() < min || args.len() > max { Err("#VALUE!") } else { Ok(()) };
     let sys = book.date_system();
     Ok(match name {
+        // ---- additional worksheet functions ----
+        "SUMIFS" | "COUNTIFS" | "AVERAGEIFS" | "MAXIFS" | "MINIFS" => conditional_aggregate(name, args, book)?,
+        "IFS" => {
+            need(2, 254)?;
+            if !args.len().is_multiple_of(2) {
+                return Err("#VALUE!");
+            }
+            let mut result = None;
+            for pair in args.as_chunks::<2>().0 {
+                if truthy(&scalar(eval_inner(&pair[0], book)?))? {
+                    result = Some(scalar(eval_inner(&pair[1], book)?));
+                    break;
+                }
+            }
+            result.ok_or("#N/A")?
+        }
+        "SWITCH" => {
+            need(3, 254)?;
+            let value = arg(0, book)?;
+            let mut result = None;
+            for pair in args[1..].as_chunks::<2>().0 {
+                if compare(&value, &scalar(eval_inner(&pair[0], book)?))?.is_eq() {
+                    result = Some(scalar(eval_inner(&pair[1], book)?));
+                    break;
+                }
+            }
+            match result {
+                Some(v) => v,
+                None if args.len().is_multiple_of(2) => arg(args.len() - 1, book)?,
+                None => return Err("#N/A"),
+            }
+        }
+        "XLOOKUP" | "XMATCH" => {
+            need(if name == "XLOOKUP" { 3 } else { 2 }, if name == "XLOOKUP" { 6 } else { 4 })?;
+            let key = arg(0, book)?;
+            if let V::Err(e) = key {
+                return Err(e);
+            }
+            let lookup = grid(&args[1], book)?;
+            let width = lookup.first().map_or(0, Vec::len);
+            if lookup.is_empty() || width == 0 || (lookup.len() > 1 && width > 1) {
+                return Err("#VALUE!");
+            }
+            let list: Vec<V> = lookup.iter().flatten().cloned().collect();
+            let mode_at = if name == "XLOOKUP" { 4 } else { 2 };
+            let mode = optional_num(mode_at, 0.0, book)?;
+            let search = optional_num(mode_at + 1, 1.0, book)?;
+            if ![-1.0, 0.0, 1.0, 2.0].contains(&mode) || ![-1.0, 1.0].contains(&search) {
+                return Err("#VALUE!");
+            }
+            let returns = if name == "XLOOKUP" {
+                let g = grid(&args[2], book)?;
+                if (lookup.len() == 1 && g.first().map_or(0, Vec::len) != width) || (lookup.len() > 1 && g.len() != lookup.len()) {
+                    return Err("#VALUE!");
+                }
+                Some(g)
+            } else {
+                None
+            };
+            match xmatch(&key, &list, mode as i32, search < 0.0) {
+                Ok(Some(i)) => match returns {
+                    Some(g) => {
+                        if lookup.len() == 1 {
+                            g[0][i].clone()
+                        } else {
+                            g[i][0].clone()
+                        }
+                    }
+                    None => V::Num((i + 1) as f64),
+                },
+                Ok(None) if name == "XLOOKUP" && args.get(3).is_some_and(|a| !matches!(a, Expr::Missing)) => arg(3, book)?,
+                Ok(None) => return Err("#N/A"),
+                Err(e) => return Err(e),
+            }
+        }
+        "MEDIAN" | "MODE" | "MODE.SNGL" | "STDEV" | "STDEV.S" | "STDEV.P" | "VAR" | "VAR.S" | "VAR.P" => {
+            need(1, 255)?;
+            let mut ns = numbers(args, book)?;
+            let n = ns.len();
+            if matches!(name, "MEDIAN" | "MODE" | "MODE.SNGL") {
+                ns.sort_by(f64::total_cmp);
+            }
+            if name == "MEDIAN" {
+                if n == 0 {
+                    return Err("#NUM!");
+                }
+                V::Num(ns[n / 2] / 2.0 + ns[(n - 1) / 2] / 2.0)
+            } else if name == "MODE" || name == "MODE.SNGL" {
+                let mut best = (0, 0.0);
+                let mut start = 0;
+                while start < n {
+                    let mut end = start + 1;
+                    while end < n && ns[end] == ns[start] {
+                        end += 1;
+                    }
+                    if end - start > best.0 {
+                        best = (end - start, ns[start]);
+                    }
+                    start = end;
+                }
+                if best.0 < 2 {
+                    return Err("#N/A");
+                }
+                V::Num(best.1)
+            } else {
+                let population = name.ends_with(".P");
+                if n < if population { 1 } else { 2 } {
+                    return Err("#DIV/0!");
+                }
+                // Welford's recurrence avoids subtracting two large squared sums.
+                let (mut mean, mut m2) = (0.0, 0.0);
+                for (i, x) in ns.iter().enumerate() {
+                    let delta = x - mean;
+                    mean += delta / (i + 1) as f64;
+                    m2 += delta * (x - mean);
+                }
+                let variance = m2 / (n - usize::from(!population)) as f64;
+                if !variance.is_finite() {
+                    return Err("#NUM!");
+                }
+                let variance = variance.max(0.0);
+                V::Num(if name.starts_with("STDEV") { variance.sqrt() } else { variance })
+            }
+        }
+        "AVERAGEA" => {
+            need(1, 255)?;
+            let mut ns = Vec::new();
+            for (v, in_range) in flatten(args, book)? {
+                match v {
+                    V::Empty => {}
+                    V::Text(_) if in_range => ns.push(0.0),
+                    _ => ns.push(num(&v)?),
+                }
+            }
+            if ns.is_empty() {
+                return Err("#DIV/0!");
+            }
+            V::Num(ns.iter().sum::<f64>() / ns.len() as f64)
+        }
+        "LARGE" | "SMALL" | "RANK" | "RANK.EQ" => {
+            need(2, if name.starts_with("RANK") { 3 } else { 2 })?;
+            if name.starts_with("RANK") {
+                let n = n_arg(0, book)?;
+                let ns = numbers(&args[1..2], book)?;
+                if !ns.contains(&n) {
+                    return Err("#N/A");
+                }
+                let ascending = args.len() > 2 && n_arg(2, book)? != 0.0;
+                V::Num(1.0 + ns.iter().filter(|&&x| if ascending { x < n } else { x > n }).count() as f64)
+            } else {
+                let mut ns = numbers(&args[..1], book)?;
+                let k = n_arg(1, book)?.ceil();
+                if k < 1.0 || k > ns.len() as f64 {
+                    return Err("#NUM!");
+                }
+                ns.sort_by(f64::total_cmp);
+                V::Num(ns[if name == "SMALL" { k as usize - 1 } else { ns.len() - k as usize }])
+            }
+        }
+        "CEILING" | "FLOOR" | "CEILING.MATH" | "FLOOR.MATH" | "MROUND" => {
+            let math = name.ends_with(".MATH");
+            need(if math { 1 } else { 2 }, if math { 3 } else { 2 })?;
+            let n = n_arg(0, book)?;
+            let significance = optional_num(1, 1.0, book)?;
+            let mode = optional_num(2, 0.0, book)?;
+            if significance == 0.0 && name == "FLOOR" {
+                return Err("#DIV/0!");
+            }
+            if significance == 0.0 || n == 0.0 {
+                return Ok(V::Num(0.0));
+            }
+            if (name == "MROUND" && n.signum() != significance.signum()) || (!math && n > 0.0 && significance < 0.0) {
+                return Err("#NUM!");
+            }
+            let s = significance.abs();
+            let q = n / s;
+            // Remove division noise around an integer multiple without changing genuine fractions.
+            let q = if (q - q.round()).abs() <= q.abs().max(1.0) * f64::EPSILON * 4.0 { q.round() } else { q };
+            let rounded = match name {
+                "MROUND" => round_half_away(q),
+                "CEILING.MATH" if n < 0.0 && mode != 0.0 => q.floor(),
+                "FLOOR.MATH" if n < 0.0 && mode != 0.0 => q.ceil(),
+                "CEILING" if significance < 0.0 => q.floor(),
+                "FLOOR" if significance < 0.0 => q.ceil(),
+                "CEILING" | "CEILING.MATH" => q.ceil(),
+                _ => q.floor(),
+            };
+            finite(rounded * s)?
+        }
+        "TRUNC" => {
+            need(1, 2)?;
+            let n = n_arg(0, book)?;
+            let digits = optional_num(1, 0.0, book)?.trunc();
+            if digits > 308.0 {
+                V::Num(n)
+            } else if digits < -308.0 {
+                V::Num(0.0)
+            } else {
+                let f = 10f64.powi(digits as i32);
+                V::Num(if (n * f).is_finite() { (n * f).trunc() / f } else { n })
+            }
+        }
+        "LOG" => {
+            need(1, 2)?;
+            let n = n_arg(0, book)?;
+            let base = optional_num(1, 10.0, book)?;
+            if n <= 0.0 || base <= 0.0 {
+                return Err("#NUM!");
+            }
+            if base == 1.0 {
+                return Err("#DIV/0!");
+            }
+            finite(n.log(base))?
+        }
+        "EVEN" | "ODD" => {
+            need(1, 1)?;
+            let n = n_arg(0, book)?;
+            let offset = if name == "ODD" { 1.0 } else { 0.0 };
+            V::Num(if n == 0.0 { offset } else { n.signum() * (((n.abs() - offset) / 2.0).ceil() * 2.0 + offset) })
+        }
+        "RAND" | "RANDBETWEEN" => {
+            need(if name == "RAND" { 0 } else { 2 }, if name == "RAND" { 0 } else { 2 })?;
+            if name == "RAND" {
+                V::Num(random(book.now()))
+            } else {
+                let bottom = n_arg(0, book)?.ceil();
+                let top = n_arg(1, book)?.floor();
+                if bottom > top {
+                    return Err("#NUM!");
+                }
+                finite(bottom + (random(book.now()) * (top - bottom + 1.0)).floor())?
+            }
+        }
+        "SUMSQ" => {
+            need(1, 255)?;
+            finite(numbers(args, book)?.iter().map(|n| n * n).sum())?
+        }
+        "QUOTIENT" => {
+            need(2, 2)?;
+            let (n, d) = (n_arg(0, book)?, n_arg(1, book)?);
+            if d == 0.0 {
+                return Err("#DIV/0!");
+            }
+            finite((n / d).trunc())?
+        }
+        "GCD" | "LCM" => {
+            need(1, 255)?;
+            let ns = numbers(args, book)?;
+            let mut result = if name == "GCD" { 0_u64 } else { 1_u64 };
+            for n in ns {
+                if !(0.0..9_007_199_254_740_992.0).contains(&n) {
+                    return Err("#NUM!");
+                }
+                let n = n.trunc() as u64;
+                result = if name == "GCD" {
+                    gcd(result, n)
+                } else if result == 0 || n == 0 {
+                    0
+                } else {
+                    result.checked_div(gcd(result, n)).and_then(|x| x.checked_mul(n)).ok_or("#NUM!")?
+                };
+                if result >= 9_007_199_254_740_992 {
+                    return Err("#NUM!");
+                }
+            }
+            V::Num(result as f64)
+        }
+        "FACT" => {
+            need(1, 1)?;
+            let n = n_arg(0, book)?;
+            if !(0.0..171.0).contains(&n) {
+                return Err("#NUM!");
+            }
+            V::Num((1..=n as u32).fold(1.0, |a, b| a * b as f64))
+        }
+        "DEGREES" | "RADIANS" | "SIN" | "COS" | "TAN" | "ASIN" | "ACOS" | "ATAN" | "ATAN2" => {
+            need(if name == "ATAN2" { 2 } else { 1 }, if name == "ATAN2" { 2 } else { 1 })?;
+            let n = n_arg(0, book)?;
+            finite(match name {
+                "DEGREES" => n.to_degrees(),
+                "RADIANS" => n.to_radians(),
+                "SIN" => n.sin(),
+                "COS" => n.cos(),
+                "TAN" => n.tan(),
+                "ASIN" => n.asin(),
+                "ACOS" => n.acos(),
+                "ATAN" => n.atan(),
+                _ => {
+                    let y = n_arg(1, book)?;
+                    if n == 0.0 && y == 0.0 {
+                        return Err("#DIV/0!");
+                    }
+                    y.atan2(n)
+                }
+            })?
+        }
+        "EDATE" | "EOMONTH" => {
+            need(2, 2)?;
+            let start = date_arg(&arg(0, book)?, sys)?;
+            let dt = dates::from_serial(start, sys).ok_or("#NUM!")?;
+            let months = n_arg(1, book)?.trunc();
+            if months.abs() > 120_000.0 {
+                return Err("#NUM!");
+            }
+            let index = dt.year as i64 * 12 + dt.month as i64 - 1 + months as i64;
+            let (y, m) = (index.div_euclid(12), index.rem_euclid(12) as u32 + 1);
+            if !(1900..=9999).contains(&y) {
+                return Err("#NUM!");
+            }
+            let last = if y == 1900 && m == 2 && sys == DateSystem::From1900 { 29 } else { month_days(y as i32, m) };
+            let day = if name == "EOMONTH" { last } else { dt.day.min(last) };
+            let out = dates::to_serial(dates::DateTime::date(y as i32, m, day), sys);
+            checked_date(out, sys)?;
+            V::Num(out)
+        }
+        "DAYS" | "DATEDIF" => {
+            need(if name == "DAYS" { 2 } else { 3 }, if name == "DAYS" { 2 } else { 3 })?;
+            let a = date_arg(&arg(0, book)?, sys)?;
+            let b = date_arg(&arg(1, book)?, sys)?;
+            if name == "DAYS" {
+                V::Num(a - b)
+            } else {
+                let (a, b) = (a.floor(), b.floor());
+                if a > b {
+                    return Err("#NUM!");
+                }
+                let start = dates::from_serial(a, sys).ok_or("#NUM!")?;
+                let end = dates::from_serial(b, sys).ok_or("#NUM!")?;
+                let months = (end.year - start.year) * 12 + end.month as i32 - start.month as i32 - i32::from(end.day < start.day);
+                V::Num(match text(&arg(2, book)?)?.to_ascii_uppercase().as_str() {
+                    "Y" => (months / 12) as f64,
+                    "M" => months as f64,
+                    "D" => b - a,
+                    "YM" => months.rem_euclid(12) as f64,
+                    "MD" => {
+                        if end.day >= start.day {
+                            (end.day - start.day) as f64
+                        } else {
+                            let prev = dates::from_serial(dates::to_serial(dates::DateTime::date(end.year, end.month, 1), sys) - 1.0, sys)
+                                .ok_or("#NUM!")?;
+                            (prev.day as i32 - start.day as i32 + end.day as i32) as f64
+                        }
+                    }
+                    "YD" => {
+                        let year = start.year + i32::from((end.month, end.day) < (start.month, start.day));
+                        dates::to_serial(dates::DateTime::date(year, end.month, 1), sys) + end.day as f64 - 1.0 - a
+                    }
+                    _ => return Err("#NUM!"),
+                })
+            }
+        }
+        "NETWORKDAYS" | "WORKDAY" => {
+            need(2, 3)?;
+            let start = date_arg(&arg(0, book)?, sys)?.floor();
+            let mut holidays = HashSet::new();
+            if args.len() > 2 {
+                for (v, _) in flatten(&args[2..3], book)? {
+                    if !matches!(v, V::Empty) {
+                        holidays.insert(date_arg(&v, sys)?.floor() as i64);
+                    }
+                }
+            }
+            let business = |day: f64| -> Result<bool, &'static str> {
+                checked_date(day, sys)?;
+                let dt = dates::from_serial(day, sys).ok_or("#NUM!")?;
+                Ok(dt.weekday() <= 5 && !holidays.contains(&(day as i64)))
+            };
+            if name == "NETWORKDAYS" {
+                let end = date_arg(&arg(1, book)?, sys)?.floor();
+                let (lo, hi) = (start.min(end) as i64, start.max(end) as i64);
+                let mut count = 0;
+                for day in lo..=hi {
+                    if business(day as f64)? {
+                        count += 1;
+                    }
+                }
+                V::Num(count as f64 * if end < start { -1.0 } else { 1.0 })
+            } else {
+                let days = n_arg(1, book)?.trunc();
+                if days.abs() > 3_000_000.0 {
+                    return Err("#NUM!");
+                }
+                let mut remaining = days.abs() as u32;
+                let mut day = start;
+                while remaining > 0 {
+                    day += days.signum();
+                    if business(day)? {
+                        remaining -= 1;
+                    }
+                }
+                V::Num(day)
+            }
+        }
+        "WEEKNUM" => {
+            need(1, 2)?;
+            let serial = date_arg(&arg(0, book)?, sys)?.floor();
+            let dt = dates::from_serial(serial, sys).ok_or("#NUM!")?;
+            let kind = optional_num(1, 1.0, book)?;
+            let first_weekday = match kind {
+                1.0 | 17.0 => 7,
+                2.0 | 11.0 | 21.0 => 1,
+                12.0 => 2,
+                13.0 => 3,
+                14.0 => 4,
+                15.0 => 5,
+                16.0 => 6,
+                _ => return Err("#NUM!"),
+            };
+            if kind == 21.0 {
+                // The ISO week belongs to the year of its Thursday.
+                let thursday = serial + 4.0 - dt.weekday() as f64;
+                let year = dates::from_serial(thursday, sys).ok_or("#NUM!")?.year;
+                let jan4 = dates::to_serial(dates::DateTime::date(year, 1, 4), sys);
+                let weekday = dates::DateTime::date(year, 1, 4).weekday();
+                V::Num(((serial - (jan4 - weekday as f64 + 1.0)) / 7.0).floor() + 1.0)
+            } else {
+                let jan1 = dates::to_serial(dates::DateTime::date(dt.year, 1, 1), sys);
+                let offset = (dates::DateTime::date(dt.year, 1, 1).weekday() as i32 - first_weekday).rem_euclid(7);
+                V::Num(((serial - jan1 + offset as f64) / 7.0).floor() + 1.0)
+            }
+        }
+        "DATEVALUE" | "TIMEVALUE" => {
+            need(1, 1)?;
+            let s = text(&arg(0, book)?)?;
+            V::Num(if name == "DATEVALUE" { parse_date_text(&s, sys).ok_or("#VALUE!")? } else { parse_time_text(&s).ok_or("#VALUE!")? })
+        }
+        "CLEAN" => {
+            need(1, 1)?;
+            V::Text(text(&arg(0, book)?)?.chars().filter(|&c| c as u32 >= 32).collect())
+        }
+        "NUMBERVALUE" => {
+            need(1, 3)?;
+            let s = text(&arg(0, book)?)?;
+            let decimal = if args.len() > 1 { text(&arg(1, book)?)? } else { ".".into() };
+            let group = if args.len() > 2 { text(&arg(2, book)?)? } else { ",".into() };
+            V::Num(number_value(&s, &decimal, &group)?)
+        }
+        "FIXED" | "DOLLAR" => {
+            need(1, if name == "FIXED" { 3 } else { 2 })?;
+            let n = n_arg(0, book)?;
+            let digits = optional_num(1, 2.0, book)?.trunc();
+            if !(-308.0..=127.0).contains(&digits) {
+                return Err("#VALUE!");
+            }
+            let commas = name == "DOLLAR" || args.len() < 3 || !truthy(&arg(2, book)?)?;
+            let rounded = round_to(n, digits as i32, round_half_away);
+            if !rounded.is_finite() {
+                return Err("#NUM!");
+            }
+            let magnitude = if name == "DOLLAR" { rounded.abs() } else { rounded };
+            let mut out = format!("{:.*}", digits.max(0.0) as usize, magnitude);
+            if commas {
+                out = group_number(&out);
+            }
+            if name == "DOLLAR" {
+                out = if rounded < 0.0 { format!("(${out})") } else { format!("${out}") };
+            }
+            V::Text(out)
+        }
+        "TEXTBEFORE" | "TEXTAFTER" => {
+            need(2, 6)?;
+            let s = text(&arg(0, book)?)?;
+            let delimiter = text(&arg(1, book)?)?;
+            let instance = optional_num(2, 1.0, book)?.trunc();
+            let mode = optional_num(3, 0.0, book)?;
+            let match_end = optional_num(4, 0.0, book)?;
+            if instance == 0.0 || ![0.0, 1.0].contains(&mode) || ![0.0, 1.0].contains(&match_end) {
+                return Err("#VALUE!");
+            }
+            if s.is_empty() {
+                return Ok(V::Text(String::new()));
+            }
+            if instance.abs() > s.chars().count() as f64 {
+                return Err("#VALUE!");
+            }
+            if delimiter.is_empty() {
+                return Ok(V::Text(if (name == "TEXTAFTER") == (instance > 0.0) { s } else { String::new() }));
+            }
+            let hits = delimiter_hits(&s, &delimiter, mode != 0.0, instance < 0.0);
+            let hit = hits.get(instance.abs() as usize - 1).copied().or_else(|| {
+                if match_end != 0.0 && instance.abs() as usize == hits.len() + 1 {
+                    Some(if instance > 0.0 { (s.len(), s.len()) } else { (0, 0) })
+                } else {
+                    None
+                }
+            });
+            match hit {
+                Some((a, b)) => V::Text(if name == "TEXTBEFORE" { s[..a].into() } else { s[b..].into() }),
+                None if args.get(5).is_some_and(|a| !matches!(a, Expr::Missing)) => arg(5, book)?,
+                None => return Err("#N/A"),
+            }
+        }
         // ---- maths ----
         "SUM" => V::Num(numbers(args, book)?.iter().sum()),
         "PRODUCT" => V::Num(numbers(args, book)?.iter().product()),
@@ -869,6 +1369,295 @@ fn call(name: &str, args: &[Expr], book: &mut Context<'_>) -> R {
     })
 }
 
+/// IFS aggregates require matching shapes, including the criteria ranges.
+fn conditional_aggregate(name: &str, args: &[Expr], book: &mut Context<'_>) -> R {
+    let offset = usize::from(name != "COUNTIFS");
+    if args.len() < offset + 2 || !(args.len() - offset).is_multiple_of(2) || args.len() > offset + 254 {
+        return Err("#VALUE!");
+    }
+    let values = grid(&args[0], book)?;
+    let shape = (values.len(), values.first().map_or(0, Vec::len));
+    let mut conditions = Vec::new();
+    for pair in args[offset..].as_chunks::<2>().0 {
+        let range = grid(&pair[0], book)?;
+        if range.len() != shape.0 || range.iter().any(|r| r.len() != shape.1) {
+            return Err("#VALUE!");
+        }
+        let criterion = scalar(eval_inner(&pair[1], book)?);
+        if let V::Err(e) = criterion {
+            return Err(e);
+        }
+        conditions.push((range, criterion));
+    }
+    let mut count = 0;
+    let mut ns = Vec::new();
+    for (r, row) in values.iter().enumerate() {
+        for (c, value) in row.iter().enumerate() {
+            if conditions.iter().all(|(g, criterion)| matches_criterion(&g[r][c], criterion)) {
+                count += 1;
+                if name != "COUNTIFS" {
+                    match value {
+                        V::Err(e) => return Err(e),
+                        V::Num(n) => ns.push(*n),
+                        V::Empty if name == "MINIFS" || name == "MAXIFS" => ns.push(0.0),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    Ok(V::Num(match name {
+        "COUNTIFS" => count as f64,
+        "SUMIFS" => ns.iter().sum(),
+        "MAXIFS" => ns.into_iter().reduce(f64::max).unwrap_or(0.0),
+        "MINIFS" => ns.into_iter().reduce(f64::min).unwrap_or(0.0),
+        _ if ns.is_empty() => return Err("#DIV/0!"),
+        _ => ns.iter().sum::<f64>() / ns.len() as f64,
+    }))
+}
+
+fn xmatch(key: &V, list: &[V], mode: i32, reverse: bool) -> Result<Option<usize>, &'static str> {
+    let mut best = None;
+    for step in 0..list.len() {
+        let i = if reverse { list.len() - step - 1 } else { step };
+        let v = &list[i];
+        if let V::Err(e) = v {
+            return Err(e);
+        }
+        if mode == 2 {
+            if let (V::Text(k), V::Text(s)) = (key, v) {
+                if wildcard(&k.to_lowercase(), &s.to_lowercase()) {
+                    return Ok(Some(i));
+                }
+            } else if compare(v, key)?.is_eq() {
+                return Ok(Some(i));
+            }
+            continue;
+        }
+        if std::mem::discriminant(v) != std::mem::discriminant(key) && !matches!(v, V::Empty) && !matches!(key, V::Empty) {
+            continue;
+        }
+        let ordering = compare(v, key)?;
+        if ordering.is_eq() {
+            return Ok(Some(i));
+        }
+        if ((mode == -1 && ordering.is_lt()) || (mode == 1 && ordering.is_gt()))
+            && best.is_none_or(|b| compare(v, &list[b]).is_ok_and(|o| if mode == -1 { o.is_gt() } else { o.is_lt() }))
+        {
+            best = Some(i);
+        }
+    }
+    Ok(best)
+}
+
+fn gcd(mut a: u64, mut b: u64) -> u64 {
+    while b != 0 {
+        (a, b) = (b, a % b);
+    }
+    a
+}
+
+/// A local PRNG also works in WebAssembly. The host supplies the clock through Book,
+/// as it does for NOW; state advances even when a caller has no clock.
+fn random(now: Option<f64>) -> f64 {
+    thread_local! { static STATE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) }; }
+    STATE.with(|state| {
+        let mut x = state.get();
+        if x == 0 {
+            x = now.unwrap_or(1.0).to_bits() ^ 0x9e37_79b9_7f4a_7c15;
+        }
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        state.set(x);
+        (x.wrapping_mul(0x2545_f491_4f6c_dd1d) >> 11) as f64 / 9_007_199_254_740_992.0
+    })
+}
+
+fn month_days(year: i32, month: u32) -> u32 {
+    match month {
+        4 | 6 | 9 | 11 => 30,
+        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
+        2 => 28,
+        _ => 31,
+    }
+}
+
+fn checked_date(serial: f64, sys: DateSystem) -> Result<(), &'static str> {
+    if dates::from_serial(serial, sys).is_none_or(|d| d.year > 9999) {
+        Err("#NUM!")
+    } else {
+        Ok(())
+    }
+}
+
+fn date_arg(v: &V, sys: DateSystem) -> Result<f64, &'static str> {
+    let serial = match v {
+        V::Text(s) => parse_date_text(s, sys).ok_or("#VALUE!")?,
+        _ => num(v)?,
+    };
+    checked_date(serial, sys)?;
+    Ok(serial)
+}
+
+/// Parse ISO, US numeric, and English month-name dates without a platform locale.
+/// DATEVALUE ignores a time suffix and returns only the date.
+fn parse_date_text(s: &str, sys: DateSystem) -> Option<f64> {
+    let s = s.trim();
+    let s = if s.as_bytes().get(10) == Some(&b'T') { &s[..10] } else { s };
+    let normalized = s.replace(['-', '/', ','], " ");
+    let parts: Vec<&str> = normalized.split_whitespace().take(3).collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let month = |word: &str| -> Option<i32> {
+        if let Ok(n) = word.parse() {
+            return Some(n);
+        }
+        let lower = word.to_ascii_lowercase();
+        ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
+            .iter()
+            .position(|m| lower == *m || (lower.len() == 3 && m.starts_with(&lower)))
+            .map(|i| i as i32 + 1)
+    };
+    let (y, m, d) = if parts[0].len() == 4 && parts[0].chars().all(|c| c.is_ascii_digit()) {
+        (parts[0].parse().ok()?, month(parts[1])?, parts[2].parse().ok()?)
+    } else if parts[1].chars().any(|c| c.is_ascii_alphabetic()) {
+        (parts[2].parse().ok()?, month(parts[1])?, parts[0].parse().ok()?)
+    } else {
+        (parts[2].parse().ok()?, month(parts[0])?, parts[1].parse().ok()?)
+    };
+    let y = if (0..30).contains(&y) {
+        2000 + y
+    } else if (30..100).contains(&y) {
+        1900 + y
+    } else {
+        y
+    };
+    if !(1900..=9999).contains(&y) || !(1..=12).contains(&m) || !(1..=month_days(y, m as u32) as i32).contains(&d) {
+        return None;
+    }
+    let serial = dates::to_serial(dates::DateTime::date(y, m as u32, d as u32), sys);
+    checked_date(serial, sys).ok()?;
+    Some(serial)
+}
+
+fn parse_time_text(s: &str) -> Option<f64> {
+    let upper = s.trim().to_ascii_uppercase();
+    let (s, meridiem) = if let Some(s) = upper.strip_suffix("AM") {
+        (s.trim(), Some(false))
+    } else if let Some(s) = upper.strip_suffix("PM") {
+        (s.trim(), Some(true))
+    } else {
+        (upper.as_str(), None)
+    };
+    let time = s.rsplit([' ', 'T']).next()?;
+    let parts = time.split(':').map(|p| p.parse::<f64>().ok()).collect::<Option<Vec<_>>>()?;
+    if !(2..=3).contains(&parts.len()) && !(parts.len() == 1 && meridiem.is_some()) {
+        return None;
+    }
+    let mut hour = parts[0];
+    let minute = parts.get(1).copied().unwrap_or(0.0);
+    let second = parts.get(2).copied().unwrap_or(0.0);
+    if hour.fract() != 0.0 || minute.fract() != 0.0 || !(0.0..60.0).contains(&minute) || !(0.0..60.0).contains(&second) {
+        return None;
+    }
+    if let Some(pm) = meridiem {
+        if !(1.0..=12.0).contains(&hour) {
+            return None;
+        }
+        hour = hour % 12.0 + if pm { 12.0 } else { 0.0 };
+    }
+    if !(0.0..24.0).contains(&hour) {
+        return None;
+    }
+    Some((hour * 3600.0 + minute * 60.0 + second) / 86_400.0)
+}
+
+fn number_value(s: &str, decimal: &str, group: &str) -> Result<f64, &'static str> {
+    let decimal = decimal.chars().next();
+    let group = group.chars().next();
+    if decimal.is_some() && decimal == group {
+        return Err("#VALUE!");
+    }
+    let s: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+    let trimmed = s.trim_end_matches('%');
+    let percents = s.len() - trimmed.len();
+    let mut out = String::new();
+    let mut point = false;
+    for c in trimmed.chars() {
+        if Some(c) == decimal {
+            if point {
+                return Err("#VALUE!");
+            }
+            point = true;
+            out.push('.');
+        } else if Some(c) == group {
+            if point {
+                return Err("#VALUE!");
+            }
+        } else if c.is_ascii_digit() || ((c == '+' || c == '-') && out.is_empty()) {
+            out.push(c);
+        } else {
+            return Err("#VALUE!");
+        }
+    }
+    if s.is_empty() {
+        return Ok(0.0);
+    }
+    let n = out.parse::<f64>().map_err(|_| "#VALUE!")? / 100f64.powi(percents.min(i32::MAX as usize) as i32);
+    if n.is_finite() {
+        Ok(n)
+    } else {
+        Err("#NUM!")
+    }
+}
+
+fn group_number(s: &str) -> String {
+    let whole = s.find('.').unwrap_or(s.len());
+    let mut out = String::new();
+    for (i, c) in s.char_indices() {
+        if i > 0 && i < whole && (whole - i).is_multiple_of(3) && s.as_bytes()[i - 1].is_ascii_digit() {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Keep byte positions in the original string even when Unicode case folding changes length.
+fn delimiter_hits(s: &str, delimiter: &str, ignore_case: bool, reverse: bool) -> Vec<(usize, usize)> {
+    let needle: Vec<char> = delimiter.chars().collect();
+    let chars: Vec<(usize, char)> = s.char_indices().collect();
+    let mut candidates = Vec::new();
+    for i in 0..=chars.len().saturating_sub(needle.len()) {
+        if i + needle.len() > chars.len() {
+            break;
+        }
+        if needle.iter().zip(&chars[i..i + needle.len()]).all(
+            |(a, (_, b))| {
+                if ignore_case {
+                    a.to_lowercase().eq(b.to_lowercase())
+                } else {
+                    a == b
+                }
+            },
+        ) {
+            candidates.push((chars[i].0, chars.get(i + needle.len()).map_or(s.len(), |c| c.0)));
+        }
+    }
+    if reverse {
+        candidates.reverse();
+    }
+    let mut out: Vec<(usize, usize)> = Vec::new();
+    for hit in candidates {
+        if out.last().is_none_or(|prev| if reverse { hit.1 <= prev.0 } else { hit.0 >= prev.1 }) {
+            out.push(hit);
+        }
+    }
+    out
+}
+
 fn transpose(g: Vec<Vec<V>>) -> Vec<Vec<V>> {
     let cols = g.first().map_or(0, Vec::len);
     (0..cols).map(|c| g.iter().map(|r| r.get(c).cloned().unwrap_or(V::Empty)).collect()).collect()
@@ -957,6 +1746,315 @@ mod tests {
 
     fn ev(f: &str) -> V {
         eval(&parse(f).unwrap(), &mut book())
+    }
+
+    #[test]
+    fn conditional_aggregates_and_logic() {
+        for (f, expected) in [
+            ("SUMIFS(A1:A5,B1:B5,\"a*\",A1:A5,\">1\")", 4.0),
+            ("COUNTIFS(B1:B5,\"apple\",A1:A5,\">1\")", 1.0),
+            ("AVERAGEIFS(A1:A5,B1:B5,\"apple\")", 2.5),
+            ("MAXIFS(A1:A5,B1:B5,\"apple\")", 4.0),
+            ("MINIFS(A1:A5,B1:B5,\"apple\")", 1.0),
+            ("MAXIFS(A1:A5,B1:B5,\"missing\")", 0.0),
+            ("COUNTIFS(Z1:Z3,0)", 3.0),
+            ("MINIFS(A1:A6,B1:B6,\"\")", 0.0),
+            ("MINIFS({-3,-1},{1,1},1)", -3.0),
+            ("IFS(FALSE,1/0,TRUE,7,TRUE,9)", 7.0),
+            ("SWITCH(2,1,1/0,2,7,9)", 7.0),
+            ("SWITCH(8,1,2,9)", 9.0),
+        ] {
+            assert_eq!(ev(f), V::Num(expected), "{f}");
+        }
+        for (f, error) in [
+            ("SUMIFS(A1:A5,B1:B4,1)", "#VALUE!"),
+            ("COUNTIFS(A1:A5,1,B1:B4,1)", "#VALUE!"),
+            ("AVERAGEIFS(A1:A5,B1:B5,\"missing\")", "#DIV/0!"),
+            ("MAXIFS(A1:A5,B1:B4,1)", "#VALUE!"),
+            ("MINIFS(A1:A5,B1:B4,1)", "#VALUE!"),
+            ("SUMIFS({1,#N/A},{1,1},1)", "#N/A"),
+            ("SUMIFS(A1:A5,B1:B5,#N/A)", "#N/A"),
+            ("IFS(FALSE,1)", "#N/A"),
+            ("IFS(TRUE,1,FALSE)", "#VALUE!"),
+            ("IFS(\"bad\",1)", "#VALUE!"),
+            ("SWITCH(3,1,2)", "#N/A"),
+            ("SWITCH(#N/A,1,2)", "#N/A"),
+        ] {
+            assert_eq!(ev(f), V::Err(error), "{f}");
+        }
+    }
+
+    #[test]
+    fn modern_lookups() {
+        for (f, expected) in [
+            ("XLOOKUP(\"apple\",B1:B5,A1:A5)", 1.0),
+            ("XLOOKUP(\"apple\",B1:B5,A1:A5,,0,-1)", 4.0),
+            ("XLOOKUP(3,{5,1,4},{50,10,40},,-1)", 10.0),
+            ("XLOOKUP(3,{5,1,4},{50,10,40},,1)", 40.0),
+            ("XLOOKUP(\"a*\",B1:B5,A1:A5,,2,-1)", 4.0),
+            ("XLOOKUP(\"a*\",B1:B5,A1:A5,99)", 99.0),
+            ("XLOOKUP(2,{1,2},{10,20;30,40})", 20.0),
+            ("XLOOKUP(2,{1;2},{10,11;20,21})", 20.0),
+            ("XMATCH(\"apple\",B1:B5)", 1.0),
+            ("XMATCH(Z99,{0,1})", 1.0),
+            ("XMATCH(\"apple\",B1:B5,0,-1)", 4.0),
+            ("XMATCH(3,{5,1,4},-1)", 2.0),
+            ("XMATCH(3,{5,1,4},1)", 3.0),
+            ("XMATCH(\"a*\",B1:B5,2,-1)", 4.0),
+        ] {
+            assert_eq!(ev(f), V::Num(expected), "{f}");
+        }
+        for (f, error) in [
+            ("XLOOKUP(8,A1:A5,B1:B5)", "#N/A"),
+            ("XMATCH(8,A1:A5)", "#N/A"),
+            ("XLOOKUP(8,A1:A5,B1:B5,,0)", "#N/A"),
+            ("XLOOKUP(1,A1:A5,B1:B4)", "#VALUE!"),
+            ("XMATCH(1,{1,2;3,4})", "#VALUE!"),
+            ("XLOOKUP(1,A1:A5,B1:B5,99,3)", "#VALUE!"),
+            ("XMATCH(1,A1:A5,0,2)", "#VALUE!"),
+            ("XLOOKUP(1,A1:A5,{#N/A;2;3;4;5},99)", "#N/A"),
+            ("XLOOKUP(#N/A,A1:A5,B1:B5,99)", "#N/A"),
+            ("XLOOKUP(2,{#N/A,2},{10,20},99)", "#N/A"),
+        ] {
+            assert_eq!(ev(f), V::Err(error), "{f}");
+        }
+    }
+
+    #[test]
+    fn added_statistics() {
+        for (f, expected) in [
+            ("MEDIAN(A1:A5)", 3.0),
+            ("MEDIAN({4,1,3,2})", 2.5),
+            ("MODE({3,2,3,2})", 2.0),
+            ("MODE.SNGL({1,2,2,3})", 2.0),
+            ("STDEV({1,3})", 2f64.sqrt()),
+            ("STDEV.S({1,3})", 2f64.sqrt()),
+            ("STDEV.P({1,3})", 1.0),
+            ("VAR({1,3})", 2.0),
+            ("VAR.S({1,3})", 2.0),
+            ("VAR.P({1,3})", 1.0),
+            ("LARGE(A1:A5,2)", 4.0),
+            ("SMALL(A1:A5,2)", 2.0),
+            ("RANK(4,A1:A5)", 2.0),
+            ("RANK.EQ(4,A1:A5,1)", 4.0),
+            ("RANK.EQ(2,{1,2,2,3})", 2.0),
+            ("AVERAGEA({1,TRUE,\"x\"})", 2.0 / 3.0),
+            ("AVERAGEA(\"2\",TRUE)", 1.5),
+        ] {
+            assert_eq!(ev(f), V::Num(expected), "{f}");
+        }
+        for (f, error) in [
+            ("MEDIAN(B1:B5)", "#NUM!"),
+            ("MODE(A1:A5)", "#N/A"),
+            ("MODE.SNGL(A1:A5)", "#N/A"),
+            ("STDEV(1)", "#DIV/0!"),
+            ("STDEV.S(1)", "#DIV/0!"),
+            ("STDEV.P(B1:B5)", "#DIV/0!"),
+            ("VAR(1)", "#DIV/0!"),
+            ("VAR.S(1)", "#DIV/0!"),
+            ("VAR.P(B1:B5)", "#DIV/0!"),
+            ("LARGE(A1:A5,6)", "#NUM!"),
+            ("SMALL(A1:A5,0)", "#NUM!"),
+            ("RANK(8,A1:A5)", "#N/A"),
+            ("RANK.EQ(8,A1:A5)", "#N/A"),
+            ("AVERAGEA(Z1:Z3)", "#DIV/0!"),
+            ("MEDIAN({1,#N/A})", "#N/A"),
+            ("STDEV.S({1E308,-1E308})", "#NUM!"),
+        ] {
+            assert_eq!(ev(f), V::Err(error), "{f}");
+        }
+    }
+
+    #[test]
+    fn added_maths() {
+        for (f, expected) in [
+            ("CEILING(4.2,2)", 6.0),
+            ("CEILING(-4.2,2)", -4.0),
+            ("CEILING(-4.2,-2)", -6.0),
+            ("CEILING.MATH(-4.2,2)", -4.0),
+            ("CEILING.MATH(-4.2,2,1)", -6.0),
+            ("FLOOR(4.2,2)", 4.0),
+            ("FLOOR(-4.2,2)", -6.0),
+            ("FLOOR(-4.2,-2)", -4.0),
+            ("FLOOR.MATH(-4.2,2)", -6.0),
+            ("FLOOR.MATH(-4.2,2,1)", -4.0),
+            ("MROUND(-7,-2)", -8.0),
+            ("MROUND(7,2)", 8.0),
+            ("TRUNC(-3.99)", -3.0),
+            ("TRUNC(123.456,-1)", 120.0),
+            ("LOG(8,2)", 3.0),
+            ("LOG(100)", 2.0),
+            ("EVEN(-3)", -4.0),
+            ("EVEN(0)", 0.0),
+            ("ODD(0)", 1.0),
+            ("ODD(-2)", -3.0),
+            ("SUMSQ(A1:A3)", 14.0),
+            ("QUOTIENT(-7,2)", -3.0),
+            ("GCD(12.9,18)", 6.0),
+            ("GCD(0,0)", 0.0),
+            ("LCM(4,6)", 12.0),
+            ("LCM(0,5)", 0.0),
+            ("FACT(5.9)", 120.0),
+            ("FACT(0)", 1.0),
+            ("DEGREES(PI())", 180.0),
+            ("RADIANS(180)", std::f64::consts::PI),
+            ("SIN(0)", 0.0),
+            ("COS(0)", 1.0),
+            ("TAN(0)", 0.0),
+            ("ASIN(0)", 0.0),
+            ("ACOS(1)", 0.0),
+            ("ATAN(0)", 0.0),
+            ("ATAN2(0,1)", std::f64::consts::FRAC_PI_2),
+            ("RANDBETWEEN(3,3)", 3.0),
+        ] {
+            assert_eq!(ev(f), V::Num(expected), "{f}");
+        }
+        for (f, error) in [
+            ("CEILING(1,-1)", "#NUM!"),
+            ("FLOOR(1,-1)", "#NUM!"),
+            ("FLOOR(1,0)", "#DIV/0!"),
+            ("CEILING.MATH(\"x\")", "#VALUE!"),
+            ("FLOOR.MATH(\"x\")", "#VALUE!"),
+            ("MROUND(1,-1)", "#NUM!"),
+            ("TRUNC(\"x\")", "#VALUE!"),
+            ("LOG(-1,2)", "#NUM!"),
+            ("LOG(2,1)", "#DIV/0!"),
+            ("EVEN(\"x\")", "#VALUE!"),
+            ("ODD(\"x\")", "#VALUE!"),
+            ("RAND(1)", "#VALUE!"),
+            ("RANDBETWEEN(3,1)", "#NUM!"),
+            ("SUMSQ({1,#N/A})", "#N/A"),
+            ("QUOTIENT(1,0)", "#DIV/0!"),
+            ("GCD(-1,2)", "#NUM!"),
+            ("LCM(-1,2)", "#NUM!"),
+            ("LCM(9007199254740991,2)", "#NUM!"),
+            ("FACT(171)", "#NUM!"),
+            ("DEGREES(\"x\")", "#VALUE!"),
+            ("RADIANS(\"x\")", "#VALUE!"),
+            ("SIN(\"x\")", "#VALUE!"),
+            ("COS(\"x\")", "#VALUE!"),
+            ("TAN(\"x\")", "#VALUE!"),
+            ("ASIN(2)", "#NUM!"),
+            ("ACOS(-2)", "#NUM!"),
+            ("ATAN(\"x\")", "#VALUE!"),
+            ("ATAN2(0,0)", "#DIV/0!"),
+        ] {
+            assert_eq!(ev(f), V::Err(error), "{f}");
+        }
+        let draws: Vec<_> = (0..100).map(|_| ev("RAND()")).collect();
+        assert!(draws.iter().all(|v| matches!(v, V::Num(n) if (0.0..1.0).contains(n))));
+        assert!(draws.windows(2).any(|pair| pair[0] != pair[1]));
+        for _ in 0..100 {
+            assert!(matches!(ev("RANDBETWEEN(-3.5,4.5)"), V::Num(n) if (-3.0..=4.0).contains(&n) && n.fract() == 0.0));
+        }
+    }
+
+    #[test]
+    fn added_dates() {
+        for (f, expected) in [
+            ("EDATE(DATE(2024,1,31),1)", ev("DATE(2024,2,29)")),
+            ("EOMONTH(DATE(2024,1,15),1)", ev("DATE(2024,2,29)")),
+            ("EDATE(DATE(2024,3,31),-1)", ev("DATE(2024,2,29)")),
+            ("DAYS(\"2024-03-01\",\"2024-02-28\")", V::Num(2.0)),
+            ("DAYS(2.5,1)", V::Num(1.5)),
+            ("DATEDIF(DATE(2020,6,15),DATE(2024,8,20),\"Y\")", V::Num(4.0)),
+            ("DATEDIF(DATE(2020,6,15),DATE(2024,8,20),\"M\")", V::Num(50.0)),
+            ("DATEDIF(DATE(2024,2,28),DATE(2024,3,1),\"D\")", V::Num(2.0)),
+            ("DATEDIF(DATE(2020,6,15),DATE(2024,8,20),\"MD\")", V::Num(5.0)),
+            ("DATEDIF(DATE(2020,6,15),DATE(2024,8,20),\"YM\")", V::Num(2.0)),
+            ("DATEDIF(DATE(2020,6,15),DATE(2024,8,20),\"YD\")", V::Num(66.0)),
+            ("NETWORKDAYS(DATE(2024,1,1),DATE(2024,1,7))", V::Num(5.0)),
+            ("NETWORKDAYS(DATE(2024,1,7),DATE(2024,1,1),{45292,45292})", V::Num(-4.0)),
+            ("WORKDAY(DATE(2024,1,5),1)", ev("DATE(2024,1,8)")),
+            ("WORKDAY(DATE(2024,1,5),1,{45299})", ev("DATE(2024,1,9)")),
+            ("WORKDAY(DATE(2024,1,8),-1)", ev("DATE(2024,1,5)")),
+            ("WEEKNUM(DATE(2024,1,7))", V::Num(2.0)),
+            ("WEEKNUM(DATE(2024,1,7),2)", V::Num(1.0)),
+            ("WEEKNUM(DATE(2021,1,1),21)", V::Num(53.0)),
+            ("DATEVALUE(\"2024-02-29\")", ev("DATE(2024,2,29)")),
+            ("DATEVALUE(\"29-Feb-2024\")", ev("DATE(2024,2,29)")),
+            ("DATEVALUE(\"February 29, 2024\")", ev("DATE(2024,2,29)")),
+            ("TIMEVALUE(\"12 PM\")", V::Num(0.5)),
+            ("DATEVALUE(\"2/29/2024 12:30\")", ev("DATE(2024,2,29)")),
+            ("TIMEVALUE(\"12:00 PM\")", V::Num(0.5)),
+            ("TIMEVALUE(\"12:00 AM\")", V::Num(0.0)),
+            ("TIMEVALUE(\"2024-02-29 12:00:00\")", V::Num(0.5)),
+        ] {
+            assert_eq!(ev(f), expected, "{f}");
+        }
+        for (f, error) in [
+            ("EDATE(1,-120000)", "#NUM!"),
+            ("EOMONTH(1,-120000)", "#NUM!"),
+            ("DATEDIF(2,1,\"D\")", "#NUM!"),
+            ("DATEDIF(1,2,\"bad\")", "#NUM!"),
+            ("DAYS(\"bad\",1)", "#VALUE!"),
+            ("NETWORKDAYS(-1,1)", "#NUM!"),
+            ("WORKDAY(0,-1)", "#NUM!"),
+            ("WEEKNUM(1,3)", "#NUM!"),
+            ("DATEVALUE(\"2023-02-29\")", "#VALUE!"),
+            ("TIMEVALUE(\"25:00\")", "#VALUE!"),
+        ] {
+            assert_eq!(ev(f), V::Err(error), "{f}");
+        }
+        let mut b = book();
+        // Date parsing and month arithmetic honor the workbook's date system.
+        struct MacBook(Values);
+        impl Book for MacBook {
+            fn cell(&mut self, s: Option<&str>, r: u32, c: u32) -> V {
+                self.0.cell(s, r, c)
+            }
+            fn extent(&self, s: Option<&str>) -> Option<(u32, u32)> {
+                self.0.extent(s)
+            }
+            fn name(&self, n: &str) -> Option<Expr> {
+                self.0.name(n)
+            }
+            fn date_system(&self) -> DateSystem {
+                DateSystem::From1904
+            }
+            fn now(&self) -> Option<f64> {
+                None
+            }
+        }
+        assert_eq!(eval(&parse("DATEVALUE(\"1904-01-01\")").unwrap(), &mut MacBook(std::mem::take(&mut b))), V::Num(0.0));
+    }
+
+    #[test]
+    fn added_text() {
+        for (f, expected) in [
+            ("TEXTBEFORE(\"a-b-c\",\"-\")", "a"),
+            ("TEXTAFTER(\"a-b-c\",\"-\")", "b-c"),
+            ("TEXTBEFORE(\"a-b-c\",\"-\",-1)", "a-b"),
+            ("TEXTAFTER(\"a-b-c\",\"-\",2)", "c"),
+            ("TEXTBEFORE(\"İA-b\",\"a\",1,1)", "İ"),
+            ("TEXTBEFORE(\"abc\",\"-\",1,0,1)", "abc"),
+            ("TEXTAFTER(\"abc\",\"-\",,,1)", ""),
+            ("TEXTAFTER(\"abc\",\"-\",1,0,0,\"missing\")", "missing"),
+            ("CLEAN(CHAR(9)&\"a\"&CHAR(10)&\"b\")", "ab"),
+            ("FIXED(1234.567,2)", "1,234.57"),
+            ("FIXED(-1234.567,1,TRUE)", "-1234.6"),
+            ("FIXED(1234.567,-2)", "1,200"),
+            ("DOLLAR(1234.567)", "$1,234.57"),
+            ("DOLLAR(-1234.567,1)", "($1,234.6)"),
+        ] {
+            assert_eq!(ev(f), V::Text(expected.into()), "{f}");
+        }
+        assert_eq!(ev("NUMBERVALUE(\"1.234,5\",\",\",\".\")"), V::Num(1234.5));
+        assert_eq!(ev("NUMBERVALUE(\" 3 000 % \" )"), V::Num(30.0));
+        assert_eq!(ev("NUMBERVALUE(\"10%%\")"), V::Num(0.001));
+        assert_eq!(ev("NUMBERVALUE(\"\")"), V::Num(0.0));
+        for (f, error) in [
+            ("TEXTBEFORE(\"abc\",\"-\")", "#N/A"),
+            ("TEXTAFTER(\"abc\",\"-\")", "#N/A"),
+            ("TEXTBEFORE(\"abc\",\"-\",0)", "#VALUE!"),
+            ("CLEAN(#N/A)", "#N/A"),
+            ("NUMBERVALUE(\"1.2.3\")", "#VALUE!"),
+            ("NUMBERVALUE(\"1\",\".\",\".\")", "#VALUE!"),
+            ("FIXED(1,128)", "#VALUE!"),
+            ("DOLLAR(\"bad\")", "#VALUE!"),
+        ] {
+            assert_eq!(ev(f), V::Err(error), "{f}");
+        }
     }
 
     /// A book that counts how often a formula asks how big a sheet is.

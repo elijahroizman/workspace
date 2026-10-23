@@ -110,6 +110,27 @@ impl Layer for Sheets {
         Ok(())
     }
 
+    fn before_write(&self, doc: &mut Document, to: Kind) -> Result<()> {
+        if to == Kind::Sheets {
+            if let Body::Workbook { sheets } = &mut doc.body {
+                for sheet in sheets {
+                    for row in &mut sheet.rows {
+                        for cell in &mut row.cells {
+                            if let Some(f) = &mut cell.formula {
+                                // Keep imported shared leaders and their markup intact.
+                                let original = cell.origin.get().and_then(|c| c.child(ns::X, "f"));
+                                if original.is_none_or(|old| old.text() != *f) {
+                                    *f = formula::file_text(f);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn write_parts(&self, doc: &Document, package: &mut Package, _to: Kind) -> Result<()> {
         if let Some(excel) = doc.extensions.get::<Excel>() {
             excel.styles.write(package)?;

@@ -596,7 +596,7 @@ impl SheetsView {
         let s = self.sheets().get(sheet);
         let value = s.map(|s| s.value(at).clone()).unwrap_or_default();
         let input = match crate::formula(&self.doc, sheet, at) {
-            Some(fm) => format!("={fm}"),
+            Some(fm) => format!("={}", crate::formula::display_text(&fm)),
             None => match &value {
                 Value::Number(n) if crate::numfmt::is_date_format(&f.number_format) => crate::display(&self.doc, sheet, at),
                 Value::Number(n) => office_core::model::format_number(*n),
