@@ -2,6 +2,7 @@
 
 use office_core::model::{CellRef, ChartKind, LegendPosition, Range};
 use office_core::opc::Package;
+use office_core::xml::{ns, Element, Node};
 use office_core::Kind;
 use office_sheets::view::{ChartPatch, SheetsView};
 
@@ -176,4 +177,82 @@ fn other_apps_charts_survive() {
         assert_eq!(back.sheets().iter().map(|s| s.charts.len()).sum::<usize>(), count);
         std::fs::write(format!("/tmp/chart-samples/out-{}", path.file_name().unwrap().to_string_lossy()), &saved).ok();
     }
+}
+
+/// Writes a workbook with one chart of every kind into CHART_OUT, for checking in other apps.
+#[test]
+fn every_kind_for_other_apps() {
+    let Ok(dir) = std::env::var("CHART_OUT") else { return };
+    let mut v = book();
+    let kinds =
+        [ChartKind::Column, ChartKind::Bar, ChartKind::Line, ChartKind::Area, ChartKind::Pie, ChartKind::Doughnut, ChartKind::Scatter];
+    for (i, k) in kinds.iter().enumerate() {
+        let index = v.add_chart(0, range("A1:C4"), *k).unwrap();
+        v.move_chart(0, index, 300.0 + (i % 2) as f64 * 500.0, (i / 2) as f64 * 320.0, 480.0, 300.0);
+    }
+    v.set_chart(
+        0,
+        0,
+        &ChartPatch {
+            grouping: Some(office_core::model::ChartGrouping::Stacked),
+            title: Some("Stacked & <titled>".into()),
+            color: Some((1, "AA3355".into())),
+            ..Default::default()
+        },
+    );
+    std::fs::write(format!("{dir}/every-kind.xlsx"), v.save().unwrap()).unwrap();
+}
+
+/// Adding the first chart to a saved workbook rewrites that sheet's XML; the other sheets' text
+/// must still point at the right shared strings.
+#[test]
+fn a_new_chart_keeps_other_sheets_text() {
+    let mut v = book();
+    v.add_sheet();
+    v.set_input(1, CellRef::new(0, 0), "Only on the second sheet");
+    let mut v = SheetsView::open(&v.save().unwrap(), "a.xlsx").unwrap();
+    v.add_chart(0, range("A1:C4"), ChartKind::Column).unwrap();
+    let back = SheetsView::open(&v.save().unwrap(), "a.xlsx").unwrap();
+    assert_eq!(back.cell_info(1, CellRef::new(0, 0)).display, "Only on the second sheet");
+    assert_eq!(back.cell_info(0, CellRef::new(1, 0)).display, "Jan");
+    assert_eq!(back.sheets()[0].charts.len(), 1);
+}
+
+/// A chart on one sheet drawing another sheet's cells follows rows inserted there, and undo puts
+/// it back.
+#[test]
+fn charts_on_other_sheets_follow_inserted_rows() {
+    let mut v = book();
+    v.add_sheet();
+    v.set_input(1, CellRef::new(0, 0), "1");
+    v.add_chart(1, range("A1:A2"), ChartKind::Column).unwrap();
+    v.set_chart(1, 0, &ChartPatch { range: Some("Sheet1!A1:C4".into()), ..Default::default() });
+    let before = v.sheets()[1].charts[0].series[0].values.clone();
+    assert_eq!(before, "Sheet1!$B$2:$B$4");
+    v.shift_rows(0, 0, 1);
+    assert_eq!(v.sheets()[1].charts[0].series[0].values, "Sheet1!$B$3:$B$5");
+    assert_eq!(v.charts(1)[0].series[0].values, [Some(10.0), Some(12.0), Some(9.0)]);
+    v.undo();
+    assert_eq!(v.sheets()[1].charts[0].series[0].values, before);
+}
+
+/// Other apps anchor charts to one cell with a size; rows inserted above move it, in the file too.
+#[test]
+fn one_cell_anchors_move_with_rows() {
+    let mut v = book();
+    v.add_chart(0, range("A1:C4"), ChartKind::Column).unwrap();
+    let mut pkg = Package::read(&v.save().unwrap()).unwrap();
+    let mut doc = pkg.xml("xl/drawings/drawing1.xml").unwrap();
+    let a = doc.root.children.iter_mut().find_map(|n| if let Node::Element(e) = n { Some(e) } else { None }).unwrap();
+    a.local = "oneCellAnchor".into();
+    a.remove_attr("", "editAs");
+    a.remove_children(ns::XDR, "to");
+    a.children.insert(1, Node::Element(Element::new(ns::XDR, "ext").with_attr("", "cx", "4572000").with_attr("", "cy", "2743200")));
+    pkg.put_xml("xl/drawings/drawing1.xml", &doc, "application/vnd.openxmlformats-officedocument.drawing+xml");
+    let mut v = SheetsView::open(&pkg.to_bytes().unwrap(), "a.xlsx").unwrap();
+    let row = v.sheets()[0].charts[0].anchor.from.row;
+    v.shift_rows(0, 0, 3);
+    let back = SheetsView::open(&v.save().unwrap(), "a.xlsx").unwrap();
+    assert_eq!(back.sheets()[0].charts[0].anchor.from.row, row + 3);
+    assert_eq!(back.sheets()[0].charts[0].anchor.size, Some((4572000, 2743200)));
 }

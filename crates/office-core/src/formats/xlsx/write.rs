@@ -206,8 +206,7 @@ pub fn write(doc: &Document) -> Result<Package> {
     }
     let mut ctx = PartCtx::load(&out.pkg, &main)?;
     let sst_part = out.pkg.related(&main, kind::SHARED_STRINGS)?.into_iter().next().map(|(_, p)| p).filter(|p| out.pkg.has(p));
-    // Sheets nobody touched are left as they are, numbers into the string table and all, so
-    // the table is only needed if some sheet will be written.
+    // Sheets nobody touched are left as they are, numbers into the string table and all.
     let untouched: Vec<bool> = sheets.iter().map(|s| same && s.untouched() && s.part.as_deref().is_some_and(|p| out.pkg.has(p))).collect();
     let any_written = untouched.contains(&false);
     // Remove stale calculation dependencies through the context that will write the rels.
@@ -219,8 +218,10 @@ pub fn write(doc: &Document) -> Result<Package> {
             ctx.rels.remove(&rel.id);
         }
     }
+    // Loaded even when every sheet's cells are untouched: a sheet that gains or loses a chart is
+    // still written, and a table rebuilt from it alone would lose the other sheets' strings.
     let mut strings = match &sst_part {
-        Some(p) if same && any_written => Strings::from_table(super::read::shared_strings(&out.pkg, p)?),
+        Some(p) if same => Strings::from_table(super::read::shared_strings(&out.pkg, p)?),
         _ => Strings::default(),
     };
 

@@ -387,7 +387,15 @@ fn point(local: &str, p: &AnchorPoint) -> Element {
 
 /// An anchor's position set to `at`, keeping the rest of it (and its kind, when it can).
 fn moved_anchor(mut anchor: Element, at: &ChartAnchor) -> Element {
-    let Some(to) = at.to else { return anchor };
+    let Some(to) = at.to else {
+        // A one-cell anchor that moved with its cell (rows or columns inserted above it) keeps
+        // its size; an absolute one isn't tied to cells.
+        if anchor.local == "oneCellAnchor" {
+            anchor.remove_children(ns::XDR, "from");
+            anchor.children.insert(0, Node::Element(point("from", &at.from)));
+        }
+        return anchor;
+    };
     if anchor.local != "twoCellAnchor" {
         anchor.local = "twoCellAnchor".into();
         anchor.remove_children(ns::XDR, "pos");

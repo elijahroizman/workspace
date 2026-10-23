@@ -419,6 +419,23 @@ pub(super) fn rename_charts(sheets: &mut [Sheet], old: &str, new: &str) {
     }
 }
 
+/// Moves references into sheet `skip` held by the other sheets' charts (chart references always
+/// name their sheet, so `adjust` leaves references to any other sheet alone).
+pub(super) fn shift_other_chart_refs(sheets: &mut [Sheet], skip: usize, adjust: impl Fn(&str) -> String) {
+    for (i, s) in sheets.iter_mut().enumerate() {
+        if i == skip {
+            continue;
+        }
+        for c in &mut s.charts {
+            for ser in &mut c.series {
+                for f in [ser.name_ref.as_mut(), ser.categories.as_mut(), Some(&mut ser.values)].into_iter().flatten() {
+                    *f = adjust(f);
+                }
+            }
+        }
+    }
+}
+
 /// Moves a sheet's charts and their references for rows (`rows`) or columns inserted at `at`
 /// (`n > 0`) or deleted (`n < 0`), with `adjust` moving one reference.
 pub(super) fn shift_charts(s: &mut Sheet, rows: bool, at: u32, n: i64, adjust: impl Fn(&str) -> String) {

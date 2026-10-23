@@ -89,6 +89,16 @@ impl SheetsView {
         self.record(vec![CStep::Sheet { sheet, before: Box::new(before), after: Box::new(after) }], sel);
     }
 
+    /// `change_sheet` for inserting or deleting rows or columns, or `change_book` when another
+    /// sheet has charts whose references may move with it.
+    fn change_for_shift(&mut self, sheet: usize, f: impl FnOnce(&mut SheetsView)) {
+        if self.sheets().iter().enumerate().any(|(i, s)| i != sheet && !s.charts.is_empty()) {
+            self.change_book(f);
+        } else {
+            self.change_sheet(sheet, f);
+        }
+    }
+
     fn change_book(&mut self, f: impl FnOnce(&mut SheetsView)) {
         let before = self.sheets().to_vec();
         let sel = self.sel;
@@ -326,7 +336,7 @@ impl SheetsView {
 
     /// Inserts `n` rows above row `at` (or deletes `n` rows from it, for a negative `n`).
     pub fn shift_rows(&mut self, sheet: usize, at: u32, n: i64) {
-        self.change_sheet(sheet, |v| {
+        self.change_for_shift(sheet, |v| {
             let Some(s) = v.sheets_mut().get_mut(sheet) else { return };
             // Shared followers keep their formula only on the group's origin. Copy every formula in a
             // group that this shift touches before those origins are cleared, and move references the
@@ -334,6 +344,8 @@ impl SheetsView {
             prepare_shift(s, Axis::Row, at, n);
             let name = s.name.clone();
             super::charts::shift_charts(s, true, at, n, |f| adjust_formula(f, &name, Axis::Row, at, n));
+            super::charts::shift_other_chart_refs(v.sheets_mut(), sheet, |f| adjust_formula(f, &name, Axis::Row, at, n));
+            let Some(s) = v.sheets_mut().get_mut(sheet) else { return };
             if n < 0 {
                 let end = at as i64 - n;
                 s.rows.retain(|r| (r.index as i64) < at as i64 || r.index as i64 >= end);
@@ -360,11 +372,13 @@ impl SheetsView {
 
     /// Inserts `n` columns left of column `at` (or deletes `n` from it, for a negative `n`).
     pub fn shift_cols(&mut self, sheet: usize, at: u32, n: i64) {
-        self.change_sheet(sheet, |v| {
+        self.change_for_shift(sheet, |v| {
             let Some(s) = v.sheets_mut().get_mut(sheet) else { return };
             prepare_shift(s, Axis::Col, at, n);
             let name = s.name.clone();
             super::charts::shift_charts(s, false, at, n, |f| adjust_formula(f, &name, Axis::Col, at, n));
+            super::charts::shift_other_chart_refs(v.sheets_mut(), sheet, |f| adjust_formula(f, &name, Axis::Col, at, n));
+            let Some(s) = v.sheets_mut().get_mut(sheet) else { return };
             for r in &mut s.rows {
                 if n < 0 {
                     let end = at as i64 - n;
