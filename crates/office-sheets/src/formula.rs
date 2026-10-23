@@ -133,6 +133,67 @@ enum Tok {
     CloseBrace,
 }
 
+/// Add Excel's future-function markers for new formulas without changing strings,
+/// references, whitespace, or markers already present in imported files.
+/// See MS-XLSX section 2.2.3, Functions.
+pub fn file_text(src: &str) -> String {
+    rewrite_function_names(src, true)
+}
+
+/// The formula bar uses Excel's visible names; the model retains the file's text.
+pub fn display_text(src: &str) -> String {
+    rewrite_function_names(src, false)
+}
+
+fn rewrite_function_names(src: &str, for_file: bool) -> String {
+    let Ok(tokens) = lex(src) else { return src.to_string() };
+    let mut out = src.to_string();
+    // Replacing from right to left preserves the original token offsets.
+    for pair in tokens.windows(2).rev() {
+        let (Tok::Ident(name), span) = &pair[0] else { continue };
+        if pair[1].0 != Tok::Open {
+            continue;
+        }
+        let upper = name.to_ascii_uppercase();
+        let visible = upper.strip_prefix("_XLFN.").unwrap_or(&upper);
+        let visible = visible.strip_prefix("_XLWS.").unwrap_or(visible);
+        if for_file {
+            if upper == visible
+                && matches!(
+                    visible,
+                    "XLOOKUP"
+                        | "XMATCH"
+                        | "IFS"
+                        | "SWITCH"
+                        | "MAXIFS"
+                        | "MINIFS"
+                        | "STDEV.S"
+                        | "STDEV.P"
+                        | "VAR.S"
+                        | "VAR.P"
+                        | "MODE.SNGL"
+                        | "RANK.EQ"
+                        | "CEILING.MATH"
+                        | "FLOOR.MATH"
+                        | "DAYS"
+                        | "TEXTBEFORE"
+                        | "TEXTAFTER"
+                        | "CONCAT"
+                        | "TEXTJOIN"
+                        | "IFNA"
+                        | "XOR"
+                        | "NUMBERVALUE"
+                )
+            {
+                out.insert_str(span.start, "_xlfn.");
+            }
+        } else if visible.len() != upper.len() {
+            out.replace_range(span.start..span.start + upper.len() - visible.len(), "");
+        }
+    }
+    out
+}
+
 const ERRORS: [&str; 8] = ["#NULL!", "#DIV/0!", "#VALUE!", "#REF!", "#NAME?", "#NUM!", "#N/A", "#GETTING_DATA"];
 
 /// Splits formula text into tokens with where each one is (so references can be rewritten in
@@ -678,6 +739,23 @@ mod tests {
 
     fn cell(row: u32, col: u32) -> RefPart {
         RefPart { row: Some(row), col: Some(col), row_abs: false, col_abs: false }
+    }
+
+    #[test]
+    fn future_function_names_preserve_formula_text() {
+        let src = r#"IFNA(XLOOKUP (A1,'_xlfn.IFS'!B1:B3,C1:C3),"_xlfn.XLOOKUP(")"#;
+        let stored = r#"_xlfn.IFNA(_xlfn.XLOOKUP (A1,'_xlfn.IFS'!B1:B3,C1:C3),"_xlfn.XLOOKUP(")"#;
+        assert_eq!(file_text(src), stored);
+        assert_eq!(display_text(stored), src);
+        assert_eq!(file_text(stored), stored);
+        assert_eq!(file_text("SUMIFS(A1:A2,B1:B2,1)"), "SUMIFS(A1:A2,B1:B2,1)");
+        assert_eq!(file_text("stdev.s(A1:A2)+CEILING.MATH(2.2)"), "_xlfn.stdev.s(A1:A2)+_xlfn.CEILING.MATH(2.2)");
+        assert_eq!(display_text("_XLFN._XLWS.FILTER(A1:A2,TRUE)"), "FILTER(A1:A2,TRUE)");
+        assert_eq!(parse("_xlfn.STDEV.S(1,3)").unwrap(), parse("STDEV.S(1,3)").unwrap());
+        assert_eq!(shift("_xlfn.XLOOKUP(A1,B1:B3,C1:C3)", 1, 0).unwrap(), "_xlfn.XLOOKUP(A2,B2:B4,C2:C4)");
+        assert_eq!(display_text("_xlfn.unknown(A1)"), "unknown(A1)");
+        // Preserve unsupported syntax and markers rather than reconstructing a formula.
+        assert_eq!(file_text("Table1[Amount]"), "Table1[Amount]");
     }
 
     #[test]
