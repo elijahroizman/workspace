@@ -2,6 +2,27 @@
 
 Every release's notes. The release workflow copies a version's section into its GitHub release, and the app's update panel shows it.
 
+## 0.10.0 — 2026-10-23
+
+### Workspace is now Writan
+- The app has a new name. Google's office suite is also called Workspace; Writan is ours. The icon and the look are unchanged.
+- Updating keeps your settings, recent files, plugins and default apps. On a Mac the app keeps its place in Applications (a fresh install is Writan.app). On Windows it updates in place and the old shortcuts are replaced. On Linux the package is still `workspace`, so apt and dnf update it as before, and the command is now `writan`.
+- **Settings › Appearance › App icon** picks the dark tile (the default), a blue one or a light one.
+
+### Excel files and CSV
+- Word, PowerPoint and Excel files now run on Writan's own engine, written in Rust. Excel workbooks and CSV/TSV files open in a new spreadsheet editor: sheets, a formula bar, number formats, fonts, fills, borders, alignment, merged cells, row and column insert and delete, and resizing.
+- **Charts.** Select some cells and use **Insert chart** for a column, bar, line, area, pie, doughnut or scatter chart, made the way Excel would from the block. Drag to move or resize it; the inspector changes its type, stacking, title, cells, colors and legend. Charts in files from Excel show and stay as they were unless you change them.
+- **Formulas like in Excel.** Typing `=` lists the functions, with what each one takes and a line on what it does; Tab puts the highlighted one in. While you type a formula, clicking or dragging over cells (on any sheet) puts their references in, and each reference gets its own colored box. Brackets left open close when you press Enter.
+- About sixty more functions: SUMIFS, COUNTIFS, AVERAGEIFS, MAXIFS, MINIFS, IFS, SWITCH, XLOOKUP, XMATCH, MEDIAN, MODE, STDEV, VAR, LARGE, SMALL, RANK, EDATE, EOMONTH, DATEDIF, NETWORKDAYS, WORKDAY, TEXTBEFORE, TEXTAFTER and more. Newer ones are saved the way Excel expects.
+
+### Home
+- Open sits beside a New panel that lists every type you can make, so nothing gets squashed when LaTeX is on.
+- Recent's filters are plain pills without colors. Office holds Word, PowerPoint, Excel and CSV/TSV files; Notes holds Markdown and text; PDF; Images holds PNG, JPEG and HEIC; LaTeX holds .tex files.
+- In light mode Home shows the light logo. The dots in the top corners are gone.
+
+### Windows
+- Updating or uninstalling no longer stops with "Failed to kill Workspace". The installer waits for the app to close and ends it if it doesn't.
+
 ## 0.9.3 — 2026-10-20
 
 ### A new look
