@@ -1,12 +1,12 @@
-import { ArrowLeft, ArrowRight, Check, Search } from 'lucide-react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { canSetDefaults, defaultStatus, makeDefault } from '../lib/defaults'
-import { isMac, isTauri, showError } from '../lib/platform'
+import { isMac, showError } from '../lib/platform'
 import { PLUGINS, isBuiltIn } from '../plugins/catalog'
-import { EXTRA_FONTS } from '../state/fonts'
 import { enabledKinds, usePlugins } from '../state/plugins'
 import { useSetup } from '../state/setup'
+import { useWorkspace } from '../state/workspace'
 import { keysFor } from '../state/shortcuts'
 import { PluginRow } from './PluginList'
 import { Button, Checkbox, DocBadge, Kbd, LinkButton, Logo, Modal, Spinner, StepDots, Switch } from './ui'
@@ -160,7 +160,7 @@ const TOUR: Record<'palette' | 'word' | 'slides' | 'pdf' | 'extras' | 'split', T
         <KeyRow id="open">Open a file or folder</KeyRow>
       </>
     ),
-    art: <PaletteArt />,
+    art: <Shot name="palette" />,
   },
   word: {
     eyebrow: 'Word documents',
@@ -173,7 +173,7 @@ const TOUR: Record<'palette' | 'word' | 'slides' | 'pdf' | 'extras' | 'split', T
         <KeyRow id="focus-mode">Focus mode</KeyRow>
       </>
     ),
-    art: <WordArt />,
+    art: <Shot name="word" />,
   },
   slides: {
     eyebrow: 'Presentations',
@@ -186,7 +186,7 @@ const TOUR: Record<'palette' | 'word' | 'slides' | 'pdf' | 'extras' | 'split', T
         <KeyRow id="pptx.present">Play from this slide</KeyRow>
       </>
     ),
-    art: <SlidesArt />,
+    art: <Shot name="slides" />,
   },
   pdf: {
     eyebrow: 'PDF',
@@ -199,14 +199,14 @@ const TOUR: Record<'palette' | 'word' | 'slides' | 'pdf' | 'extras' | 'split', T
         <KeyRow id="find">Find in the PDF</KeyRow>
       </>
     ),
-    art: <PdfArt />,
+    art: <Shot name="pdf" />,
   },
   extras: {
     eyebrow: 'Fonts and extensions',
     title: 'Add only what you need',
     body: 'Writan stays small. Extra fonts for Word and PowerPoint download when you turn them on, and extensions add file types. Both live in Settings › Plugins.',
     keys: null,
-    art: <ExtrasArt />,
+    art: <Shot name="extras" />,
     extra: <ExtensionsList />,
   },
   split: {
@@ -220,7 +220,7 @@ const TOUR: Record<'palette' | 'word' | 'slides' | 'pdf' | 'extras' | 'split', T
         <KeyRow id="toggle-right">Inspector</KeyRow>
       </>
     ),
-    art: <SplitArt />,
+    art: <Shot name="split" />,
   },
 }
 
@@ -319,203 +319,14 @@ function DefaultsStep({ onBack, onDone }: { onBack: () => void; onDone: (windows
 }
 
 /* ───────────────────────── The tour's pictures ─────────────────────────
- * Small drawings of the app built from the theme's own colours, so they match light, dark and
- * custom themes. Lines stand in for text.
+ * Screenshots of the app in light and dark, made by scripts/tour-shots.mjs. The palette's pictures show this
+ * system's shortcuts.
  */
 
-function MockWindow({ tabs, children }: { tabs: { kind: string; name: string }[]; children: ReactNode }) {
-  return (
-    <div className="mock-window">
-      <div className="mock-tabs">
-        {tabs.map((t, i) => (
-          <span key={t.name} className={`mock-tab ${i === 0 ? 'on' : ''}`}>
-            <span className="mock-tab-dot" style={{ background: `var(--kind-${t.kind})` }} />
-            {t.name}
-          </span>
-        ))}
-      </div>
-      <div className="mock-body">{children}</div>
-    </div>
-  )
-}
+const SHOTS = import.meta.glob<string>('./tour/*.webp', { eager: true, import: 'default' })
 
-function Lines({ widths, className = '' }: { widths: number[]; className?: string }) {
-  return (
-    <>
-      {widths.map((w, i) => (
-        <span key={i} className={`mock-line ${className}`} style={{ width: `${w}%` }} />
-      ))}
-    </>
-  )
-}
-
-function PaletteArt() {
-  return (
-    <MockWindow tabs={[{ kind: 'docx', name: 'Report.docx' }, { kind: 'pdf', name: 'Invoice.pdf' }]}>
-      <div className="mock-page dim">
-        <span className="mock-title" />
-        <Lines widths={[100, 92, 96, 60]} />
-      </div>
-      <div className="mock-palette">
-        <div className="mock-palette-search">
-          <Search size={12} />
-          <span>spl</span>
-          <span className="mock-caret" />
-        </div>
-        <div className="mock-palette-row on">
-          Split view <Kbd keys={keysFor('split-view')} />
-        </div>
-        <div className="mock-palette-row">
-          <span className="mock-tab-dot" style={{ background: 'var(--kind-pdf)' }} />
-          Split-level floor plan.pdf <span className="faint">Recent</span>
-        </div>
-      </div>
-    </MockWindow>
-  )
-}
-
-function WordArt() {
-  return (
-    <MockWindow tabs={[{ kind: 'docx', name: 'Report.docx' }, { kind: 'pptx', name: 'Deck.pptx' }]}>
-      <div className="mock-split">
-        <div className="mock-sidebar">
-          <Lines widths={[80, 60, 70, 50]} className="thin" />
-        </div>
-        <div className="mock-page">
-          <span className="mock-title" />
-          <Lines widths={[100, 94, 97]} />
-          <span className="mock-line" style={{ width: '58%' }}>
-            <span className="mock-comment-mark" />
-          </span>
-          <div className="mock-table">
-            {Array.from({ length: 6 }, (_, i) => (
-              <span key={i} />
-            ))}
-          </div>
-          <Lines widths={[90, 70]} />
-          <span className="mock-comment">
-            <span className="mock-line thin" style={{ width: '80%' }} />
-            <span className="mock-line thin" style={{ width: '55%' }} />
-          </span>
-        </div>
-        <div className="mock-inspector">
-          <span className="mock-pill wide" />
-          <span className="mock-pill-row">
-            <span className="mock-pill b">B</span>
-            <span className="mock-pill i">I</span>
-            <span className="mock-pill u">U</span>
-          </span>
-          <span className="mock-pill wide" />
-          <span className="mock-swatches">
-            {['#1d1d1f', '#4f8cff', '#f2555a', '#3ecf8e'].map((c) => (
-              <span key={c} style={{ background: c }} />
-            ))}
-          </span>
-        </div>
-      </div>
-    </MockWindow>
-  )
-}
-
-function SlidesArt() {
-  return (
-    <MockWindow tabs={[{ kind: 'pptx', name: 'Deck.pptx' }, { kind: 'docx', name: 'Report.docx' }]}>
-      <div className="mock-split">
-        <div className="mock-strip">
-          {[0, 1, 2].map((i) => (
-            <span key={i} className={`mock-thumb ${i === 1 ? 'on' : ''}`}>
-              <span className="mock-line thin" style={{ width: '60%' }} />
-            </span>
-          ))}
-        </div>
-        <div className="mock-stage">
-          <div className="mock-slide">
-            <span className="mock-slide-title" />
-            <span className="mock-slide-shape" />
-            <span className="mock-slide-chart">
-              {[40, 70, 55, 90].map((h, i) => (
-                <span key={i} style={{ height: `${h}%` }} />
-              ))}
-            </span>
-          </div>
-          <div className="mock-notes">
-            <Lines widths={[70, 45]} className="thin" />
-          </div>
-        </div>
-      </div>
-    </MockWindow>
-  )
-}
-
-function PdfArt() {
-  return (
-    <MockWindow tabs={[{ kind: 'pdf', name: 'Lease.pdf' }, { kind: 'docx', name: 'Report.docx' }]}>
-      <div className="mock-split">
-        <div className="mock-strip">
-          {[0, 1, 2].map((i) => (
-            <span key={i} className={`mock-thumb portrait ${i === 0 ? 'on' : ''}`} />
-          ))}
-        </div>
-        <div className="mock-page">
-          <span className="mock-title" />
-          <span className="mock-line" style={{ width: '100%' }} />
-          <span className="mock-line mock-highlight" style={{ width: '88%' }} />
-          <Lines widths={[95, 70]} />
-          <span className="mock-field">
-            <Check size={10} strokeWidth={3} />
-          </span>
-          <svg className="mock-signature" viewBox="0 0 120 40" fill="none">
-            <path d="M4 28c10-18 16-22 18-14s-6 18 2 14 12-20 16-12-4 14 4 10 10-16 16-12 2 10 10 8 18-10 24-12 14 0 22-2" strokeWidth="2.2" strokeLinecap="round" />
-          </svg>
-          <span className="mock-sign-line" />
-        </div>
-      </div>
-    </MockWindow>
-  )
-}
-
-function ExtrasArt() {
-  const fonts = EXTRA_FONTS.slice(0, 4)
-  return (
-    <div className="mock-fonts">
-      {fonts.map((f, i) => (
-        <div key={f.id} className="mock-font">
-          <span className="mock-font-sample" style={{ fontFamily: f.fallback }}>
-            Aa
-          </span>
-          <span className="mock-font-text">
-            <strong>{f.family}</strong>
-            <span className="faint">{f.maker}</span>
-          </span>
-          <span className={`mock-switch ${i % 2 === 0 ? 'on' : ''}`} />
-        </div>
-      ))}
-      {!isTauri && <span className="faint mock-fonts-note">Fonts download in the app.</span>}
-    </div>
-  )
-}
-
-function SplitArt() {
-  return (
-    <MockWindow tabs={[{ kind: 'pdf', name: 'Questions.pdf' }, { kind: 'pdf', name: 'Answers.pdf' }]}>
-      <div className="mock-panes">
-        <div className="mock-pane on">
-          <div className="mock-page">
-            <span className="mock-title" />
-            <Lines widths={[100, 90, 95, 40]} />
-            <span className="mock-line mock-highlight" style={{ width: '75%' }} />
-            <Lines widths={[85, 60]} />
-          </div>
-        </div>
-        <div className="mock-divider" />
-        <div className="mock-pane">
-          <div className="mock-page">
-            <span className="mock-title short" />
-            <Lines widths={[96, 100, 80]} />
-            <Lines widths={[92, 66, 88]} />
-          </div>
-        </div>
-      </div>
-    </MockWindow>
-  )
+function Shot({ name }: { name: string }) {
+  const theme = useWorkspace((s) => s.theme)
+  const system = name === 'palette' ? (isMac ? '-mac' : '-pc') : ''
+  return <img className="tour-shot" src={SHOTS[`./tour/${name}-${theme}${system}.webp`]} alt="" draggable={false} />
 }

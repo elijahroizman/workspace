@@ -27,7 +27,11 @@ interface Props {
   editingHere?: boolean
   /** The formula editor: whether a click on a cell now puts its reference into the formula. */
   canPoint?: () => boolean
-  onPoint?: (from: [number, number], to: [number, number]) => void
+  /**
+   * Puts a reference into the formula: `replace` the one last put in, `extend` it from its first
+   * cell (Shift-click), or `add` another after a comma (⌘-click). Returns the range's first cell.
+   */
+  onPoint?: (from: [number, number], to: [number, number], how?: 'replace' | 'extend' | 'add') => [number, number] | undefined
   /** The ranges the formula being typed refers to, drawn in their colors. */
   refBoxes?: { r0: number; c0: number; r1: number; c1: number; color: string }[]
   /** Hooks for the box typed into on the cell (suggestions, the caret). */
@@ -174,10 +178,11 @@ export function Grid({
     if (e.button !== 0) return
     e.preventDefault()
     // Typing a formula: the click puts the cell's reference into it, and the editor keeps focus.
+    // Shift-click stretches the reference to the cell, and ⌘-click (Ctrl on Windows) adds another, as in Excel.
     if (editing !== null && canPoint?.()) {
       const at = cellAt(e)
-      onPoint?.(at, at)
-      drag.current = { kind: 'point', from: at }
+      const from = onPoint?.(at, at, e.shiftKey ? 'extend' : (isMac ? e.metaKey : e.ctrlKey) ? 'add' : 'replace') ?? at
+      drag.current = { kind: 'point', from }
       return
     }
     onSelectChart?.(null)

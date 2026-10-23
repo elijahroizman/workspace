@@ -140,8 +140,8 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
   const editorEl = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null)
   const formulaInput = useRef<HTMLInputElement>(null)
   const [caret, setCaret] = useState(0)
-  /** The reference last put in by clicking a cell: the next click replaces it. */
-  const pointer = useRef<{ start: number; end: number } | null>(null)
+  /** The reference last put in by clicking a cell, and its first cell: the next click replaces it. */
+  const pointer = useRef<{ start: number; end: number; anchor: [number, number]; sheet: number } | null>(null)
   const pendingCaret = useRef<number | null>(null)
   const [pick, setPick] = useState({ index: 0, moved: false })
   const [dismissed, setDismissed] = useState<number | null>(null)
@@ -277,17 +277,29 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
     return canPointAt(d.text, el.selectionStart ?? d.text.length)
   }
 
-  const onPoint = (from: [number, number], to: [number, number]) => {
+  const onPoint = (from: [number, number], to: [number, number], how: 'replace' | 'extend' | 'add' = 'replace'): [number, number] | undefined => {
     const d = draft.current
     const el = editorEl.current
     if (!d || !el) return
+    const here = engine.state.sheet
+    const last = pointer.current
+    if (how === 'extend' && last?.sheet === here) from = last.anchor
     let ref = a1(from, to)
-    if (engine.state.sheet !== d.sheet) ref = `${quoteSheet(engine.sheets[engine.state.sheet]?.name ?? '')}!${ref}`
-    const at = pointer.current ? pointer.current.end : (el.selectionStart ?? d.text.length)
-    const start = pointer.current ? pointer.current.start : at
-    pointer.current = { start, end: start + ref.length }
+    if (here !== d.sheet) ref = `${quoteSheet(engine.sheets[here]?.name ?? '')}!${ref}`
+    let text = d.text
+    let start: number
+    let at: number
+    if (how === 'add' && last) {
+      text = `${text.slice(0, last.end)},${text.slice(last.end)}`
+      start = at = last.end + 1
+    } else {
+      at = last ? last.end : (el.selectionStart ?? text.length)
+      start = last ? last.start : at
+    }
+    pointer.current = { start, end: start + ref.length, anchor: from, sheet: here }
     pendingCaret.current = start + ref.length
-    setDraft(d.text.slice(0, start) + ref + d.text.slice(at))
+    setDraft(text.slice(0, start) + ref + text.slice(at))
+    return from
   }
 
   const refBoxes = useMemo(() => {
@@ -487,6 +499,17 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
           <Section title={size * width > 1 ? `${size * width} cells` : `Cell ${cell?.address ?? ''}`}>
             <SelectField label="Number format" value={NUMBER_FORMATS.some((f) => f.value === cell?.numberFormat) ? (cell?.numberFormat ?? null) : null} placeholder={cell?.numberFormat || 'Custom'} options={NUMBER_FORMATS} onChange={(v) => format({ numberFormat: v })} />
           </Section>
+          <Section title="Chart">
+            <Button block disabled={st.csv} onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              chartTypeMenu(r.left, r.bottom + 4)
+            }}>
+              <ChartColumn size={14} /> Insert chart
+            </Button>
+            <Hint tone="faint" as="p">
+              {st.csv ? 'CSV files hold only cells. Save as an Excel workbook to add charts.' : (chartNote ?? 'Charts the selected cells, or the block of cells around the selected one.')}
+            </Hint>
+          </Section>
           <Section title="Text">
             <div className="docx-font-row">
               <SelectField value={cell?.font ?? 'Calibri'} options={[...new Set([...(cell?.font ? [cell.font] : []), ...FONTS])].map((f) => ({ value: f, label: f }))} onChange={(f) => format({ font: f })} />
@@ -593,17 +616,6 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
               </Button>
             </Section>
           )}
-          <Section title="Chart">
-            <Button block disabled={st.csv} onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect()
-              chartTypeMenu(r.left, r.bottom + 4)
-            }}>
-              <ChartColumn size={14} /> Insert chart
-            </Button>
-            <Hint tone="faint" as="p">
-              {st.csv ? 'CSV files hold only cells. Save as an Excel workbook to add charts.' : (chartNote ?? 'Charts the selected cells, or the block of cells around the selected one.')}
-            </Hint>
-          </Section>
           <Section title="File" collapsible defaultOpen={false}>
             <p className="faint" style={{ margin: 0, fontSize: 12 }}>
               {tab.path ? tab.path.replace(/^\/Users\/[^/]+/, '~') : 'Not saved yet'}

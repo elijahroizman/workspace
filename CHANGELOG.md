@@ -2,6 +2,19 @@
 
 Every release's notes. The release workflow copies a version's section into its GitHub release, and the app's update panel shows it.
 
+## 0.10.1 — 2026-10-23
+
+### Spreadsheets
+- While you type a formula, the hint that shows what a function takes no longer gets in the way of the cells under it. Clicking them puts their references in, and the hint fades while the pointer is over it. Before, you could pick only the one or two cells beside it.
+- Shift-click stretches the reference you just put in to a range, and ⌘-click (Ctrl-click on Windows and Linux) adds another after a comma, as in Excel.
+- **Insert chart** sits near the top of the inspector, under the number format.
+
+### App icon
+- The Blue and Light icons are the same size as the default in the Dock and taskbar, with its margin and shadow. Before, they filled the whole space and looked bigger than the apps around them.
+
+### Welcome tour
+- The tour's pictures are screenshots of Writan, in light or dark to match the app, instead of drawings. The command palette's shows this computer's shortcuts.
+
 ## 0.10.0 — 2026-10-23
 
 ### Workspace is now Writan

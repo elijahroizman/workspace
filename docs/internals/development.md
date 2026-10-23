@@ -76,7 +76,17 @@ cp /tmp/icons/{32x32.png,128x128.png,128x128@2x.png,icon.icns,icon.ico,icon.png}
 
 `public/favicon.svg` is the same mark, full bleed for small sizes, used by the browser version.
 
-The runtime choices in Settings use `Logo` in `src/components/ui.tsx` as their source. After changing its artwork, run `node scripts/app-icons.mjs` to regenerate `src-tauri/icons/variants/*.png`. The script needs ImageMagick (`magick`) and the npm dependencies. These variants change the running app's icon; the bundled icon stays the default.
+The runtime choices in Settings use `Logo` in `src/components/ui.tsx` as their source. After changing its artwork, run `node scripts/app-icons.mjs` to regenerate `src-tauri/icons/variants/*.png`. The script needs the npm dependencies; it renders with the Tauri CLI, as for the bundled icons, and puts each tile on the bundled icon's grid with its margin and shadow, so the Dock and taskbar show every choice at the same size. These variants change the running app's icon; the bundled icon stays the default.
+
+## The welcome tour's pictures
+
+`src/components/tour/*.webp` are screenshots of the app, in light and dark, opened on the sample documents in `scripts/tour/`. The palette's comes twice, with Mac and with Windows/Linux shortcuts. After a change that shows in them, serve a test build and run the script (it needs Playwright, which isn't a dependency: `npm i --no-save playwright`):
+
+```sh
+VITE_TEST_HOOKS=1 npx vite build && npx vite preview --port 1420
+node scripts/tour-shots.mjs http://localhost:1420/          # every picture
+node scripts/tour-shots.mjs http://localhost:1420/ palette  # just some
+```
 
 ## Windows installer hooks
 

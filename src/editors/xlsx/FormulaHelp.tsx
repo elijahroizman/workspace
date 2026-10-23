@@ -1,6 +1,7 @@
 // Under the box a formula is typed into: the functions whose names start with what's typed, or,
 // inside a call, what the function takes with the current argument in bold.
 
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { SheetFunction } from '../../engine/sheets/functions'
 
@@ -24,8 +25,21 @@ export function FormulaHelp({
   const below = window.innerHeight - r.bottom > 260
   const style: React.CSSProperties = { left: Math.max(4, Math.min(r.left, window.innerWidth - 340)), ...(below ? { top: r.bottom + 4 } : { bottom: window.innerHeight - r.top + 4 }) }
   const selected = items[index]
+  // The hint alone lets clicks through to the cells under it, and fades while the mouse is over it.
+  const hintOnly = items.length === 0
+  const box = useRef<HTMLDivElement>(null)
+  const [under, setUnder] = useState(false)
+  useEffect(() => {
+    if (!hintOnly) return setUnder(false)
+    const move = (e: MouseEvent) => {
+      const b = box.current?.getBoundingClientRect()
+      setUnder(!!b && e.clientX >= b.left && e.clientX <= b.right && e.clientY >= b.top && e.clientY <= b.bottom)
+    }
+    window.addEventListener('mousemove', move)
+    return () => window.removeEventListener('mousemove', move)
+  }, [hintOnly])
   return createPortal(
-    <div className="formula-help" style={style} onMouseDown={(e) => e.preventDefault()}>
+    <div ref={box} className={`formula-help ${hintOnly ? 'hint' : ''} ${under ? 'under' : ''}`} style={style} onMouseDown={(e) => e.preventDefault()}>
       {items.length > 0 ? (
         <>
           <ul role="listbox" aria-label="Functions">

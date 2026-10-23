@@ -65,6 +65,15 @@
   font: 12.5px var(--font-ui);
 }
 
+.formula-help.hint {
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+
+.formula-help.hint.under {
+  opacity: 0.15;
+}
+
 .formula-help ul {
   max-height: 190px;
   margin: 0;
