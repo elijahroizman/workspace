@@ -75,8 +75,6 @@ const CHART_KINDS: { kind: ChartKind; label: string; icon: React.ReactNode }[] =
   { kind: 'doughnut', label: 'Doughnut', icon: <Donut size={15} /> },
   { kind: 'scatter', label: 'Scatter', icon: <ChartScatter size={15} /> },
 ]
-/** Charts are placed in grid pixels, 96 to the inch as in Excel. */
-const PX_PER_INCH = 96
 const LEGENDS = [
   { value: 'none', label: 'None' },
   { value: 'right', label: 'Right' },
@@ -507,7 +505,6 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
             chart={chart}
             kind={tab.kind}
             onChange={setChart}
-            onResize={(w, h) => run({ cmd: 'moveChart', sheet, index: chartSel!, x: chart.x, y: chart.y, w: Math.round(w), h: Math.round(h) })}
             onDelete={() => {
               run({ cmd: 'deleteChart', sheet, index: chartSel! })
               setChartSel(null)
@@ -774,19 +771,7 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
 }
 
 /** The inspector for a selected chart: its kind, title, cells, colors and legend. */
-function ChartPanel({
-  chart,
-  kind,
-  onChange,
-  onResize,
-  onDelete,
-}: {
-  chart: ChartView
-  kind: string
-  onChange: (patch: Record<string, unknown>) => void
-  onResize: (w: number, h: number) => void
-  onDelete: () => void
-}) {
+function ChartPanel({ chart, kind, onChange, onDelete }: { chart: ChartView; kind: string; onChange: (patch: Record<string, unknown>) => void; onDelete: () => void }) {
   const stackable = ['column', 'bar', 'line', 'area'].includes(chart.kind)
   const pie = chart.kind === 'pie' || chart.kind === 'doughnut'
   const commitOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -855,12 +840,6 @@ function ChartPanel({
       </Section>
       <Section title="Legend">
         <SelectField value={chart.legend ?? 'none'} options={LEGENDS} onChange={(v) => onChange({ legend: v })} />
-      </Section>
-      <Section title="Size">
-        <div className="grid-2">
-          <NumberField label="W" suffix="in" value={chart.w / PX_PER_INCH} precision={2} step={0.5} min={0.5} max={40} onCommit={(w) => onResize(w * PX_PER_INCH, chart.h)} />
-          <NumberField label="H" suffix="in" value={chart.h / PX_PER_INCH} precision={2} step={0.5} min={0.5} max={40} onCommit={(h) => onResize(chart.w, h * PX_PER_INCH)} />
-        </div>
       </Section>
       <Section title="Chart">
         <Button variant="danger" block onClick={onDelete}>

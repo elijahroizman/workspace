@@ -2,6 +2,12 @@
 
 Every release's notes. The release workflow copies a version's section into its GitHub release, and the app's update panel shows it.
 
+## 0.10.3 — 2026-10-23
+
+### Spreadsheets
+- **Zoom** in the inspector makes the sheet bigger: 100%, 125%, 150% or 175%. Every spreadsheet opens at the last zoom you picked, whether in the inspector, with the buttons under the sheet or with ⌘+ and ⌘−.
+- New charts are back to 5 by 3 inches, and the chart inspector's Size section is gone.
+
 ## 0.10.2 — 2026-10-23
 
 ### Spreadsheets

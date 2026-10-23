@@ -179,8 +179,7 @@ impl SheetsView {
         let grid = &self.grids[&sheet];
         let x = grid.x(range.end.col + 1) + grid.default_width.min(64.0) / 2.0;
         let y = grid.y(range.start.row) + grid.default_height.min(20.0) / 2.0;
-        // 7 by 4 inches: roomier than Excel's 5 by 3.
-        let (w, h) = (672.0, 384.0);
+        let (w, h) = (480.0, 288.0);
         let anchor = ChartAnchor { from: grid.point_at(x, y), to: Some(grid.point_at(x + w, y + h)), size: None };
         let legend = (series.len() > 1 || !kind.has_axes()).then_some(LegendPosition::Bottom);
         let chart = Chart { kind, grouping: ChartGrouping::Standard, title, legend, series, anchor, source: None };
