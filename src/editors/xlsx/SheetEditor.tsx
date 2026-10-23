@@ -66,6 +66,8 @@ const CHART_KINDS: { kind: ChartKind; label: string; icon: React.ReactNode }[] =
   { kind: 'doughnut', label: 'Doughnut', icon: <Donut size={15} /> },
   { kind: 'scatter', label: 'Scatter', icon: <ChartScatter size={15} /> },
 ]
+/** Charts are placed in grid pixels, 96 to the inch as in Excel. */
+const PX_PER_INCH = 96
 const LEGENDS = [
   { value: 'none', label: 'None' },
   { value: 'right', label: 'Right' },
@@ -488,6 +490,7 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
             chart={chart}
             kind={tab.kind}
             onChange={setChart}
+            onResize={(w, h) => run({ cmd: 'moveChart', sheet, index: chartSel!, x: chart.x, y: chart.y, w: Math.round(w), h: Math.round(h) })}
             onDelete={() => {
               run({ cmd: 'deleteChart', sheet, index: chartSel! })
               setChartSel(null)
@@ -498,17 +501,6 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
           <InspectorHeader kind={tab.kind}>{st.csv ? 'CSV file' : 'Workbook'}</InspectorHeader>
           <Section title={size * width > 1 ? `${size * width} cells` : `Cell ${cell?.address ?? ''}`}>
             <SelectField label="Number format" value={NUMBER_FORMATS.some((f) => f.value === cell?.numberFormat) ? (cell?.numberFormat ?? null) : null} placeholder={cell?.numberFormat || 'Custom'} options={NUMBER_FORMATS} onChange={(v) => format({ numberFormat: v })} />
-          </Section>
-          <Section title="Chart">
-            <Button block disabled={st.csv} onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect()
-              chartTypeMenu(r.left, r.bottom + 4)
-            }}>
-              <ChartColumn size={14} /> Insert chart
-            </Button>
-            <Hint tone="faint" as="p">
-              {st.csv ? 'CSV files hold only cells. Save as an Excel workbook to add charts.' : (chartNote ?? 'Charts the selected cells, or the block of cells around the selected one.')}
-            </Hint>
           </Section>
           <Section title="Text">
             <div className="docx-font-row">
@@ -561,6 +553,17 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
                 { value: 'bottom', label: 'Bottom' },
               ]}
             />
+          </Section>
+          <Section title="Chart">
+            <Button block disabled={st.csv} onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              chartTypeMenu(r.left, r.bottom + 4)
+            }}>
+              <ChartColumn size={14} /> Insert chart
+            </Button>
+            <Hint tone="faint" as="p">
+              {st.csv ? 'CSV files hold only cells. Save as an Excel workbook to add charts.' : (chartNote ?? 'Charts the selected cells, or the block of cells around the selected one.')}
+            </Hint>
           </Section>
           <Section title="Borders" collapsible defaultOpen={false}>
             <div className="grid-2">
@@ -746,7 +749,19 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
 }
 
 /** The inspector for a selected chart: its kind, title, cells, colors and legend. */
-function ChartPanel({ chart, kind, onChange, onDelete }: { chart: ChartView; kind: string; onChange: (patch: Record<string, unknown>) => void; onDelete: () => void }) {
+function ChartPanel({
+  chart,
+  kind,
+  onChange,
+  onResize,
+  onDelete,
+}: {
+  chart: ChartView
+  kind: string
+  onChange: (patch: Record<string, unknown>) => void
+  onResize: (w: number, h: number) => void
+  onDelete: () => void
+}) {
   const stackable = ['column', 'bar', 'line', 'area'].includes(chart.kind)
   const pie = chart.kind === 'pie' || chart.kind === 'doughnut'
   const commitOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -815,6 +830,12 @@ function ChartPanel({ chart, kind, onChange, onDelete }: { chart: ChartView; kin
       </Section>
       <Section title="Legend">
         <SelectField value={chart.legend ?? 'none'} options={LEGENDS} onChange={(v) => onChange({ legend: v })} />
+      </Section>
+      <Section title="Size">
+        <div className="grid-2">
+          <NumberField label="W" suffix="in" value={chart.w / PX_PER_INCH} precision={2} step={0.5} min={0.5} max={40} onCommit={(w) => onResize(w * PX_PER_INCH, chart.h)} />
+          <NumberField label="H" suffix="in" value={chart.h / PX_PER_INCH} precision={2} step={0.5} min={0.5} max={40} onCommit={(h) => onResize(chart.w, h * PX_PER_INCH)} />
+        </div>
       </Section>
       <Section title="Chart">
         <Button variant="danger" block onClick={onDelete}>
