@@ -149,6 +149,7 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
   /** What the person typed (or null to stop editing). */
   const edit = (text: string | null) => {
     pointer.current = null
+    pendingCaret.current = null
     setDismissed(null)
     const el = editorEl.current
     if (text !== null && el) setCaret(el.selectionStart ?? text.length)
@@ -297,8 +298,11 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
       start = last ? last.start : at
     }
     pointer.current = { start, end: start + ref.length, anchor: from, sheet: here }
+    const next = text.slice(0, start) + ref + text.slice(at)
+    // Moving within the same cell doesn't change editing, so its caret effect won't run.
+    if (next === d.text) return from
     pendingCaret.current = start + ref.length
-    setDraft(text.slice(0, start) + ref + text.slice(at))
+    setDraft(next)
     return from
   }
 
