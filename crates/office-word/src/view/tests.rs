@@ -344,3 +344,11 @@ fn typing_a_list_marker_starts_a_list() {
     v.insert_text(" ");
     assert_eq!(texts(&v)[1], "x- ");
 }
+
+#[test]
+fn a_workbook_named_docx_is_an_error_not_a_crash() {
+    // The app picks the editor by extension; the view once panicked on a workbook's body.
+    let book = Compiler::new().write(&Document::new(Kind::Sheets), Kind::Sheets).unwrap();
+    let e = WordView::open(&book).err().expect("a workbook isn't a Word document");
+    assert_eq!(e.to_string(), "this is an Excel workbook, not a Word document");
+}

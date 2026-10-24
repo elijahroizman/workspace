@@ -108,6 +108,9 @@ pub struct SlidePaint {
 impl SlidesView {
     pub fn open(bytes: &[u8]) -> office_core::Result<SlidesView> {
         let doc = Compiler::new().with_layer(Decks).read(bytes, Some("deck.pptx"))?;
+        if doc.kind != Kind::Slides {
+            return Err(office_core::Error::Invalid(format!("this is {}, not a PowerPoint presentation", doc.kind.described())));
+        }
         Ok(SlidesView::from_document(doc))
     }
 

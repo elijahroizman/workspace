@@ -337,3 +337,28 @@ fn sheet_size_is_kept_in_a_hidden_name_and_follows_the_sheet() {
     let back = SheetsView::open(&again, "Book.xlsx").unwrap();
     assert_eq!(back.sheets()[0].size, Some((5000, 40)));
 }
+
+#[test]
+fn a_row_numbered_past_excel_stops_at_its_last_row() {
+    // A damaged sheet's row 2147483648 once asked for 16 GB of row positions.
+    let bytes = SheetsView::blank(Kind::Sheets).save().unwrap();
+    let mut pkg = Package::read(&bytes).unwrap();
+    let xml = sheet_xml(&bytes, "xl/worksheets/sheet1.xml");
+    let rows = r#"<sheetData><row r="2147483648"><c r="A1"><v>1</v></c></row><row><c r="ZZZ2"><v>2</v></c></row></sheetData>"#;
+    let xml = xml.replace("<sheetData></sheetData>", rows);
+    assert!(xml.contains("2147483648"), "{xml}");
+    pkg.replace("xl/worksheets/sheet1.xml", xml.into_bytes()).unwrap();
+    let mut v = SheetsView::open(&pkg.to_bytes().unwrap(), "Book.xlsx").unwrap();
+    let g = v.grid(0);
+    assert_eq!((g.rows, g.cols), (crate::MAX_ROWS, crate::MAX_COLS));
+    assert!(g.content.0 <= g.rows && g.content.1 <= g.cols);
+    let mut host = FixedMeasurer::default();
+    v.paint(&mut host, 0, 0, 20, 0, 10);
+}
+
+#[test]
+fn other_kinds_of_file_are_an_error_not_a_crash() {
+    let word = office_core::Compiler::new().write(&Document::new(Kind::Word), Kind::Word).unwrap();
+    let e = SheetsView::open(&word, "renamed.xlsx").err().expect("a Word file isn't a workbook");
+    assert_eq!(e.to_string(), "this is a Word document, not an Excel workbook");
+}

@@ -431,3 +431,10 @@ fn transition_changes_in_an_outer_group_undo_together_and_keep_timing_without_an
     assert!(v.slide_infos().iter().all(|s| s.transition.is_none()));
     assert!(!v.can_undo());
 }
+
+#[test]
+fn a_document_named_pptx_is_an_error_not_a_crash() {
+    let doc = Compiler::new().write(&Document::new(Kind::Word), Kind::Word).unwrap();
+    let e = SlidesView::open(&doc).err().expect("a Word file isn't a deck");
+    assert_eq!(e.to_string(), "this is a Word document, not a PowerPoint presentation");
+}
