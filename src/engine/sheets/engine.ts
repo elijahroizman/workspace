@@ -156,12 +156,16 @@ export class SheetsEngine {
 
   static async open(bytes: Uint8Array | null, name: string): Promise<SheetsEngine> {
     const engine = await loadEngine()
-    expectKind(bytes, 'sheets')
+    if (!/\.csv$/i.test(name) || bytes?.length) expectKind(bytes, 'sheets')
     await preloadFonts(BASE_FONTS)
     const doc = new engine.SheetsDoc(bytes ?? new Uint8Array(), name, host)
     doc.setNow(serialNow())
     const e = new SheetsEngine(doc)
     e.refresh()
+    if (e.sheets[e.state.sheet]?.hidden) {
+      const visible = e.sheets.findIndex((s) => !s.hidden)
+      if (visible >= 0) e.run({ cmd: 'select', sheet: visible, anchor: [0, 0], focus: [0, 0] })
+    }
     return e
   }
 

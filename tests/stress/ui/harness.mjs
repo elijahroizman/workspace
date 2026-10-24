@@ -5,15 +5,17 @@
 // to an in-memory overlay (window.__fake.files) that later reads see; nothing on disk changes.
 // window.__fake.failWrite = 'message' makes every write_file reject with that message.
 import { chromium, webkit } from 'playwright'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 
 export const BASE = process.env.WRITAN_URL ?? 'http://localhost:1420/'
 export const ENGINE = process.env.ENGINE ?? 'chromium'
 
 export async function launch({ scale = 1, viewport = { width: 1400, height: 900 }, tauri = true, init } = {}) {
   const browser = await (ENGINE === 'webkit' ? webkit : chromium).launch(ENGINE === 'webkit' ? {} : { args: ['--no-sandbox', '--enable-precise-memory-info'] })
+  mkdirSync('/tmp/writan-stress', { recursive: true })
   const context = await browser.newContext({ viewport, deviceScaleFactor: scale })
   const page = await context.newPage()
+  page.setDefaultTimeout(15000)
   const logs = []
   page.on('console', (m) => {
     if (['error', 'warning'].includes(m.type())) logs.push(`[${m.type()}] ${m.text().slice(0, 300)}`)
@@ -52,6 +54,9 @@ function fakeTauri() {
     calls: [],
     listeners: {},
     failWrite: null,
+    failRead: null,
+    writeDelay: 0,
+    clock: Date.now(),
     savePath: null,
     destroyed: false,
     infoOverride: new Map(),
@@ -75,6 +80,7 @@ function fakeTauri() {
       fake.calls.push(cmd)
       switch (cmd) {
         case 'read_file': {
+          if (fake.failRead) throw fake.failRead
           if (fake.files.has(args.path)) return fake.files.get(args.path).buffer.slice(0)
           const res = await fetch(fsUrl(args.path))
           if (!res.ok) throw `No such file or directory (os error 2): ${args.path}`
@@ -89,7 +95,8 @@ function fakeTauri() {
           const path = decodeURIComponent(opts.headers['x-path'])
           if (fake.failWrite) throw fake.failWrite
           const bytes = new Uint8Array(args)
-          bytes.mtime = Date.now()
+          if (fake.writeDelay) await new Promise((r) => setTimeout(r, fake.writeDelay))
+          bytes.mtime = ++fake.clock
           fake.files.set(path, bytes)
           fake.writes.push({ path, size: bytes.length, at: Date.now() })
           return null
@@ -147,6 +154,8 @@ export async function start(page) {
   await page.waitForFunction(() => window.__workspace, null, { timeout: 15000 })
   // Close the welcome tour if it shows.
   await page.waitForTimeout(500)
+  check('page identity', page.url() === BASE && /Writan|Workspace/i.test(await page.title()), `${page.url()} | ${await page.title()}`)
+  check('app rendered without a framework overlay', await page.locator('.app').count() > 0 && await page.locator('vite-error-overlay').count() === 0)
 }
 
 let failures = 0
@@ -156,6 +165,7 @@ export function check(name, ok, detail = '') {
 }
 export const done = async (browser, logs) => {
   if (logs?.length) console.log(logs.slice(0, 30).join('\n'))
+  check('no unhandled page errors', !logs?.some((l) => l.startsWith('[pageerror]')))
   await browser.close()
   process.exitCode = failures ? 1 : 0
 }

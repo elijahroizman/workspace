@@ -8,16 +8,15 @@ import type { EditorProps } from '../../App'
 import { Workbench } from '../../components/Workbench'
 import { IconButton } from '../../components/ui'
 import { focusReplace } from '../../lib/codemirror'
+import { TextFile } from '../../lib/textcodec'
 import { registerEditor, useWorkspace } from '../../state/workspace'
 import './text.css'
 
 /** Plain .txt files: a wrapping text editor with nothing else around it. */
 export default function TextEditor({ tab, active }: EditorProps) {
-  const initial = useMemo(() => (tab.bytes ? decode(tab.bytes) : ''), [tab.bytes])
-  // Keep the file's own line endings when saving.
-  const lineEnding = useMemo(() => (initial.includes('\r\n') ? '\r\n' : '\n'), [initial])
-  // CodeMirror reads every line ending as \n, so compare against the same.
-  const savedText = useRef(initial.replace(/\r\n?/g, '\n'))
+  const file = useMemo(() => new TextFile(tab.bytes), [tab.bytes])
+  const initial = file.text
+  const savedText = useRef(initial)
   const viewRef = useRef<EditorView | null>(null)
   const host = useRef<HTMLDivElement>(null)
   const markDirty = useWorkspace((s) => s.markDirty)
@@ -39,7 +38,10 @@ export default function TextEditor({ tab, active }: EditorProps) {
           placeholder('Start typing…'),
           EditorView.contentAttributes.of({ spellcheck: 'true', autocorrect: 'on', autocapitalize: 'sentences' }),
           EditorView.updateListener.of((u) => {
-            if (u.docChanged) markDirty(tab.id, u.state.doc.toString() !== savedText.current)
+            if (u.docChanged) {
+              file.update(u.changes)
+              markDirty(tab.id, u.state.doc.toString() !== savedText.current)
+            }
             if (u.docChanged || u.selectionSet) {
               const head = u.state.selection.main.head
               const line = u.state.doc.lineAt(head)
@@ -61,7 +63,8 @@ export default function TextEditor({ tab, active }: EditorProps) {
   useEffect(
     () =>
       registerEditor(tab.id, {
-        getBytes: async () => new TextEncoder().encode(currentText(viewRef.current).replace(/\n/g, lineEnding)),
+        getBytes: async () => file.getBytes(),
+        getRevision: () => file.revision,
         markSaved: () => {
           savedText.current = currentText(viewRef.current)
         },
@@ -77,7 +80,7 @@ export default function TextEditor({ tab, active }: EditorProps) {
           window.print()
         },
       }),
-    [tab.id, lineEnding],
+    [tab.id, file],
   )
 
   const run = (command: (view: EditorView) => boolean) => {
@@ -108,8 +111,4 @@ export default function TextEditor({ tab, active }: EditorProps) {
 
 function currentText(view: EditorView | null) {
   return view?.state.doc.toString() ?? ''
-}
-
-function decode(bytes: Uint8Array) {
-  return new TextDecoder('utf-8').decode(bytes).replace(/^﻿/, '')
 }
