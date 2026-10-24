@@ -9,6 +9,7 @@ A static page about Writan with links to its downloads. Plain HTML and CSS, plus
 | `releases.js` | Asks the GitHub API for the latest release and points each download button at its file |
 | `app-icon.svg` | A copy of [`assets/app-icon.svg`](../assets/app-icon.svg) |
 | `favicon.svg` | A copy of [`public/favicon.svg`](../public/favicon.svg), the full-bleed mark for small sizes |
+| `previews/` | Full-page screenshots for review: 1440 px light and dark, 390 px light. Not linked from the page |
 
 ## Preview it
 
