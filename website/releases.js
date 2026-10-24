@@ -14,6 +14,7 @@
     rpm: /\.x86_64\.rpm$/,
   }
 
+  /** The first asset whose name matches `pattern` and whose download link is on github.com, or null. */
   function findAsset(assets, pattern) {
     for (var i = 0; i < assets.length; i++) {
       if (pattern.test(assets[i].name) && /^https:\/\/github\.com\//.test(assets[i].browser_download_url)) return assets[i]
@@ -21,10 +22,12 @@
     return null
   }
 
+  /** A byte count as whole megabytes, for the button's tooltip. */
   function megabytes(bytes) {
     return Math.round(bytes / 1048576) + ' MB'
   }
 
+  /** Points the buttons at `release`'s files and shows its version. Leaves a button alone if its file is missing. */
   function apply(release) {
     var assets = Array.isArray(release.assets) ? release.assets : []
     var version = typeof release.tag_name === 'string' ? release.tag_name.replace(/^v/, '') : ''
