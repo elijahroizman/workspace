@@ -346,7 +346,7 @@ pub fn recalculate(doc: &mut Document, now: Option<f64>) -> usize {
                 };
                 if let Some(text) = text {
                     let expr = formula::parse(&text).unwrap_or(Expr::Error("#NAME?".into()));
-                    formulas.insert((si, row.index, c.col), expr);
+                    formulas.insert((si, row.index, c.col), std::rc::Rc::new(expr));
                 }
             }
         }
@@ -405,7 +405,9 @@ struct Workbook<'a> {
     names: Vec<DefinedName>,
     date_system: DateSystem,
     now: Option<f64>,
-    formulas: HashMap<(usize, u32, u32), Expr>,
+    /// Shared, so working one out doesn't copy its tree: a copy recurses, and a sum of a
+    /// hundred thousand terms overflowed the stack.
+    formulas: HashMap<(usize, u32, u32), std::rc::Rc<Expr>>,
     done: HashMap<(usize, u32, u32), V>,
     working: HashSet<(usize, u32, u32)>,
     /// The sheet of the formula being worked out, innermost last.

@@ -81,6 +81,26 @@ fn circular_references_and_errors() {
 }
 
 #[test]
+fn recalculating_long_formulas_does_not_clone_their_recursive_trees() {
+    std::thread::Builder::new()
+        .stack_size(1024 * 1024)
+        .spawn(|| {
+            for (operator, term, expected) in
+                [("+", "1", Value::Number(100_000.0)), ("^", "1", Value::Number(1.0)), ("&amp;", "\"\"", Value::Text(String::new()))]
+            {
+                let formula = std::iter::repeat_n(term, 100_000).collect::<Vec<_>>().join(operator);
+                let rows = format!(r#"<row r="1"><c r="A1"><f>{formula}</f></c></row>"#);
+                let mut doc = workbook_with(cell_xml(&rows));
+                assert_eq!(recalculate(&mut doc, None), 1);
+                assert_eq!(value(&doc, 0, "A1"), expected);
+            }
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+#[test]
 fn dates_in_the_1904_system() {
     let rows = r#"<row r="1"><c r="A1" s="1"><v>0</v></c></row>"#;
     let doc = workbook_with(|part, text| {
