@@ -236,6 +236,9 @@ fn compile(build_root: PathBuf, key: &str, source: &str, dir: Option<&str>, engi
             .arg("-interaction=nonstopmode")
             .arg("-file-line-error")
             .arg(format!("-output-directory={}", build.display()));
+        // \write18 may run only TeX's own safe list of programs, even if the TeX installation is set
+        // to allow any (people do that for minted): opening a downloaded .tex mustn't run commands.
+        cmd.arg(if miktex { "--restrict-write18" } else { "-shell-restricted" });
         if miktex {
             // Packages the document needs install by themselves instead of asking.
             cmd.arg("--enable-installer");
