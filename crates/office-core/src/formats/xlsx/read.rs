@@ -1,5 +1,5 @@
 use super::props::read_string;
-use crate::formats::common::{read_theme, rel_attr, shell, PartRels};
+use crate::formats::common::{expect_root, read_theme, rel_attr, shell, PartRels};
 use crate::model::{Body, CellRef, Document, Fingerprint, Kind, Origin, Range, Sheet, SheetCell, SheetRow, Value};
 use crate::opc::{rels::kind, Package, Properties};
 use crate::xml::{ns, stream, Element};
@@ -8,6 +8,7 @@ use crate::{Error, Result};
 pub fn read(pkg: Package) -> Result<Document> {
     let main = pkg.main_part()?;
     let workbook = pkg.xml(&main)?;
+    expect_root(&workbook.root, &main, ns::X, "workbook")?;
     let rels = PartRels::new(&pkg, &main)?;
     let mut doc = Document::new(Kind::Sheets);
     doc.properties = Properties::read(&pkg)?;

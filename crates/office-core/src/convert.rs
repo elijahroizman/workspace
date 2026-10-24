@@ -175,7 +175,10 @@ fn slides_to_blocks(slides: &[Slide]) -> Vec<Block> {
     let mut blocks = Vec::new();
     for (i, slide) in slides.iter().filter(|s| !s.hidden).enumerate() {
         if i > 0 {
-            blocks.push(Block::Paragraph(Paragraph { content: vec![Inline::Break { kind: BreakKind::Page }], ..Default::default() }));
+            blocks.push(Block::Paragraph(Paragraph {
+                content: vec![Inline::Break { kind: BreakKind::Page, origin: Default::default() }],
+                ..Default::default()
+            }));
         }
         for f in reading_order(&slide.frames) {
             frame_blocks(f, &mut blocks);
@@ -451,7 +454,7 @@ fn flow_to_slides(blocks: &[Block]) -> Body {
                 let mut part = Paragraph { props: p.props.clone(), mark: p.mark.clone(), ..Default::default() };
                 for inline in &p.content {
                     match inline {
-                        Inline::Break { kind: BreakKind::Page } => {
+                        Inline::Break { kind: BreakKind::Page, .. } => {
                             if !part.content.is_empty() {
                                 text.push(part.clone());
                                 part.content.clear();
@@ -547,7 +550,7 @@ mod tests {
                 Block::Paragraph(Paragraph::text("Intro")),
                 Block::Table(Table::from_text(&[vec!["k".into(), "v".into()], vec!["n".into(), "2".into()]], Emu(1_000_000))),
                 Block::Paragraph(Paragraph {
-                    content: vec![Inline::Break { kind: BreakKind::Page }, Inline::Text(Run::new("Page two"))],
+                    content: vec![Inline::Break { kind: BreakKind::Page, origin: Default::default() }, Inline::Text(Run::new("Page two"))],
                     ..Default::default()
                 }),
             ],

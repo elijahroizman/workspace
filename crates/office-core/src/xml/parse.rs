@@ -92,16 +92,17 @@ pub fn parse(bytes: &[u8]) -> Result<XmlDoc, String> {
     Ok(XmlDoc { declaration, before: top, root, after })
 }
 
-pub(super) fn decode(bytes: &[u8]) -> Result<String, String> {
+/// The part as text: borrowed when it's UTF-8 already, which nearly every part is, so a big
+/// part isn't copied before it's parsed.
+pub(super) fn decode(bytes: &[u8]) -> Result<std::borrow::Cow<'_, str>, String> {
     let utf16 = |bytes: &[u8], from: fn([u8; 2]) -> u16| {
         let units: Vec<u16> = bytes.as_chunks::<2>().0.iter().map(|c| from(*c)).collect();
-        String::from_utf16(&units).map_err(|e| e.to_string())
+        String::from_utf16(&units).map(std::borrow::Cow::Owned).map_err(|e| e.to_string())
     };
     match bytes {
-        [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8(rest.to_vec()).map_err(|e| e.to_string()),
         [0xFF, 0xFE, rest @ ..] => utf16(rest, u16::from_le_bytes),
         [0xFE, 0xFF, rest @ ..] => utf16(rest, u16::from_be_bytes),
-        _ => String::from_utf8(bytes.to_vec()).map_err(|e| e.to_string()),
+        [0xEF, 0xBB, 0xBF, rest @ ..] | rest => std::str::from_utf8(rest).map(std::borrow::Cow::Borrowed).map_err(|e| e.to_string()),
     }
 }
 

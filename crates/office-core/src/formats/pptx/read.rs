@@ -1,6 +1,6 @@
 use super::is_tree_props;
 use crate::drawing::{ShapeProps, Xfrm};
-use crate::formats::common::{read_theme, rel_attr, shell, PartRels};
+use crate::formats::common::{expect_root, read_theme, rel_attr, shell, PartRels};
 use crate::formats::dml::{read_paragraph, read_text_body};
 use crate::model::{Block, Body, Cell, Document, Frame, FrameContent, Image, Kind, Placeholder, Row, Slide, SlideSize, Table};
 use crate::opc::{Package, Properties};
@@ -13,6 +13,7 @@ const TABLE_URI: &str = "http://schemas.openxmlformats.org/drawingml/2006/table"
 pub fn read(pkg: Package) -> Result<Document> {
     let main = pkg.main_part()?;
     let pres = pkg.xml(&main)?;
+    expect_root(&pres.root, &main, ns::P, "presentation")?;
     let rels = PartRels::new(&pkg, &main)?;
     let mut doc = Document::new(Kind::Slides);
     doc.properties = Properties::read(&pkg)?;
@@ -88,7 +89,9 @@ fn read_frame(el: &Element, rels: &PartRels, doc: &mut Document) -> Frame {
         shape: ShapeProps::default(),
         placeholder,
         link: c_nv.and_then(|c| crate::formats::dml::read_link(c, Some(rels))),
-        content: FrameContent::Raw { xml: el.clone() },
+        // A group's frames are read below. Copying its whole tree here as well, at every level,
+        // made nested groups quadratic.
+        content: FrameContent::Raw { xml: if el.is(ns::P, "grpSp") { Element::new("", "grpSp") } else { el.clone() } },
         origin: Default::default(),
     };
     if !el.in_ns(ns::P) {

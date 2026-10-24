@@ -429,7 +429,7 @@ impl WordResolver<'_> {
                     let style = self.style(ctx, &self.run_props(p, &r.props, path), r.link.is_some());
                     split_text(&r.text, start, style, &mut items);
                 }
-                Inline::Break { kind } => items.push(Item {
+                Inline::Break { kind, .. } => items.push(Item {
                     start,
                     end,
                     kind: if *kind == office_core::model::BreakKind::Page { ItemKind::PageBreak } else { ItemKind::ColumnBreak },

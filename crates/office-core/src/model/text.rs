@@ -35,6 +35,10 @@ pub enum Inline {
     Text(Run),
     Break {
         kind: BreakKind,
+        /// The run it was read from, so an untouched break (and its run's formatting) goes back
+        /// as it was.
+        #[serde(skip)]
+        origin: Origin,
     },
     Image(Image),
     /// Markup the core doesn't model (fields, bookmarks, comment marks, equations…), whole. In
