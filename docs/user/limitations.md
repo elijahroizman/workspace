@@ -9,3 +9,5 @@
 - Inserting or deleting rows and columns updates formulas in the edited sheet and charts on every sheet. Formulas on other sheets that refer to those cells, and defined names, need manual updates.
 
 - Session restore remembers saved file paths. It does not recover unsaved edits or untitled documents after a crash. Autosave and version history protect only changes that were successfully saved.
+
+- An Office file with any individual XML part larger than 128 MiB or nested more than 256 elements deep is refused. This limit applies to internal XML parts, not the total file size or ordinary media attachments. Large documents can still use substantial memory.

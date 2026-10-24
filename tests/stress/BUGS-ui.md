@@ -1,5 +1,7 @@
 # UI stress findings
 
+Integration update: the combined `stress-test` branch also fixes UI-006 with a nonthrowing font host and UI-010 with an explicit zero-page PDF error. Their failing observations below describe the delegate branch before those follow-ups. The final status is in [BUGS.md](BUGS.md). The combined save flow retains both per-tab and per-path serialization, including queued Save As destinations.
+
 This report covers branch `t3/ui-stress-test-bugfixes`, including the four inherited UI commits `0adedb2`, `a0d664b`, `f8e88bb`, and `35aa2cb`. Findings are sorted by severity. Fixed means verified on this UI branch. Core fixes being developed on the parent branch are outside this result.
 
 All builds and tests ran on `eli@bbb` in `~/stress-ui`. No local test workload, release, version bump, push, or PR was used. Browser automation used the existing remote Playwright installation because the requested test environment is bbb. The Browser plugin is not available. Chromium and WebKit ran at 1400 by 900 CSS pixels. WebKit approximates WKWebView; it does not test the actual macOS application.
@@ -30,7 +32,7 @@ Repro: open a sample, save without editing, append `Z`, save, undo, and save aga
 
 Mixed, CRLF, and CR-only line endings also survive unchanged regions and undo. Samples: `S3-text-mixed-eol.txt`, `S2-text-cr.txt`, and `S2-markdown-crlf.md`. The shared text model composes CodeMirror changes against the original text, retains existing line endings outside replacements, and gives inserted lines the first existing line-ending style. No-edit, append, line insertion, line deletion, and undo are verified.
 
-Limits: unmarked legacy encodings cannot be identified reliably. This fallback does not promise correct interpretation of Shift-JIS, UTF-16 without a BOM, or arbitrary legacy character sets. Malformed BOM-marked UTF-8/UTF-16 is not covered by these preservation assertions. CSV has its own importer and is not covered by the textcodec fix.
+Limits: unmarked legacy encodings cannot be identified reliably. This fallback does not promise correct interpretation of Shift-JIS, UTF-16 without a BOM, or arbitrary legacy character sets. A follow-up keeps the original byte buffer for unchanged revisions, including malformed BOM-marked UTF-8 and truncated UTF-16. Two committed samples verify no-edit and undo byte preservation in both browsers. Saving actual edits to malformed input still serializes the decoded text and can replace invalid byte sequences. CSV has its own importer and is not covered by the textcodec fix.
 
 ### UI-003. Fixed: stale tabs and external edits can be overwritten silently
 

@@ -1,6 +1,6 @@
 # Core stress results, 2026-10-24
 
-Work continues on recovered branch `t3/stress-test-office-core`, based on `b088f99`, with recovered fixes `420bdbe` through `ade662c`. This pass adds the unchanged-workbook cache fix, finishes the pending formula-tree fix, and bounds the demonstrated XML allocations and nesting. All compilation, test execution, fixture generation, and document processing ran over SSH on `eli@bbb` in `~/writan-stress-codex`. No local test/build workload ran. No parent-checkout source, `src-tauri/src/files.rs`, native plugin code, UI code, release metadata, or version was changed.
+This pass completed recovered branch `t3/stress-test-office-core`, based on `b088f99`, with recovered fixes `420bdbe` through `ade662c`. This pass adds the unchanged-workbook cache fix, finishes the pending formula-tree fix, and bounds the demonstrated XML allocations and nesting. All compilation, test execution, fixture generation, and document processing ran over SSH on `eli@bbb` in `~/writan-stress-codex`. No local test/build workload ran. No parent-checkout source, `src-tauri/src/files.rs`, native plugin code, UI code, release metadata, or version was changed.
 
 ## Verified findings, highest impact first
 
@@ -125,3 +125,5 @@ Stress artifacts:
 - `tests/stress/BUGS-core.md`
 
 The branch also includes the seven recovered commits listed above. No DOCX row-order draft or `src/engine/host.ts` change is part of this finish pass.
+
+Integration update: the parent also fixed UI-006 in the font host and integrated both corpus fixes. Final browser and combined-test results are recorded in [BUGS.md](BUGS.md) and [VERIFICATION.md](VERIFICATION.md).
