@@ -8,11 +8,17 @@ const { browser, page, logs } = await launch()
 await start(page)
 for (const f of ['S2-docx-css-font-names.docx', 'S2-pptx-css-font-names.pptx', 'S2-xlsx-css-font-names.xlsx']) {
   await open(page, `${S}/${f}`)
-  await page.waitForFunction(async () => {
-    const w = window.__workspace
-    const s = w.useWorkspace.getState()
-    try { return (await w.getEditor(s.activeId)?.getBytes())?.length > 0 } catch { return false }
-  }, null, { timeout: 20000 })
+  let ready = false
+  for (let attempt = 0; attempt < 200; attempt++) {
+    ready = await page.evaluate(async () => {
+      const w = window.__workspace
+      const s = w.useWorkspace.getState()
+      try { return (await w.getEditor(s.activeId)?.getBytes())?.length > 0 } catch { return false }
+    })
+    if (ready) break
+    await page.waitForTimeout(100)
+  }
+  check(`${f}: editor becomes ready`, ready)
   check(`${f}: document still saves`, await page.evaluate(async () => {
     const s = window.__workspace.useWorkspace.getState()
     return s.save(s.activeId, { quiet: true })

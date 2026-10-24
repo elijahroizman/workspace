@@ -542,7 +542,11 @@ fn table_grids_keep_what_their_columns_carry() {
     assert!(xml.contains(r#"<w:gridCol w:w="2000"/><w:gridCol w:w="3500"/><w:tblGridChange w:id="7">"#), "{xml}");
 
     let a16 = "http://schemas.microsoft.com/office/drawing/2014/main";
-    let col = |w: u32, id: u32| format!(r#"<a:gridCol w="{w}"><a:extLst><a:ext uri="{{9D8B030D-6E8A-4147-A177-3AD203B41FA5}}"><a16:colId xmlns:a16="{a16}" val="{id}"/></a:ext></a:extLst></a:gridCol>"#);
+    let col = |w: u32, id: u32| {
+        format!(
+            r#"<a:gridCol w="{w}"><a:extLst><a:ext uri="{{9D8B030D-6E8A-4147-A177-3AD203B41FA5}}"><a16:colId xmlns:a16="{a16}" val="{id}"/></a:ext></a:extLst></a:gridCol>"#
+        )
+    };
     let mut table = Table::from_text(&[vec!["a".into(), "b".into()]], Emu(3_000_000));
     table.columns = vec![Emu(1_000_000), Emu(2_000_000)];
     let mut frame = Frame::text_box(2, crate::drawing::Xfrm { width: Emu(3_000_000), height: Emu(400_000), ..Default::default() }, vec![]);
