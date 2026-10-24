@@ -58,7 +58,7 @@ export const PLUGINS: PluginInfo[] = [
     id: 'office',
     name: 'Office',
     description: 'Word documents, PowerPoint presentations, Excel workbooks and CSV files, on Writan’s own engine.',
-    homepage: 'https://github.com/elijahroizman/workspace',
+    homepage: 'https://github.com/elijahroizman/writan',
     license: 'OFL-1.1',
     source: { type: 'builtin' },
     kinds: [
@@ -181,7 +181,7 @@ export const PLUGINS: PluginInfo[] = [
     id: 'images',
     name: 'Images',
     description: 'A simple viewer for PNG, JPEG and HEIC pictures, with highlighting, drawing, cropping and turning.',
-    homepage: 'https://github.com/elijahroizman/workspace/tree/main/plugins/images',
+    homepage: 'https://github.com/elijahroizman/writan/tree/main/plugins/images',
     license: 'MIT, LGPL-3.0',
     source: { type: 'builtin' },
     kinds: [

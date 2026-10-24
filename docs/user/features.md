@@ -98,7 +98,7 @@ writan notes.md       # a file; a new Markdown, text or LaTeX file is created em
 writan a.pdf b.docx   # several files, each in a tab
 ```
 
-On a Mac, install it from **Settings › General › Command line** or **Writan › Install Command Line Tool…**. It goes in `/usr/local/bin`, which usually asks for your password. It finds Writan by its app ID, so moving the app doesn't break it. On Debian and Ubuntu the .deb puts `writan` on the PATH already. The old `workspace` command remains as an alias so older copies can restart after an update. On Windows and Linux, running it while Writan is open hands the files to the open window instead of starting a second copy.
+On a Mac, install it from **Settings › General › Command line** or **Writan › Install Command Line Tool…**. It goes in `/usr/local/bin`, which usually asks for your password. It finds Writan by its app ID, so moving the app doesn't break it. On Debian and Ubuntu the .deb puts `writan` on the PATH already. `/usr/bin/workspace` is a wrapper that runs `writan`, so an update started by the old command can restart the app. On Windows and Linux, running it while Writan is open hands the files to the open window instead of starting a second copy.
 
 ## Default apps
 

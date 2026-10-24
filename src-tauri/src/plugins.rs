@@ -14,7 +14,7 @@ use tauri::http::{header, Request, Response, StatusCode};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 /// Only archives attached to Writan's own releases.
-const DOWNLOAD_PREFIX: &str = "https://github.com/elijahroizman/workspace/releases/download/";
+const DOWNLOAD_PREFIX: &str = "https://github.com/elijahroizman/writan/releases/download/";
 const MAX_ARCHIVE: u64 = 100 * 1024 * 1024;
 
 #[derive(Serialize, Deserialize)]

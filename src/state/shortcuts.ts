@@ -46,7 +46,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'prev-tab', label: 'Previous tab', group: 'Files and tabs', scope: 'app', keys: isMac ? '⇧⌘[' : '⇧⌘⇥' },
   { id: 'tab-number', label: 'Go to tab 1–9', group: 'Files and tabs', scope: 'app', keys: '⌘1–9', fixed: true },
   { id: 'settings', label: 'Settings', group: 'Files and tabs', scope: 'app', keys: '⌘,' },
-  { id: 'install-cli', label: 'Install the workspace command in PATH', group: 'Files and tabs', scope: 'app', keys: '', platform: 'mac' },
+  { id: 'install-cli', label: 'Install the writan command in PATH', group: 'Files and tabs', scope: 'app', keys: '', platform: 'mac' },
   { id: 'quit', label: 'Quit Writan', group: 'Files and tabs', scope: 'app', keys: '⌘Q', platform: 'mac' },
 
   // ── View

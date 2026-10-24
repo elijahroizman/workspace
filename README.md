@@ -12,22 +12,22 @@ Word, PowerPoint and Preview are slow to open and heavy to keep running. Writan 
 
 ## Install
 
-Download the latest build from [Releases](https://github.com/elijahroizman/workspace/releases/latest).
+Download the latest build from [Releases](https://github.com/elijahroizman/writan/releases/latest).
 
 | | |
 | --- | --- |
 | **Mac** | Open `Writan_…_aarch64.dmg` and drag Writan to Applications. |
 | **Windows** | Run `Writan_…_x64-setup.exe`. If Windows says it protected your PC, click **More info → Run anyway** (the app isn't code-signed for Windows yet). |
-| **Debian, Ubuntu** | `sudo apt install ./Workspace_…_amd64.deb` (Ubuntu 22.04 or Debian 12 and newer). |
-| **Fedora** | `sudo dnf install ./Workspace-…x86_64.rpm` |
+| **Debian, Ubuntu** | `sudo apt install ./Writan_…_amd64.deb` (Ubuntu 22.04 or Debian 12 and newer). |
+| **Fedora** | `sudo dnf install ./Writan-…x86_64.rpm` |
 
-Linux packages retain the package name `workspace` for upgrades from older versions; the app and terminal command are named Writan and `writan`.
+The package name and the terminal command are `writan`. A machine that already has the `workspace` package picks up `writan` on its next system update. The command `workspace` remains and runs `writan`.
 
 Writan keeps itself up to date. On Mac and Windows, new versions download in the background and install when you quit. On Linux, the .deb adds Writan's APT repository and the .rpm its dnf repository, so updates come with your system's other updates. See [Updating](docs/user/updating.md).
 
 ## Some notes
 
-This is early software, mostly written by AI models, and it has bugs. LaTeX on Windows in particular is still being tested. Please [open an issue](https://github.com/elijahroizman/workspace/issues) when something breaks.
+This is early software, mostly written by AI models, and it has bugs. LaTeX on Windows in particular is still being tested. Please [open an issue](https://github.com/elijahroizman/writan/issues) when something breaks.
 
 ## Documentation
 

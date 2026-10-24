@@ -104,7 +104,7 @@ Every release's notes. The release workflow copies a version's section into its 
 ## 0.9.1 — 2026-10-19
 
 ### Fedora
-- Workspace now comes as an `.rpm` for Fedora: `sudo dnf install ./Workspace-…x86_64.rpm`. It adds Workspace's dnf repository, so new versions arrive with your system's other updates, and the **Update** button installs them with dnf.
+- Writan now comes as an `.rpm` for Fedora: `sudo dnf install ./Workspace-…x86_64.rpm`. It adds Writan's dnf repository, so new versions arrive with your system's other updates, and the **Update** button installs them with dnf.
 
 ### Fixes
 - The setup screen fits in a short window. Continue no longer sits below the bottom edge until you go full screen.
@@ -147,7 +147,7 @@ Every release's notes. The release workflow copies a version's section into its 
 
 ### Images
 - A new optional plugin opens **PNG, JPEG and HEIC** pictures: zoom, fit to the window, and a few touch-ups (highlight, draw, box, crop, turn) with undo. ⌘C copies the picture, or the part you selected. An unchanged file is saved back exactly as it was.
-- HEIC photos open for viewing (Workspace can't write HEIC); **Edit a JPEG copy** opens one to mark up. Turn Images on in **Settings › Plugins**.
+- HEIC photos open for viewing (Writan can't write HEIC); **Edit a JPEG copy** opens one to mark up. Turn Images on in **Settings › Plugins**.
 
 ### Plugins and fonts in one place
 - **Settings › Plugins** now has two lists, file types and fonts, each with a switch. The fonts moved there from General, and the list of built-in file types is gone.
@@ -164,26 +164,26 @@ Every release's notes. The release workflow copies a version's section into its 
 
 ## 0.7.2 — 2026-10-18
 
-> **LaTeX on Windows may still have bugs.** Installing TeX with winget, the MiKTeX fallback and turning the LaTeX plugin off on Windows are still being tested. If something goes wrong, please [open an issue](https://github.com/elijahroizman/workspace/issues) with the message Workspace shows.
+> **LaTeX on Windows may still have bugs.** Installing TeX with winget, the MiKTeX fallback and turning the LaTeX plugin off on Windows are still being tested. If something goes wrong, please [open an issue](https://github.com/elijahroizman/writan/issues) with the message Writan shows.
 
 ### Linux updates through apt
-- The .deb now adds Workspace's APT repository, signed with its own key. New versions arrive with the rest of your system's updates (Software Updater, `sudo apt upgrade`).
-- **Check for updates** on Linux can install a new version too: it asks for your password, installs with apt, and reopens Workspace.
+- The .deb now adds Writan's APT repository, signed with its own key. New versions arrive with the rest of your system's updates (Software Updater, `sudo apt upgrade`).
+- **Check for updates** on Linux can install a new version too: it asks for your password, installs with apt, and reopens Writan.
 - If you installed 0.7.1 or earlier, install the 0.7.2 .deb once by hand. Updates come through apt after that.
 
 ### Dialogs
-- Questions and alerts ("Save changes?", "Revert?", errors) are drawn by Workspace instead of the system, so they look the same on macOS, Windows and Linux. Enter picks the highlighted button (Cancel when the other choice throws something away, as Revert and Delete do), Esc cancels.
+- Questions and alerts ("Save changes?", "Revert?", errors) are drawn by Writan instead of the system, so they look the same on macOS, Windows and Linux. Enter picks the highlighted button (Cancel when the other choice throws something away, as Revert and Delete do), Esc cancels.
 - Deleting a custom theme asks first.
 
 ### LaTeX on Windows
-- If winget can't install MiKTeX, Workspace falls back to MiKTeX's own installer (checked against its published SHA-256). The error now includes winget's exit code and last message.
-- Installing or removing TeX can no longer hang Workspace: a step that takes longer than 45 minutes is stopped, and checking how TeX was installed gives up after a minute.
-- Turning LaTeX off always works. Its question opens at once, and you can turn the plugin off while Workspace is still working out whether it can also remove TeX.
+- If winget can't install MiKTeX, Writan falls back to MiKTeX's own installer (checked against its published SHA-256). The error now includes winget's exit code and last message.
+- Installing or removing TeX can no longer hang Writan: a step that takes longer than 45 minutes is stopped, and checking how TeX was installed gives up after a minute.
+- Turning LaTeX off always works. Its question opens at once, and you can turn the plugin off while Writan is still working out whether it can also remove TeX.
 - The install window can be hidden while TeX installs. **Settings › Plugins** shows the progress.
 - Turning off a plugin with open tabs offers to close them, instead of telling you to close them yourself.
 
 ### Fonts
-- **Michelangelus**, Microsoft's free typeface based on Michelangelo's handwriting, can be added in **Settings › General**. Microsoft's license doesn't let apps include it, so Workspace downloads it from Microsoft and checks each file. It then shows in the Word and PowerPoint font menus.
+- **Michelangelus**, Microsoft's free typeface based on Michelangelo's handwriting, can be added in **Settings › General**. Microsoft's license doesn't let apps include it, so Writan downloads it from Microsoft and checks each file. It then shows in the Word and PowerPoint font menus.
 
 ### Also
 - The PDF inspector's Document section is compact: each label and value share a row.
@@ -203,13 +203,13 @@ Every release's notes. The release workflow copies a version's section into its 
 ## 0.7.0 — 2026-10-18
 
 - **Mermaid** (.mmd, .mermaid) and **LaTeX** (.tex) plugins. Both have a source and preview side by side, with the read / split / write switch Markdown uses (⌘E, ⌥⌘1–3).
-- LaTeX compiles with the TeX on your computer (MacTeX, MiKTeX or TeX Live): in the document's folder, rerunning for references and running bibtex or biber. The PDF updates after you stop typing and shows in Workspace's PDF viewer. Workspace offers to install TeX when there's none.
+- LaTeX compiles with the TeX on your computer (MacTeX, MiKTeX or TeX Live): in the document's folder, rerunning for references and running bibtex or biber. The PDF updates after you stop typing and shows in Writan's PDF viewer. Writan offers to install TeX when there's none.
 - **EPUB** reader, a small plugin that comes with the app: one scrolling column, the table of contents in the sidebar, find, zoom, and it remembers your place.
 - A plugin template and `npm run plugin:new` for writing plugins.
 
 ## 0.6.0 — 2026-10-18
 
-- Plugins. Word, PowerPoint, PDF, Markdown and text are built in. Others are optional and off until you turn them on. **Excalidraw** is the first: it downloads from this repository's releases, and Workspace checks its signature before installing it.
+- Plugins. Word, PowerPoint, PDF, Markdown and text are built in. Others are optional and off until you turn them on. **Excalidraw** is the first: it downloads from this repository's releases, and Writan checks its signature before installing it.
 - A setup screen on first launch picks plugins and default apps. Settings has General (version, default apps, setup, open-source licenses) and Plugins pages.
 - ⌘N asks which kind of file to make.
 - Links in documents open in the browser again.
@@ -238,7 +238,7 @@ Every release's notes. The release workflow copies a version's section into its 
 - The PDF editor runs on PDFium: faster zoom, page edits that apply instantly and can be undone, and less memory.
 - The update panel shows the latest release's notes, and on a Mac the updated app reopens in the same Dock spot.
 - The Mac app is signed and notarized.
-- One Workspace in the macOS Open With menu.
+- One Writan in the macOS Open With menu.
 
 ## 0.3.0 — 2026-10-16
 
