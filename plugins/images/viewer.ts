@@ -81,7 +81,7 @@ async function decode(bytes: Uint8Array, format: Format | null): Promise<HTMLCan
       URL.revokeObjectURL(url)
     }
   } catch (err) {
-    if (format !== 'heic') throw new Error(format ? 'This picture is damaged, or in a form Writan can’t read.' : 'Writan opens PNG, JPEG and HEIC pictures.', { cause: err })
+    if (format !== 'heic') throw new Error(format ? 'This picture is damaged, or in a form Writan can’t read.' : 'This file isn’t a PNG, JPEG or HEIC picture, or it’s damaged.', { cause: err })
   }
   const { decodeHeic } = await import('./heic')
   const data = await decodeHeic(bytes)
