@@ -136,6 +136,7 @@ export default function PdfEditor({ tab, active, visible = false }: EditorProps)
       try {
         const bytes = tab.bytes ?? new Uint8Array()
         const result = await s.engine.call('open', [bytes.slice().buffer, pw])
+        if (result.pages.length === 0) throw new Error('This PDF has no pages.')
         passwordRef.current = pw
         setPassword(null)
         s.setPages(result.pages)
