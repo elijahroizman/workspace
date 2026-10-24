@@ -66,12 +66,14 @@ export class TextFile {
   revision = 0
   readonly text: string
   private readonly raw: string
+  private readonly original: Uint8Array | null
   private readonly encoding: TextEncoding
   private readonly crlf: number[] = []
   private readonly lineEnding: string
   private changes: ChangeSet
 
   constructor(bytes: Uint8Array | null, fallback = '') {
+    this.original = bytes
     const decoded = bytes ? decodeText(bytes) : { text: fallback, encoding: 'utf-8' as const }
     this.raw = decoded.text
     this.encoding = decoded.encoding
@@ -115,6 +117,9 @@ export class TextFile {
       pos = to
     }, true)
     parts.push(this.raw.slice(this.rawOffset(pos)))
-    return encodeText(parts.join(''), this.encoding).bytes
+    const text = parts.join('')
+    // Decoders replace malformed sequences. A clean revision must still keep the exact input.
+    if (text === this.raw && this.original) return this.original
+    return encodeText(text, this.encoding).bytes
   }
 }

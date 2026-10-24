@@ -240,6 +240,8 @@ def text_encodings():
         ('S2-markdown-utf16le.md', b'\xff\xfe' + '# Caf\u00e9\r\nText\r\n'.encode('utf-16-le')),
         ('S2-text-cr.txt', b'old mac\rnext\rend\r'),
         ('S2-text-double-bom.txt', b'\xef\xbb\xbf\xef\xbb\xbfText\n'),
+        ('S2-markdown-malformed-utf8-bom.md', b'\xef\xbb\xbfA\xffB\r\n'),
+        ('S2-text-truncated-utf16.txt', b'\xff\xfeA\x00\xff'),
     ]:
         with open(out(name), 'wb') as f:
             f.write(data)

@@ -73,6 +73,18 @@ try {
     await ws((w) => w.closeTab())
   }
 
+  for (const file of ['S2-markdown-malformed-utf8-bom.md', 'S2-text-truncated-utf16.txt']) {
+    const original = readFileSync(`${S}/${file}`)
+    await ready(file)
+    check(`${file}: unchanged save succeeds`, await save())
+    check(`${file}: unchanged malformed bytes survive`, (await written(`${S}/${file}`)).equals(original))
+    await edit('Z')
+    await page.keyboard.press('Control+z')
+    check(`${file}: undo then save succeeds`, await save())
+    check(`${file}: undo restores malformed bytes too`, (await written(`${S}/${file}`)).equals(original))
+    await ws((w) => w.closeTab())
+  }
+
   // Insert and delete within a mixed-ending document, rather than only appending.
   const path = `${S}/S3-text-mixed-eol.txt`
   const original = readFileSync(path)
