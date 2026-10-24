@@ -10,7 +10,7 @@ use super::{ns, Attr, Declaration, Element, Node, XmlDoc};
 /// producers write. Custom entities are never expanded, so a part can't reach outside itself.
 /// How deep elements may nest. Office markup stays far below this; a part nested deeper is
 /// rejected, because walking (and dropping) the tree is recursive.
-pub const MAX_DEPTH: usize = 1024;
+pub const MAX_DEPTH: usize = 256;
 
 pub fn parse(bytes: &[u8]) -> Result<XmlDoc, String> {
     let text = decode(bytes)?;
@@ -37,6 +37,9 @@ pub fn parse(bytes: &[u8]) -> Result<XmlDoc, String> {
                 continue;
             }
             Event::Empty(start) => {
+                if stack.len() >= MAX_DEPTH {
+                    return Err(format!("elements nested more than {MAX_DEPTH} deep"));
+                }
                 let el = parser.open(&start)?;
                 parser.close();
                 Node::Element(el)

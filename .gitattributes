@@ -1,0 +1,3 @@
+# These regression inputs include deliberate BOMs, mixed line endings, and PDF xref spaces.
+tests/stress/samples/** -text whitespace=-blank-at-eol,cr-at-eol
+tests/stress/corpus/files/** -text

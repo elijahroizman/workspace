@@ -474,3 +474,90 @@ fn sheet_to_table_includes_every_merge_even_without_values() {
     assert_eq!((t.rows[3].cells[3].row_span, t.rows[3].cells[3].col_span), (3, 3));
     assert_eq!(t.owner(5, 5), Some((3, 3)));
 }
+
+#[test]
+fn cells_sharing_one_long_string_stop_at_the_text_budget() {
+    // Every cell holds its own copy of its shared string: 12,000 cells of a 1 MB string once
+    // needed 12 GB. In tests the budget is a megabyte.
+    let mut p = save(&sheet_doc(), Kind::Sheets);
+    let long = "x".repeat(64 * 1024);
+    p.put(
+        "xl/sharedStrings.xml",
+        format!(r#"<sst xmlns="{}"><si><t>{long}</t></si><si><t>short</t></si></sst>"#, ns::X).into_bytes(),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml",
+    );
+    p.relate("xl/workbook.xml", kind::SHARED_STRINGS, "xl/sharedStrings.xml").unwrap();
+    let sheet = |cells: usize, si: u32| {
+        let cells: String = (1..=cells).map(|r| format!(r#"<row r="{r}"><c r="A{r}" t="s"><v>{si}</v></c></row>"#)).collect();
+        format!(r#"<worksheet xmlns="{}"><sheetData>{cells}</sheetData></worksheet>"#, ns::X).into_bytes()
+    };
+    let rows = |p: &Package| match read(p, Kind::Sheets).body {
+        Body::Workbook { sheets } => sheets[0].rows.len(),
+        _ => unreachable!(),
+    };
+    // Twelve copies are fine, and so are thousands of short ones.
+    p.replace("xl/worksheets/sheet1.xml", sheet(12, 0)).unwrap();
+    assert_eq!(rows(&p), 12);
+    p.replace("xl/worksheets/sheet1.xml", sheet(5000, 1)).unwrap();
+    assert_eq!(rows(&p), 5000);
+    p.replace("xl/worksheets/sheet1.xml", sheet(20, 0)).unwrap();
+    let e = crate::read(&p.to_bytes().unwrap(), Some("x.xlsx")).unwrap_err().to_string();
+    assert!(e.contains("too large to open"), "{e}");
+}
+
+#[test]
+fn a_sheet_name_with_an_escaped_character_saves() {
+    // 28 characters, the last a line break Excel wrote as `_x000a_`: it once failed to save as
+    // a 34-character name.
+    let name = "Контрольний список  \"Школа\"_x000a_";
+    let mut p = save(&sheet_doc(), Kind::Sheets);
+    let wb = String::from_utf8(p.part("xl/workbook.xml").unwrap().to_vec()).unwrap();
+    let wb = wb.replace(r#"name="Sheet1""#, &format!(r#"name="{}""#, name.replace('"', "&quot;")));
+    p.replace("xl/workbook.xml", wb.into_bytes()).unwrap();
+    let mut d = read(&p, Kind::Sheets);
+    edit_b1(&mut d);
+    let out = save(&d, Kind::Sheets);
+    let wb = out.xml("xl/workbook.xml").unwrap();
+    assert_eq!(wb.root.descendant(ns::X, "sheet").unwrap().attr("name"), Some(name));
+}
+
+#[test]
+fn table_grids_keep_what_their_columns_carry() {
+    // Word: a tracked change to the grid. PowerPoint: column ids. Both went on an unchanged save.
+    let mut d = Document::new(Kind::Word);
+    d.body = Body::Flow { blocks: vec![Block::Paragraph(Paragraph::text("x"))] };
+    let mut p = save(&d, Kind::Word);
+    let tbl = r#"<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="2000"/><w:gridCol w:w="3000"/><w:tblGridChange w:id="7"><w:tblGrid><w:gridCol w:w="2500"/><w:gridCol w:w="2500"/></w:tblGrid></w:tblGridChange></w:tblGrid><w:tr><w:tc><w:tcPr/><w:p/></w:tc><w:tc><w:tcPr/><w:p/></w:tc></w:tr></w:tbl>"#;
+    let xml = String::from_utf8(p.part("word/document.xml").unwrap().to_vec()).unwrap().replacen("<w:body>", &format!("<w:body>{tbl}"), 1);
+    p.replace("word/document.xml", xml.into_bytes()).unwrap();
+    let text = |p: &Package, part: &str| String::from_utf8(p.part(part).unwrap().to_vec()).unwrap();
+    let mut d = read(&p, Kind::Word);
+    assert_eq!(text(&save(&d, Kind::Word), "word/document.xml"), text(&p, "word/document.xml"));
+    // A changed width keeps the change record.
+    if let Body::Flow { blocks } = &mut d.body {
+        let Block::Table(t) = &mut blocks[0] else { panic!() };
+        t.columns[1] = Emu::from_twips(3500);
+    }
+    let xml = String::from_utf8(save(&d, Kind::Word).part("word/document.xml").unwrap().to_vec()).unwrap();
+    assert!(xml.contains(r#"<w:gridCol w:w="2000"/><w:gridCol w:w="3500"/><w:tblGridChange w:id="7">"#), "{xml}");
+
+    let a16 = "http://schemas.microsoft.com/office/drawing/2014/main";
+    let col = |w: u32, id: u32| {
+        format!(
+            r#"<a:gridCol w="{w}"><a:extLst><a:ext uri="{{9D8B030D-6E8A-4147-A177-3AD203B41FA5}}"><a16:colId xmlns:a16="{a16}" val="{id}"/></a:ext></a:extLst></a:gridCol>"#
+        )
+    };
+    let mut table = Table::from_text(&[vec!["a".into(), "b".into()]], Emu(3_000_000));
+    table.columns = vec![Emu(1_000_000), Emu(2_000_000)];
+    let mut frame = Frame::text_box(2, crate::drawing::Xfrm { width: Emu(3_000_000), height: Emu(400_000), ..Default::default() }, vec![]);
+    frame.content = FrameContent::Table { table };
+    let mut d = Document::new(Kind::Slides);
+    d.body = Body::Slides { size: SlideSize::default(), slides: vec![Slide { frames: vec![frame], ..Default::default() }] };
+    let mut p = save(&d, Kind::Slides);
+    let part = "ppt/slides/slide1.xml";
+    let xml = String::from_utf8(p.part(part).unwrap().to_vec()).unwrap();
+    let xml = xml.replace(r#"<a:gridCol w="1000000"/><a:gridCol w="2000000"/>"#, &(col(1_000_000, 11) + &col(2_000_000, 22)));
+    assert!(xml.contains("a16:colId"), "{xml}");
+    p.replace(part, xml.into_bytes()).unwrap();
+    assert_eq!(text(&save(&read(&p, Kind::Slides), Kind::Slides), part), text(&p, part));
+}

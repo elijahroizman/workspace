@@ -38,6 +38,34 @@ fn csv_opens_draws_edits_and_saves() {
 }
 
 #[test]
+fn setting_the_clock_preserves_imported_formula_caches() {
+    let bytes = SheetsView::blank(Kind::Sheets).save().unwrap();
+    let mut package = Package::read(&bytes).unwrap();
+    let source = format!(
+        r#"<worksheet xmlns="{}"><sheetData><row r="1"><c r="A1"><f>_xlfn.ANCHORARRAY(B1)</f><v>42</v></c><c r="B1"><f>A1*2</f><v>84</v></c><c r="C1"><f>NOW()</f><v>40000</v></c></row></sheetData></worksheet>"#,
+        ns::X
+    );
+    package.replace("xl/worksheets/sheet1.xml", source.into_bytes()).unwrap();
+    let bytes = package.to_bytes().unwrap();
+    let mut view = SheetsView::open(&bytes, "cached.xlsx").unwrap();
+    view.set_now(46000.5);
+    assert!(!view.is_dirty());
+    for (col, expected) in [(0, 42.0), (1, 84.0), (2, 40000.0)] {
+        assert_eq!(view.sheets()[0].value(CellRef::new(0, col)), &Value::Number(expected));
+    }
+    let saved = Package::read(&view.save().unwrap()).unwrap();
+    for part in package.part_names() {
+        assert_eq!(saved.part(part).unwrap(), package.part(part).unwrap(), "{part} changed on open/save");
+    }
+
+    // A new formula still uses the clock supplied by the app.
+    let mut view = SheetsView::blank(Kind::Sheets);
+    view.set_now(46000.5);
+    view.set_input(0, CellRef::new(0, 0), "=NOW()");
+    assert_eq!(view.sheets()[0].value(CellRef::new(0, 0)), &Value::Number(46000.5));
+}
+
+#[test]
 fn workbook_formats_columns_and_sheets() {
     let mut host = FixedMeasurer::default();
     let mut v = SheetsView::blank(Kind::Sheets);
@@ -336,4 +364,29 @@ fn sheet_size_is_kept_in_a_hidden_name_and_follows_the_sheet() {
     assert!(workbook.contains(r#"localSheetId="0" hidden="1">{5000,40}"#), "{workbook}");
     let back = SheetsView::open(&again, "Book.xlsx").unwrap();
     assert_eq!(back.sheets()[0].size, Some((5000, 40)));
+}
+
+#[test]
+fn a_row_numbered_past_excel_stops_at_its_last_row() {
+    // A damaged sheet's row 2147483648 once asked for 16 GB of row positions.
+    let bytes = SheetsView::blank(Kind::Sheets).save().unwrap();
+    let mut pkg = Package::read(&bytes).unwrap();
+    let xml = sheet_xml(&bytes, "xl/worksheets/sheet1.xml");
+    let rows = r#"<sheetData><row r="2147483648"><c r="A1"><v>1</v></c></row><row><c r="ZZZ2"><v>2</v></c></row></sheetData>"#;
+    let xml = xml.replace("<sheetData></sheetData>", rows);
+    assert!(xml.contains("2147483648"), "{xml}");
+    pkg.replace("xl/worksheets/sheet1.xml", xml.into_bytes()).unwrap();
+    let mut v = SheetsView::open(&pkg.to_bytes().unwrap(), "Book.xlsx").unwrap();
+    let g = v.grid(0);
+    assert_eq!((g.rows, g.cols), (crate::MAX_ROWS, crate::MAX_COLS));
+    assert!(g.content.0 <= g.rows && g.content.1 <= g.cols);
+    let mut host = FixedMeasurer::default();
+    v.paint(&mut host, 0, 0, 20, 0, 10);
+}
+
+#[test]
+fn other_kinds_of_file_are_an_error_not_a_crash() {
+    let word = office_core::Compiler::new().write(&Document::new(Kind::Word), Kind::Word).unwrap();
+    let e = SheetsView::open(&word, "renamed.xlsx").err().expect("a Word file isn't a workbook");
+    assert_eq!(e.to_string(), "this is a Word document, not an Excel workbook");
 }

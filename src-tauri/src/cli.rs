@@ -179,16 +179,29 @@ fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
-/// Paths a second launch was given (`writan notes.md` on Windows or Linux), made absolute
-/// against the directory it was started in. (A Mac hands paths to the running app itself.)
-#[cfg_attr(target_os = "macos", allow(dead_code))]
+/// Paths Writan was started with, or a second launch was given (`writan notes.md` on Windows or
+/// Linux), made absolute against the directory it was started in. (A Mac hands paths to the
+/// running app itself.)
 pub fn paths_from_args(args: &[String], cwd: &str) -> Vec<String> {
     args.iter()
         .skip(1)
         .filter(|arg| !arg.starts_with('-'))
         .filter_map(|arg| std::fs::canonicalize(std::path::Path::new(cwd).join(arg)).ok())
-        .map(|p| p.to_string_lossy().into_owned())
+        .map(|p| plain_path(&p.to_string_lossy()))
         .collect()
+}
+
+/// Windows' canonical paths are verbatim (`\\?\C:\…`), but the open dialog and the rest of the app
+/// use `C:\…`; tabs are matched by path, so a double-clicked file that's already open must
+/// look the same or it opens twice.
+fn plain_path(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{rest}");
+    }
+    match path.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => rest.to_string(),
+        _ => path.to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -219,6 +232,13 @@ mod tests {
     #[test]
     fn quotes_for_the_shell() {
         assert_eq!(shell_quote("/tmp/it's here"), "'/tmp/it'\\''s here'");
+    }
+
+    #[test]
+    fn drops_the_verbatim_prefix() {
+        assert_eq!(plain_path(r"\\?\C:\Users\e\a.docx"), r"C:\Users\e\a.docx");
+        assert_eq!(plain_path(r"\\?\UNC\server\share\a.docx"), r"\\server\share\a.docx");
+        assert_eq!(plain_path("/home/e/a.docx"), "/home/e/a.docx");
     }
 
     #[test]

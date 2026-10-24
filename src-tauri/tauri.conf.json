@@ -41,7 +41,9 @@
         "worker-src": "'self' blob:",
         "connect-src": "'self' ipc: http://ipc.localhost data: blob: wsplugin: http://wsplugin.localhost",
         "frame-src": "https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com",
-        "object-src": "'none'"
+        "object-src": "'none'",
+        "form-action": "'none'",
+        "base-uri": "'self'"
       },
       "devCsp": null
     }

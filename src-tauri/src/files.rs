@@ -35,13 +35,13 @@ pub fn write_file<R: tauri::Runtime>(app: tauri::AppHandle<R>, request: Request<
     if let Some(root) = &history {
         crate::history::remember_original(root, &path);
     }
-    atomic_write(&path, bytes)
-        .map_err(|e| format!("Couldn't save “{}”: {e}", display_name(&path.to_string_lossy())))?;
+    atomic_write(&path, bytes).map_err(|e| format!("Couldn't save “{}”: {}.", display_name(&path.to_string_lossy()), save_error(&e)))?;
     if let Some(root) = history {
+        let disk = crate::history::stamp(&path);
         // Off the save's path: hashing and copying a big file shouldn't hold up the next edit.
         let bytes = bytes.clone();
         std::thread::spawn(move || {
-            if let Err(e) = crate::history::record(&root, &path, &bytes, label) {
+            if let Err(e) = crate::history::record(&root, &path, &bytes, label, disk) {
                 eprintln!("version history: {e}");
             }
         });
@@ -241,21 +241,61 @@ fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    atomic_write_with(path, |file| file.write_all(bytes))
+}
+
+fn atomic_write_with(path: &Path, write: impl FnOnce(&mut fs::File) -> std::io::Result<()>) -> std::io::Result<()> {
+    // Saving through a symlink changes the file it points to and keeps the link.
+    let linked = fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink());
+    let resolved = if linked { Some(fs::canonicalize(path)?) } else { None };
+    let path = resolved.as_deref().unwrap_or(path);
+    // Replacing the file would succeed on a Mac or Linux, since only its folder needs to be
+    // writable, but a read-only file is one someone meant not to change.
+    if fs::metadata(path).is_ok_and(|m| m.permissions().readonly()) {
+        return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "the file is read-only. Use Save As to save a copy"));
+    }
     let dir = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let tmp = dir.join(format!(".{name}.workspace-saving"));
+    // A separate, exclusively created file for each save. A predictable name can be a symlink
+    // to another document, or be shared by two saves in progress.
+    let mut builder = tempfile::Builder::new();
+    // Match ordinary new-file creation: the kernel applies the process umask.
+    #[cfg(unix)]
     {
-        let mut file = fs::File::create(&tmp)?;
-        file.write_all(bytes)?;
-        file.sync_all()?;
+        use std::os::unix::fs::PermissionsExt;
+        builder.permissions(fs::Permissions::from_mode(0o666));
     }
-    // Keep the original file's permissions when overwriting.
+    let mut tmp = builder.tempfile_in(dir)?;
+    write(tmp.as_file_mut())?;
+    tmp.as_file().sync_all()?;
     if let Ok(meta) = fs::metadata(path) {
-        let _ = fs::set_permissions(&tmp, meta.permissions());
+        tmp.as_file().set_permissions(meta.permissions())?;
     }
-    fs::rename(&tmp, path).inspect_err(|_| {
-        let _ = fs::remove_file(&tmp);
-    })
+    // NamedTempFile removes partial writes and failed replacements when it is dropped.
+    tmp.persist(path).map_err(|e| e.error)?;
+    // So the rename itself survives a power cut.
+    #[cfg(unix)]
+    if let Ok(dir) = fs::File::open(dir) {
+        let _ = dir.sync_all();
+    }
+    Ok(())
+}
+
+/// Why a save failed, in words; the original file is untouched in every case.
+fn save_error(e: &std::io::Error) -> String {
+    use std::io::ErrorKind;
+    // ERROR_SHARING_VIOLATION and ERROR_LOCK_VIOLATION: another app (Word, Excel) has the file open.
+    if cfg!(windows) && matches!(e.raw_os_error(), Some(32 | 33)) {
+        return "it's open in another app. Close it there, then save again".into();
+    }
+    match e.kind() {
+        ErrorKind::StorageFull => "the disk is full. Free up some space, then save again".into(),
+        ErrorKind::ReadOnlyFilesystem => "the disk it's on is read-only. Use Save As to save a copy elsewhere".into(),
+        ErrorKind::PermissionDenied if e.get_ref().is_some() => e.to_string(),
+        ErrorKind::PermissionDenied if cfg!(windows) => "Windows didn't allow it. The file may be read-only or open in another app".into(),
+        ErrorKind::PermissionDenied => "Writan isn't allowed to change files in that folder. Use Save As to save a copy elsewhere".into(),
+        ErrorKind::NotFound => "its folder is gone. Use Save As to choose another place".into(),
+        _ => e.to_string(),
+    }
 }
 
 pub(crate) fn percent_decode(input: &str) -> Result<String, String> {
@@ -308,6 +348,140 @@ mod tests {
         atomic_write(&file, b"two").unwrap();
         assert_eq!(fs::read(&file).unwrap(), b"two");
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 1, "temp file left behind");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn new_saves_follow_umask_and_existing_saves_keep_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let ordinary = dir.path().join("ordinary.txt");
+        fs::write(&ordinary, b"ordinary").unwrap();
+        let saved = dir.path().join("saved.txt");
+        atomic_write(&saved, b"new").unwrap();
+        assert_eq!(
+            fs::metadata(&saved).unwrap().permissions().mode() & 0o777,
+            fs::metadata(&ordinary).unwrap().permissions().mode() & 0o777
+        );
+        fs::set_permissions(&saved, fs::Permissions::from_mode(0o640)).unwrap();
+        atomic_write(&saved, b"replacement").unwrap();
+        assert_eq!(fs::metadata(&saved).unwrap().permissions().mode() & 0o777, 0o640);
+    }
+
+    #[test]
+    fn refuses_read_only_files() {
+        let dir = std::env::temp_dir().join(format!("workspace-test-ro-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("a.md");
+        fs::write(&file, b"one").unwrap();
+        let mut perms = fs::metadata(&file).unwrap().permissions();
+        perms.set_readonly(true);
+        fs::set_permissions(&file, perms.clone()).unwrap();
+        let err = atomic_write(&file, b"two").unwrap_err();
+        assert!(save_error(&err).contains("read-only"));
+        assert_eq!(fs::read(&file).unwrap(), b"one");
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        fs::set_permissions(&file, perms).unwrap();
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn partial_write_failure_keeps_original_and_removes_temp() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("notes.md");
+        fs::write(&file, b"original").unwrap();
+        let err = atomic_write_with(&file, |tmp| {
+            tmp.write_all(b"partial")?;
+            Err(std::io::Error::from(std::io::ErrorKind::StorageFull))
+        }).unwrap_err();
+        assert!(save_error(&err).contains("disk is full"));
+        assert_eq!(fs::read(&file).unwrap(), b"original");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn failed_replacement_removes_temp() {
+        let dir = tempfile::tempdir().unwrap();
+        let destination = dir.path().join("folder");
+        fs::create_dir(&destination).unwrap();
+        assert!(atomic_write(&destination, b"document").is_err());
+        assert!(destination.is_dir());
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn concurrent_saves_never_mix_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("notes.md");
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+        let workers: Vec<_> = (0u8..8).map(|i| {
+            let file = file.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                atomic_write(&file, &vec![i; 128 * 1024]).unwrap();
+            })
+        }).collect();
+        for worker in workers { worker.join().unwrap(); }
+        let saved = fs::read(&file).unwrap();
+        assert_eq!(saved.len(), 128 * 1024);
+        assert!(saved.iter().all(|b| *b == saved[0]));
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn predictable_temp_symlink_cannot_overwrite_another_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let victim = dir.path().join("other.md");
+        let file = dir.path().join("notes.md");
+        fs::write(&victim, b"other document").unwrap();
+        let trap = dir.path().join(".notes.md.workspace-saving");
+        std::os::unix::fs::symlink(&victim, &trap).unwrap();
+        atomic_write(&file, b"new document").unwrap();
+        assert_eq!(fs::read(&victim).unwrap(), b"other document");
+        assert_eq!(fs::read(&file).unwrap(), b"new document");
+        assert!(fs::symlink_metadata(trap).unwrap().file_type().is_symlink());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refuses_to_replace_a_broken_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let link = dir.path().join("notes.md");
+        std::os::unix::fs::symlink(dir.path().join("missing.md"), &link).unwrap();
+        assert!(atomic_write(&link, b"document").is_err());
+        assert!(fs::symlink_metadata(link).unwrap().file_type().is_symlink());
+    }
+
+    /// Needs a tiny file system to fill, in WRITAN_FULL_DIR. On Linux, without root:
+    /// `unshare -rm sh -c 'mkdir -p /tmp/full && mount -t tmpfs -o size=64k tmpfs /tmp/full && WRITAN_FULL_DIR=/tmp/full cargo test full_disk -- --ignored'`
+    #[test]
+    #[ignore]
+    fn full_disk_keeps_the_original_and_no_scraps() {
+        let dir = PathBuf::from(std::env::var("WRITAN_FULL_DIR").expect("WRITAN_FULL_DIR"));
+        let file = dir.join("a.md");
+        fs::write(&file, b"original").unwrap();
+        let err = atomic_write(&file, &vec![b'x'; 1 << 20]).unwrap_err();
+        assert!(save_error(&err).contains("disk is full"), "{err}");
+        assert_eq!(fs::read(&file).unwrap(), b"original");
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 1, "partial temp file left behind");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn saves_through_symlinks() {
+        let dir = std::env::temp_dir().join(format!("workspace-test-link-{}", std::process::id()));
+        fs::create_dir_all(dir.join("real")).unwrap();
+        let target = dir.join("real/a.md");
+        let link = dir.join("a.md");
+        fs::write(&target, b"one").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        atomic_write(&link, b"two").unwrap();
+        assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read(&target).unwrap(), b"two");
         fs::remove_dir_all(&dir).unwrap();
     }
 

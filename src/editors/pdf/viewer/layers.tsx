@@ -8,6 +8,7 @@ import type { CSSProperties } from 'react'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Annot, Box, PageInfo, TextRun } from '../engine/protocol'
 import type { DocStore } from '../engine/store'
+import { isWebLink } from '../../../lib/platform'
 
 export const pos = (b: Box): CSSProperties => ({
   left: `calc(var(--u) * ${b.x}px)`,
@@ -207,7 +208,8 @@ export const AnnotationLayer = memo(function AnnotationLayer({
               key={a.id}
               className="annot-link"
               style={pos(a.box)}
-              href={a.link.url ?? `#page=${(a.link.page ?? 0) + 1}`}
+              // Only web links get a real href: a middle-click or drag mustn't reach file: or javascript:.
+              href={a.link.url === undefined ? `#page=${(a.link.page ?? 0) + 1}` : isWebLink(a.link.url) ? a.link.url : '#'}
               title={a.link.url}
               onClick={(e) => {
                 e.preventDefault()

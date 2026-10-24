@@ -1,0 +1,22 @@
+# Stress harness for the office crates: drives files through the same view calls the app's
+# WebAssembly engine makes (open, lay out, paint, edit, undo, save), natively. Not part of the
+# crates/ workspace, so it never slows the app's build. See tests/stress/README.md.
+[package]
+name = "office-stress"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+office-core = { path = "../../../crates/office-core" }
+office-engine = { path = "../../../crates/office-engine" }
+office-word = { path = "../../../crates/office-word" }
+office-slides = { path = "../../../crates/office-slides" }
+office-sheets = { path = "../../../crates/office-sheets" }
+zip = { version = "4", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
+[profile.release]
+debug = 1
+panic = "unwind"

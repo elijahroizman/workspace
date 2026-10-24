@@ -1,0 +1,81 @@
+%PDF-1.7
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /OpenAction << /S /JavaScript /JS (app.alert\("open"\)) >> /Names << /JavaScript << /Names [(x) << /S /JavaScript /JS (app.alert\("names"\)) >>] >> >> /Outlines 5 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents 4 0 R /Annots [6 0 R 7 0 R 8 0 R 9 0 R 10 0 R 11 0 R 12 0 R 13 0 R] >>
+endobj
+4 0 obj
+<< /Length 484 >>
+stream
+BT /F1 14 Tf 40 760 Td (Click each box. Page has an OpenAction script.) Tj ET
+BT /F1 12 Tf 60 706 Td (javascript:alert1) Tj ET
+BT /F1 12 Tf 60 666 Td (file:///etc/passwd) Tj ET
+BT /F1 12 Tf 60 626 Td (data:text/html,<script>alert1</script>) Tj ET
+BT /F1 12 Tf 60 586 Td (vbscript:x) Tj ET
+BT /F1 12 Tf 60 546 Td (https://example.com/ok) Tj ET
+BT /F1 12 Tf 60 506 Td (writan-evil://x) Tj ET
+BT /F1 12 Tf 60 466 Td (JavaScript action) Tj ET
+BT /F1 12 Tf 60 426 Td (Launch action) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Outlines /First 14 0 R /Last 15 0 R /Count 2 >>
+endobj
+6 0 obj
+<< /Type /Annot /Subtype /Link /Rect [50 700 400 724] /Border [0 0 1] /A << /S /URI /URI (javascript:alert(1)) >> >>
+endobj
+7 0 obj
+<< /Type /Annot /Subtype /Link /Rect [50 660 400 684] /Border [0 0 1] /A << /S /URI /URI (file:///etc/passwd) >> >>
+endobj
+8 0 obj
+<< /Type /Annot /Subtype /Link /Rect [50 620 400 644] /Border [0 0 1] /A << /S /URI /URI (data:text/html,<script>alert(1)</script>) >> >>
+endobj
+9 0 obj
+<< /Type /Annot /Subtype /Link /Rect [50 580 400 604] /Border [0 0 1] /A << /S /URI /URI (vbscript:x) >> >>
+endobj
+10 0 obj
+<< /Type /Annot /Subtype /Link /Rect [50 540 400 564] /Border [0 0 1] /A << /S /URI /URI (https://example.com/ok) >> >>
+endobj
+11 0 obj
+<< /Type /Annot /Subtype /Link /Rect [50 500 400 524] /Border [0 0 1] /A << /S /URI /URI (writan-evil://x) >> >>
+endobj
+12 0 obj
+<< /Type /Annot /Subtype /Link /Rect [50 460 400 484] /Border [0 0 1] /A << /S /JavaScript /JS (app.alert\("js"\)) >> >>
+endobj
+13 0 obj
+<< /Type /Annot /Subtype /Link /Rect [50 420 400 444] /Border [0 0 1] /A << /S /Launch /F (/bin/sh) >> >>
+endobj
+14 0 obj
+<< /Title (javascript bookmark) /Parent 5 0 R /A << /S /URI /URI (javascript:alert\(2\)) >> /Next 15 0 R >>
+endobj
+15 0 obj
+<< /Title (file bookmark) /Parent 5 0 R /A << /S /URI /URI (file:///etc/passwd) >> >>
+endobj
+xref
+0 16
+0000000000 65535 f 
+0000000015 00000 n 
+0000000231 00000 n 
+0000000288 00000 n 
+0000000525 00000 n 
+0000001059 00000 n 
+0000001132 00000 n 
+0000001264 00000 n 
+0000001395 00000 n 
+0000001548 00000 n 
+0000001671 00000 n 
+0000001807 00000 n 
+0000001936 00000 n 
+0000002073 00000 n 
+0000002195 00000 n 
+0000002319 00000 n 
+trailer
+<< /Size 16 /Root 1 0 R >>
+startxref
+2421
+%%EOF

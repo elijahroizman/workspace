@@ -72,6 +72,48 @@ export const getEditor = (tabId: string) => handles.get(tabId)
 /** Counts edits per tab, so a save can tell whether the document changed while it was writing. */
 const edits = new Map<string, number>()
 
+/** Bytes last read by a tab, or a digest of its last successful write. */
+type DiskState = { bytes: Uint8Array } | { digest: string }
+const disk = new Map<string, DiskState>()
+const saves = new Map<string, Promise<void>>()
+/** Serialize each tab, including Save As dialogs and changes to its destination. */
+const saving = new Map<string, Promise<unknown>>()
+
+async function digest(bytes: Uint8Array) {
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as Uint8Array<ArrayBuffer>))
+  return Array.from(hash, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+async function remember(tabId: string, bytes: Uint8Array, written: boolean) {
+  disk.set(tabId, written ? { digest: await digest(bytes) } : { bytes })
+}
+
+async function unchangedOnDisk(tabId: string, path: string): Promise<boolean> {
+  const known = disk.get(tabId)
+  if (!known) return true
+  // Compare content even when the timestamp and size match. Another tab or a sync tool may
+  // replace bytes without changing either. Failed reads abort saving rather than allow a write.
+  if (!(await platform.pathExists(path))) return false
+  const bytes = await platform.readFile(path)
+  if ('bytes' in known) return bytes.length === known.bytes.length && bytes.every((b, i) => b === known.bytes[i])
+  return (await digest(bytes)) === known.digest
+}
+
+/** Keep conflict checking and writing together, including saves from different tabs. */
+async function withSaveLock<T>(path: string, save: () => Promise<T>): Promise<T> {
+  const previous = saves.get(path)
+  let release!: () => void
+  const pending = new Promise<void>((resolve) => { release = resolve })
+  saves.set(path, pending)
+  try {
+    await previous
+    return await save()
+  } finally {
+    release()
+    if (saves.get(path) === pending) saves.delete(path)
+  }
+}
+
 /** Autosave plugs in here (see lib/autosave.ts); until it does, nothing autosaves. */
 export const autosaveHooks = {
   /** A tab's document just changed. */
@@ -333,7 +375,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         if (opened.some((t) => t.path === path)) continue
         try {
           const bytes = await platform.readFile(path)
-          opened.push({ id: newId(), kind, title: stripExtension(platform.basename(path)), path, bytes, loadId: 0, dirty: false })
+          const id = newId()
+          await remember(id, bytes, false)
+          opened.push({ id, kind, title: stripExtension(platform.basename(path)), path, bytes, loadId: 0, dirty: false })
         } catch (err) {
           failures.push(String(err))
           if (!(await platform.pathExists(path))) get().removeRecent(path)
@@ -422,32 +466,56 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     },
 
     save: async (id, opts) => {
-      const tab = activeDoc(id)
-      if (!tab) return false
-      const editor = getEditor(tab.id)
-      if (!editor) return false
-      let path = opts?.to ?? tab.path
-      if (!path || opts?.saveAs) {
-        path = await platform.pickSavePath(tab.title, tab.kind)
-        if (!path) return false
-      }
+      const first = activeDoc(id)
+      if (!first || !getEditor(first.id)) return false
+      while (saving.has(first.id)) await saving.get(first.id)
+      // Register without another await, so a waiting save sees this tab's new path and editor.
+      const job = (async () => {
+        try {
+          const tab = get().tabs.find((t) => t.id === first.id)
+          const editor = getEditor(first.id)
+          if (!tab || !editor) return false
+          let path = opts?.to ?? tab.path
+          if (!path || opts?.saveAs) {
+            path = await platform.pickSavePath(tab.title, tab.kind)
+            if (!path) return false
+          }
+          const savePath = path
+          return await withSaveLock(savePath, async () => {
+            editor.prepareSave?.()
+            const editsBefore = edits.get(tab.id) ?? 0
+            const revisionBefore = editor.getRevision?.()
+            const bytes = await editor.getBytes()
+            // Another app, or another tab on this file, changed it since: ask before writing over that.
+            if (savePath === tab.path && !(await unchangedOnDisk(tab.id, savePath))) {
+              if (opts?.quiet) throw new Error(`“${tab.title}” was changed in another app or tab. Save it yourself to choose which to keep.`)
+              const ok = await platform.confirmDialog('It was changed in another app or another tab since you opened it here. Saving replaces those changes with this version.', {
+                title: `“${tab.title}” changed on disk`,
+                okLabel: 'Save Anyway',
+                danger: true,
+              })
+              if (!ok) return false
+            }
+            await platform.writeFile(savePath, bytes, { history: useSettings.getState().history, label: opts?.label })
+            await remember(tab.id, bytes, true)
+            const title = stripExtension(platform.basename(savePath))
+            const dirty = (edits.get(tab.id) ?? 0) !== editsBefore || editor.getRevision?.() !== revisionBefore || getEditor(tab.id) !== editor
+            if (!dirty) editor.markSaved?.()
+            set({ tabs: get().tabs.map((t) => (t.id === tab.id ? { ...t, path: savePath, title, dirty } : t)) })
+            addRecent(savePath, tab.kind)
+            return true
+          })
+        } catch (err) {
+          if (opts?.quiet) throw err
+          await platform.showError(String(err))
+          return false
+        }
+      })()
+      saving.set(first.id, job.catch(() => {}))
       try {
-        editor.prepareSave?.()
-        const editsBefore = edits.get(tab.id) ?? 0
-        const revisionBefore = editor.getRevision?.()
-        const bytes = await editor.getBytes()
-        await platform.writeFile(path, bytes, { history: useSettings.getState().history, label: opts?.label })
-        const title = stripExtension(platform.basename(path))
-        // An edit made while the file was being written isn't in it, so the tab stays unsaved.
-        const dirty = (edits.get(tab.id) ?? 0) !== editsBefore || editor.getRevision?.() !== revisionBefore || getEditor(tab.id) !== editor
-        if (!dirty) editor.markSaved?.()
-        set({ tabs: get().tabs.map((t) => (t.id === tab.id ? { ...t, path, title, dirty } : t)) })
-        addRecent(path, tab.kind)
-        return true
-      } catch (err) {
-        if (opts?.quiet) throw err
-        await platform.showError(String(err))
-        return false
+        return await job
+      } finally {
+        saving.delete(first.id)
       }
     },
 
@@ -457,6 +525,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       if (tab.dirty && (!(await get().save(id)) || get().tabs.find((t) => t.id === id)?.dirty)) return false
       try {
         await platform.writeFile(tab.path, bytes, { history: true, label })
+        await remember(id, bytes, false)
       } catch (err) {
         await platform.showError(String(err))
         return false
@@ -477,6 +546,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       }
       try {
         const bytes = await platform.readFile(tab.path)
+        await remember(tab.id, bytes, false)
         set({
           tabs: get().tabs.map((t) => (t.id === tab.id ? { ...t, bytes, loadId: t.loadId + 1, dirty: false } : t)),
         })
@@ -513,6 +583,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       const path = get().tabs.find((t) => t.id === tabId)?.path ?? tab.path
       const closedPaths = path ? [...get().closedPaths, path].slice(-20) : get().closedPaths
       edits.delete(tabId)
+      disk.delete(tabId)
       set({ tabs: remaining, activeId: nextActive, closedPaths })
       return true
     },
@@ -533,7 +604,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         const bytes = fromEditor ? ((await getEditor(tab.id)?.getBytes()) ?? tab.bytes) : await platform.readFile(tab.path!)
         const base = tab.title.replace(/ \(\d+\)$/, '')
         const copies = get().tabs.filter((t) => t.path === tab.path && t.path !== null).length
-        addTab({ ...tab, id: newId(), title: tab.path ? `${base} (${copies + 1})` : `${base} copy`, bytes, loadId: 0, dirty: tab.dirty })
+        const id = newId()
+        // A copy read fresh starts from what's on disk now; one with unsaved edits, from what the original last read.
+        if (!fromEditor && bytes) await remember(id, bytes, false)
+        else if (disk.has(tab.id)) disk.set(id, disk.get(tab.id)!)
+        addTab({ ...tab, id, title: tab.path ? `${base} (${copies + 1})` : `${base} copy`, bytes, loadId: 0, dirty: tab.dirty })
       } catch (err) {
         await platform.showError(String(err))
       }

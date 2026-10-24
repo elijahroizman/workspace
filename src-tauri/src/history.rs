@@ -35,7 +35,8 @@ pub struct Version {
     pub size: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
-    /// "save", or "original" for the file as it was before Writan first saved over it.
+    /// "save"; "original" for the file as it was before Writan first saved over it; "outside"
+    /// for a change another app (or a sync service) made before Writan saved over it.
     pub source: String,
 }
 
@@ -43,6 +44,23 @@ pub struct Version {
 struct Log {
     path: String,
     versions: Vec<Version>,
+    /// The file's size and modified time just after Writan last saved it. While they still match,
+    /// nothing else has changed it, so it needn't be read again before the next save.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    disk: Option<Stamp>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
+pub struct Stamp {
+    size: u64,
+    modified: u128,
+}
+
+/// The file's size and modified time (in ns), if it exists.
+pub fn stamp(file: &Path) -> Option<Stamp> {
+    let meta = fs::metadata(file).ok()?;
+    let modified = meta.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_nanos();
+    Some(Stamp { size: meta.len(), modified })
 }
 
 fn root<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
@@ -66,7 +84,7 @@ fn read_log(root: &Path, file: &str) -> Log {
         .ok()
         .and_then(|b| serde_json::from_slice::<Log>(&b).ok())
         .filter(|log| log.path == file)
-        .unwrap_or_else(|| Log { path: file.to_string(), versions: Vec::new() })
+        .unwrap_or_else(|| Log { path: file.to_string(), versions: Vec::new(), disk: None })
 }
 
 fn write_log(root: &Path, log: &Log) -> std::io::Result<()> {
@@ -117,7 +135,7 @@ fn thin(versions: Vec<Version>, now: u64) -> Vec<Version> {
         } else {
             Some((3, v.time / (7 * DAY)))
         };
-        let keep = v.label.is_some() || v.source == "original" || bucket.is_none() || bucket != last_bucket;
+        let keep = v.label.is_some() || v.source != "save" || bucket.is_none() || bucket != last_bucket;
         if keep {
             if bucket.is_some() {
                 last_bucket = bucket;
@@ -170,24 +188,27 @@ fn replace_versions(root: &Path, mut log: Log, versions: Vec<Version>) -> std::i
     Ok(())
 }
 
-/// The file on disk as it is before Writan saves over it for the first time, so the version
-/// you opened can always come back.
+/// The file on disk before Writan saves over it: the first time, so the version you opened can
+/// always come back, and whenever something else changed it since Writan's last save (another
+/// app, a sync service), so that change isn't lost either.
 pub fn remember_original(root: &Path, file: &Path) {
     let key = file.to_string_lossy();
     let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let log = read_log(root, &key);
-    if !log.versions.is_empty() {
+    if !log.versions.is_empty() && (log.disk.is_none() || log.disk == stamp(file)) {
         return;
     }
     let Ok(bytes) = fs::read(file) else { return };
-    let _ = add_version(root, log, &bytes, "original", None, file);
+    let source = if log.versions.is_empty() { "original" } else { "outside" };
+    let _ = add_version(root, log, &bytes, source, None, file);
 }
 
-/// A version just saved.
-pub fn record(root: &Path, file: &Path, bytes: &[u8], label: Option<String>) -> std::io::Result<()> {
+/// A version just saved; `disk` is the file's stamp right after the save.
+pub fn record(root: &Path, file: &Path, bytes: &[u8], label: Option<String>, disk: Option<Stamp>) -> std::io::Result<()> {
     let key = file.to_string_lossy();
     let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let log = read_log(root, &key);
+    let mut log = read_log(root, &key);
+    log.disk = disk;
     add_version(root, log, bytes, "save", label, file)
 }
 
@@ -199,9 +220,8 @@ fn add_version(root: &Path, mut log: Log, bytes: &[u8], source: &str, label: Opt
             // The same bytes again: only a new name, if one came with it.
             if label.is_some() {
                 latest.label = label;
-                write_log(root, &log)?;
             }
-            return Ok(());
+            return write_log(root, &log);
         }
     }
     let version = Version { id: new_id(time, &hash), hash, time, size: bytes.len() as u64, label, source: source.into() };
@@ -326,13 +346,35 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         fs::write(&file, b"first").unwrap();
         remember_original(&root, &file);
-        record(&root, &file, b"second", None).unwrap();
-        record(&root, &file, b"second", Some("Named".into())).unwrap();
+        record(&root, &file, b"second", None, None).unwrap();
+        record(&root, &file, b"second", Some("Named".into()), None).unwrap();
         let log = read_log(&root, &file.to_string_lossy());
         assert_eq!(log.versions.len(), 2);
         assert_eq!(log.versions[0].label.as_deref(), Some("Named"));
         assert_eq!(log.versions[1].source, "original");
         assert_eq!(fs::read(object_path(&root, &log.versions[1].hash)).unwrap(), b"first");
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn keeps_a_change_made_outside_before_saving_over_it() {
+        let root = std::env::temp_dir().join(format!("workspace-history-outside-{}", std::process::id()));
+        let file = root.join("notes.md");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&file, b"first").unwrap();
+        remember_original(&root, &file);
+        fs::write(&file, b"mine").unwrap();
+        record(&root, &file, b"mine", None, stamp(&file)).unwrap();
+        // Saving again with nothing changed outside adds nothing.
+        remember_original(&root, &file);
+        assert_eq!(read_log(&root, &file.to_string_lossy()).versions.len(), 2);
+        // Another app rewrites it; the next save keeps that version first.
+        fs::write(&file, b"theirs, longer").unwrap();
+        remember_original(&root, &file);
+        let log = read_log(&root, &file.to_string_lossy());
+        assert_eq!(log.versions.len(), 3);
+        assert_eq!(log.versions[0].source, "outside");
+        assert_eq!(fs::read(object_path(&root, &log.versions[0].hash)).unwrap(), b"theirs, longer");
         fs::remove_dir_all(&root).unwrap();
     }
 }

@@ -161,6 +161,9 @@ impl SheetsView {
     pub fn open(bytes: &[u8], name: &str) -> office_core::Result<SheetsView> {
         let mut doc = Compiler::new().with_layer(Sheets).read(bytes, Some(name))?;
         let kind = doc.kind;
+        if !matches!(kind, Kind::Sheets | Kind::Csv) {
+            return Err(office_core::Error::Invalid(format!("this is {}, not an Excel workbook", kind.described())));
+        }
         if kind == Kind::Csv {
             // A CSV file is edited as a workbook of one sheet, and saved back as CSV.
             crate::excel_mut(&mut doc);
@@ -210,11 +213,10 @@ impl SheetsView {
         self.revision
     }
 
-    /// Sets what NOW() and TODAY() give (a serial number) and works the formulas out again.
+    /// Sets what NOW() and TODAY() give on the next edit. Opening a file must keep its cached
+    /// results: our evaluator cannot reproduce every formula Excel supports.
     pub fn set_now(&mut self, serial: f64) {
         self.now = Some(serial);
-        crate::recalculate(&mut self.doc, self.now);
-        self.revision += 1;
     }
 
     pub fn sheets(&self) -> &[Sheet] {
@@ -270,6 +272,10 @@ impl SheetsView {
             Some((r, c)) => (r.max(content.0), c.max(content.1)),
             None => (content.0 + 200, content.1.max(26) + 26),
         };
+        // No further than Excel's last row and column: a row numbered in the billions (a damaged
+        // file) would otherwise ask for gigabytes of row positions.
+        let (rows, cols) = (rows.min(crate::MAX_ROWS), cols.min(crate::MAX_COLS));
+        let content = (content.0.min(rows), content.1.min(cols));
         let origin = s.origin.get();
         let fmt = origin.and_then(|o| o.child(ns::X, "sheetFormatPr"));
         let chars = |w: f64| (w * 7.0 + 5.0).round();

@@ -115,6 +115,13 @@ pub fn detect(bytes: &[u8], name: Option<&str>) -> Result<Kind> {
         return pkg.content_type(&main).and_then(Kind::from_main_content_type).ok_or(Error::UnknownFormat);
     }
     if bytes.starts_with(&[0xD0, 0xCF, 0x11, 0xE0]) {
+        // Office saves a password-protected .docx, .pptx or .xlsx as a compound file too, holding
+        // the encrypted zip in a stream named EncryptedPackage.
+        if is_encrypted_package(bytes) {
+            return Err(Error::Invalid(
+                "this file is protected with a password, which isn't supported: remove the password in Office and open it again".into(),
+            ));
+        }
         return Err(Error::Invalid("this is an old binary Office file (.doc, .ppt or .xls), which isn't supported".into()));
     }
     let ext = name.and_then(|n| n.rsplit_once('.')).map(|(_, e)| e);
@@ -124,6 +131,13 @@ pub fn detect(bytes: &[u8], name: Option<&str>) -> Result<Kind> {
         None if name.is_none() && looks_like_text(bytes) => Ok(Kind::Csv),
         None => Err(Error::UnknownFormat),
     }
+}
+
+/// Whether a compound file has the stream an encrypted Office package is kept in: its name in
+/// the file's directory, which is UTF-16.
+fn is_encrypted_package(bytes: &[u8]) -> bool {
+    let name: Vec<u8> = "EncryptedPackage".encode_utf16().flat_map(u16::to_le_bytes).collect();
+    bytes.windows(name.len()).any(|w| w == name)
 }
 
 fn looks_like_text(bytes: &[u8]) -> bool {

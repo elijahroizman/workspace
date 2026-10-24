@@ -24,20 +24,34 @@ const requested = new Set<string>()
 const listeners = new Set<() => void>()
 let notifyTimer = 0
 
+/** Invalid document font names must not throw through a borrowed WASM document. */
+function usableFont(font: string) {
+  if (CSS.supports('font', font)) return font
+  const size = parseFloat(font.replace(/^(italic |bold )*/, ''))
+  return `${Number.isFinite(size) && size > 0 ? size : 16}px sans-serif`
+}
+
+function requestFont(font: string): Promise<FontFace[]> {
+  try {
+    return document.fonts.check(font) ? Promise.resolve([]) : document.fonts.load(font).catch(() => [])
+  } catch {
+    return Promise.resolve([])
+  }
+}
+
 function setFont(font: string) {
   if (font === current) return
-  ctx.font = font
+  const usable = usableFont(font)
+  ctx.font = usable
   current = font
-  if (!requested.has(font)) {
-    requested.add(font)
-    if (!document.fonts.check(font)) {
-      void document.fonts.load(font).then((faces) => {
-        if (!faces.length) return
-        metricsCache.clear()
-        window.clearTimeout(notifyTimer)
-        notifyTimer = window.setTimeout(() => listeners.forEach((f) => f()), 30)
-      })
-    }
+  if (!requested.has(usable)) {
+    requested.add(usable)
+    void requestFont(usable).then((faces) => {
+      if (!faces.length) return
+      metricsCache.clear()
+      window.clearTimeout(notifyTimer)
+      notifyTimer = window.setTimeout(() => listeners.forEach((f) => f()), 30)
+    })
   }
 }
 
@@ -54,7 +68,7 @@ export const host = {
     const px = parseFloat(font.replace(/^(italic |bold )*/, '')) || 16
     const ascent = m.fontBoundingBoxAscent || px * 0.8
     const descent = m.fontBoundingBoxDescent || px * 0.2
-    const gap = Math.max(0, normalLineHeight(font) - ascent - descent)
+    const gap = Math.max(0, normalLineHeight(ctx.font) - ascent - descent)
     const v: [number, number, number] = [ascent, descent, gap < 0.05 ? 0 : gap]
     metricsCache.set(font, v)
     return v
@@ -72,9 +86,9 @@ export async function preloadFonts(families: string[]) {
   const loads: Promise<unknown>[] = []
   for (const family of new Set(families)) {
     for (const prefix of ['', 'bold ', 'italic ']) {
-      const font = `${prefix}16px ${family}`
+      const font = usableFont(`${prefix}16px ${family}`)
       requested.add(font)
-      if (!document.fonts.check(font)) loads.push(document.fonts.load(font).catch(() => []))
+      loads.push(requestFont(font))
     }
   }
   await Promise.all(loads)

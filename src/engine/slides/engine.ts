@@ -2,7 +2,7 @@
 // (kept per slide until the slide changes), the selection, and what the inspector reads.
 
 import { host, onFontsChanged } from '../host'
-import { loadEngine } from '../load'
+import { expectKind, loadEngine } from '../load'
 import type { PaintItem } from '../paint'
 import { itemsHtml, MediaCache, StyleSheet } from '../paint'
 import { BASE_FONTS } from '../preload'
@@ -151,6 +151,7 @@ export class SlidesEngine {
   /** Opens a PowerPoint file, or a new deck for `null`. */
   static async open(bytes: Uint8Array | null): Promise<SlidesEngine> {
     const engine = await loadEngine()
+    expectKind(bytes, 'slides')
     await preloadFonts(BASE_FONTS)
     const doc = new engine.SlidesDoc(bytes ?? new Uint8Array(), host)
     const e = new SlidesEngine(doc)

@@ -169,7 +169,7 @@ function compareTexts(before: string[], after: string[]): Comparison {
   return { rows, added: count('add'), removed: count('del'), changed: count('change') }
 }
 
-const versionTitle = (v: FileVersion) => v.label || (v.source === 'original' ? 'Before Writan saved it' : 'Saved')
+const versionTitle = (v: FileVersion) => v.label || (v.source === 'original' ? 'Before Writan saved it' : v.source === 'outside' ? 'Changed outside Writan' : 'Saved')
 
 export function VersionHistory() {
   const tabId = useVersionHistory((s) => s.tabId)

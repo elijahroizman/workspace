@@ -11,6 +11,7 @@ mod launch_services;
 mod menu;
 mod open_dialog;
 mod plugins;
+mod quit;
 mod tex;
 mod update;
 #[cfg(windows)]
@@ -42,6 +43,7 @@ fn take_pending_opens(state: tauri::State<'_, PendingOpens>) -> Vec<String> {
 
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
+    // The page has already asked about unsaved changes.
     app.exit(0);
 }
 
@@ -107,12 +109,8 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     update::remember_bundle();
 
-    let cli_paths: Vec<String> = std::env::args()
-        .skip(1)
-        .filter(|arg| !arg.starts_with('-'))
-        .filter_map(|arg| std::fs::canonicalize(arg).ok())
-        .map(|p| p.to_string_lossy().into_owned())
-        .collect();
+    let cwd = std::env::current_dir().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
+    let cli_paths = cli::paths_from_args(&std::env::args().collect::<Vec<_>>(), &cwd);
 
     let builder = tauri::Builder::default();
     // Windows and Linux start a second copy for `writan notes.md` (or the older `workspace` command) or a double-click; it hands
@@ -144,6 +142,7 @@ pub fn run() {
                 let _ = std::thread::Builder::new()
                     .name("launch-services".into())
                     .spawn(move || launch_services::claim_single_open_with_entry(&bundle_id));
+                quit::install(app.handle());
             }
             #[cfg(windows)]
             if let Some(window) = app.get_webview_window("main") {

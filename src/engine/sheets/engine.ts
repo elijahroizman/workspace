@@ -2,7 +2,7 @@
 // selection, and drawing blocks of cells.
 
 import { host, onFontsChanged, preloadFonts } from '../host'
-import { loadEngine } from '../load'
+import { expectKind, loadEngine } from '../load'
 import type { PaintItem, PaintStyle } from '../paint'
 import { itemsHtml, MediaCache, StyleSheet } from '../paint'
 import { BASE_FONTS } from '../preload'
@@ -156,11 +156,16 @@ export class SheetsEngine {
 
   static async open(bytes: Uint8Array | null, name: string): Promise<SheetsEngine> {
     const engine = await loadEngine()
+    if (!/\.(csv|tsv)$/i.test(name) || bytes?.length) expectKind(bytes, 'sheets')
     await preloadFonts(BASE_FONTS)
     const doc = new engine.SheetsDoc(bytes ?? new Uint8Array(), name, host)
     doc.setNow(serialNow())
     const e = new SheetsEngine(doc)
     e.refresh()
+    if (e.sheets[e.state.sheet]?.hidden) {
+      const visible = e.sheets.findIndex((s) => !s.hidden)
+      if (visible >= 0) e.run({ cmd: 'select', sheet: visible, anchor: [0, 0], focus: [0, 0] })
+    }
     return e
   }
 

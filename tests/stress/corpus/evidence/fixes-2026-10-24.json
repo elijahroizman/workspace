@@ -1,0 +1,655 @@
+{
+  "baseline": "b088f996153b1a639dedcd9ca5119ee050e892e5",
+  "environment": "eli@bbb:~/stress-corpus-fix; Chromium/WebKit 1440x1100; preview port 1453",
+  "source_and_sample_sha256": {
+    "crates/office-core/src/formats/docx/read.rs": "193540654e0636381957d329044af8ace1b08817ad1d0e3dfe4a6478d3c3d4cf",
+    "crates/office-core/src/formats/docx/write.rs": "b2c55896b0e70d67cb9faa509bd083810c790e8671083b955facd6dd9805c629",
+    "crates/office-word/src/numbering.rs": "d027e43446a7cdede25e4b6ed42e03e952c7fef5ffe1c70a9911c722cf3dded5",
+    "tests/stress/samples/table-content-controls.docx": "faf42f091e367a4f5a6946bce91778e99dae0559659e5c120acc1df194463b37",
+    "tests/stress/samples/cjk-list-markers.docx": "ceede4df5edb2b3cd09485c51edce660326a695930ad4fbdc7534fb44f646c27"
+  },
+  "fresh_build": {
+    "remote_sources_touched_before_cargo": true,
+    "wasm_command": "node scripts/engine.mjs --force",
+    "wasm_build_tail": [
+      "   Compiling office-sheets v0.1.0 (/home/eli/stress-corpus-fix/crates/office-sheets)",
+      "   Compiling office-word v0.1.0 (/home/eli/stress-corpus-fix/crates/office-word)",
+      "   Compiling office-wasm v0.1.0 (/home/eli/stress-corpus-fix/crates/office-wasm)",
+      "    Finished `release` profile [optimized] target(s) in 15.17s",
+      "Built the document engine into src/engine/wasm"
+    ]
+  },
+  "regressions_on_baseline": {
+    "docx_table_order_failed": 3,
+    "cjk_numbering_failed": 4,
+    "logs": [
+      "baseline-table-order.log",
+      "baseline-cjk.log"
+    ]
+  },
+  "rust": {
+    "command": "CORPUS_FILES=$HOME/stress-corpus-files cargo test -p office-core -p office-word",
+    "passed": 196,
+    "failed": 0,
+    "format_check": "cargo fmt --all -- --check passed"
+  },
+  "table_order": {
+    "cli": [
+      {
+        "name": "au-budget-bp1_bs-1.docx",
+        "mode": "cli",
+        "table_and_row_count": 25,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "au-budget-bp1_bs-2.docx",
+        "mode": "cli",
+        "table_and_row_count": 119,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "au-budget-bp1_bs-3.docx",
+        "mode": "cli",
+        "table_and_row_count": 290,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "au-budget-bp1_bs-4.docx",
+        "mode": "cli",
+        "table_and_row_count": 108,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "au-budget-bp1_bs-5.docx",
+        "mode": "cli",
+        "table_and_row_count": 396,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "au-budget-bp1_prelims.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "jp-akita-deresume.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "lo-SdtContent.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "lo-cjklist30.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "lo-cjklist31.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "lo-footnote.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "lo-groupshape-trackedchanges.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "lo-math-accents.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "lo-rtl-gutter.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "lo-smartart.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "lo-table-rtl.docx",
+        "mode": "cli",
+        "table_and_row_count": 3,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "lo-tdf106174_rtlParaAlign.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "lo-tdf118361_RTLfootnoteSeparator.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-due-diligence-checklist.docx",
+        "mode": "cli",
+        "table_and_row_count": 15,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-extra-lite-template-procurement-plan.docx",
+        "mode": "cli",
+        "table_and_row_count": 53,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-goods-template-contract-form-1-government-model.docx",
+        "mode": "cli",
+        "table_and_row_count": 62,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-lite-template-procurement-plan.docx",
+        "mode": "cli",
+        "table_and_row_count": 77,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-negotiations-checklist.docx",
+        "mode": "cli",
+        "table_and_row_count": 36,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-rfi-response-form-government-model.docx",
+        "mode": "cli",
+        "table_and_row_count": 58,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-rfq-lite-response-form-template-government-model.docx",
+        "mode": "cli",
+        "table_and_row_count": 16,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-rfq-lite-template-government-model.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-rfx-response-form-optional-extras-government-model.docx",
+        "mode": "cli",
+        "table_and_row_count": 157,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-template-advance-notice-government-model.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-template-instructions-for-panel-evaluation.docx",
+        "mode": "cli",
+        "table_and_row_count": 45,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-template-mandatory-conditions-evaluation.docx",
+        "mode": "cli",
+        "table_and_row_count": 35,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-template-procurement-plan.docx",
+        "mode": "cli",
+        "table_and_row_count": 225,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-template-recommendation-panel-evaluation.docx",
+        "mode": "cli",
+        "table_and_row_count": 183,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-template-report-minutes-panel-evaluation.docx",
+        "mode": "cli",
+        "table_and_row_count": 77,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-template-rfi-government-model.docx",
+        "mode": "cli",
+        "table_and_row_count": 32,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-template-rfp-government-model.docx",
+        "mode": "cli",
+        "table_and_row_count": 61,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-template-rfp-response-form-government-model.docx",
+        "mode": "cli",
+        "table_and_row_count": 202,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-template-rfq-government-model.docx",
+        "mode": "cli",
+        "table_and_row_count": 63,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-template-rfq-response-form-government-model.docx",
+        "mode": "cli",
+        "table_and_row_count": 139,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-template-roi-government-model.docx",
+        "mode": "cli",
+        "table_and_row_count": 34,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-template-roi-response-form-government-model.docx",
+        "mode": "cli",
+        "table_and_row_count": 71,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-template-tender-criteria-evaluation.docx",
+        "mode": "cli",
+        "table_and_row_count": 58,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-write-procurement-policy-template.docx",
+        "mode": "cli",
+        "table_and_row_count": 13,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "siu-dissertation-template.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "siu-thesis-creative-writing-template.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "siu-thesis-template.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "ucsd-DissertationTemplate_Doctoral_v2.3.docx",
+        "mode": "cli",
+        "table_and_row_count": 8,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "ucsd-DissertationTemplate_JDP.docx",
+        "mode": "cli",
+        "table_and_row_count": 8,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "ucsd-Permission_letter_sample.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "ucsd-ThesisTemplate_Master_v2.3.docx",
+        "mode": "cli",
+        "table_and_row_count": 8,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "uk-acas-job-application-form-template.docx",
+        "mode": "cli",
+        "table_and_row_count": 20,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "cjk-list-markers.docx",
+        "mode": "cli",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "table-content-controls.docx",
+        "mode": "cli",
+        "table_and_row_count": 8,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      }
+    ],
+    "chromium": [
+      {
+        "name": "lo-cjklist30.docx",
+        "mode": "chromium",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "lo-cjklist31.docx",
+        "mode": "chromium",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-template-rfp-government-model.docx",
+        "mode": "chromium",
+        "table_and_row_count": 61,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      }
+    ],
+    "webkit": [
+      {
+        "name": "lo-cjklist30.docx",
+        "mode": "webkit",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "lo-cjklist31.docx",
+        "mode": "webkit",
+        "table_and_row_count": 0,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      },
+      {
+        "name": "nz-template-rfp-government-model.docx",
+        "mode": "webkit",
+        "table_and_row_count": 61,
+        "order_preserved": true,
+        "raw_controls_preserved": true
+      }
+    ]
+  },
+  "browser_open_save": [
+    {
+      "name": "lo-cjklist30.docx",
+      "browser": "chromium",
+      "status": "ok",
+      "save": "ok",
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "name": "lo-cjklist31.docx",
+      "browser": "chromium",
+      "status": "ok",
+      "save": "ok",
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "name": "nz-template-rfp-government-model.docx",
+      "browser": "chromium",
+      "status": "ok",
+      "save": "ok",
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "name": "lo-cjklist30.docx",
+      "browser": "webkit",
+      "status": "ok",
+      "save": "ok",
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "name": "lo-cjklist31.docx",
+      "browser": "webkit",
+      "status": "ok",
+      "save": "ok",
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "name": "nz-template-rfp-government-model.docx",
+      "browser": "webkit",
+      "status": "ok",
+      "save": "ok",
+      "consoleErrors": [],
+      "pageErrors": []
+    }
+  ],
+  "browser_cjk_markers": [
+    {
+      "browser": "chromium",
+      "name": "lo-cjklist30.docx",
+      "url": "http://127.0.0.1:1453/?open=%2Fdev-samples%2Flo-cjklist30.docx",
+      "title": "Writan",
+      "markers": [
+        "甲.",
+        "乙.",
+        "丙.",
+        "丁.",
+        "戊.",
+        "己.",
+        "庚.",
+        "辛.",
+        "壬.",
+        "癸.",
+        "11.",
+        "12.",
+        "13.",
+        "14.",
+        "15.",
+        "16.",
+        "17.",
+        "18.",
+        "19.",
+        "20."
+      ],
+      "status": "pass"
+    },
+    {
+      "browser": "chromium",
+      "name": "lo-cjklist31.docx",
+      "url": "http://127.0.0.1:1453/?open=%2Fdev-samples%2Flo-cjklist31.docx",
+      "title": "Writan",
+      "markers": [
+        "子.",
+        "丑.",
+        "寅.",
+        "卯.",
+        "辰.",
+        "巳.",
+        "午.",
+        "未.",
+        "申.",
+        "酉.",
+        "戌.",
+        "亥.",
+        "13.",
+        "14.",
+        "15.",
+        "16.",
+        "17.",
+        "18.",
+        "19.",
+        "20."
+      ],
+      "status": "pass"
+    },
+    {
+      "browser": "webkit",
+      "name": "lo-cjklist30.docx",
+      "url": "http://127.0.0.1:1453/?open=%2Fdev-samples%2Flo-cjklist30.docx",
+      "title": "Writan",
+      "markers": [
+        "甲.",
+        "乙.",
+        "丙.",
+        "丁.",
+        "戊.",
+        "己.",
+        "庚.",
+        "辛.",
+        "壬.",
+        "癸.",
+        "11.",
+        "12.",
+        "13.",
+        "14.",
+        "15.",
+        "16.",
+        "17.",
+        "18.",
+        "19.",
+        "20."
+      ],
+      "status": "pass"
+    },
+    {
+      "browser": "webkit",
+      "name": "lo-cjklist31.docx",
+      "url": "http://127.0.0.1:1453/?open=%2Fdev-samples%2Flo-cjklist31.docx",
+      "title": "Writan",
+      "markers": [
+        "子.",
+        "丑.",
+        "寅.",
+        "卯.",
+        "辰.",
+        "巳.",
+        "午.",
+        "未.",
+        "申.",
+        "酉.",
+        "戌.",
+        "亥.",
+        "13.",
+        "14.",
+        "15.",
+        "16.",
+        "17.",
+        "18.",
+        "19.",
+        "20."
+      ],
+      "status": "pass"
+    }
+  ],
+  "rfp_reference": [
+    {
+      "name": "nz-template-rfp-government-model.docx",
+      "mode": "original",
+      "status": "ok",
+      "pages": 22,
+      "text_sha256": "08388c7728d63619aeed956d66bd95a0602f2d3745f0a2a6d0ce864868916992"
+    },
+    {
+      "name": "nz-template-rfp-government-model.docx",
+      "mode": "cli",
+      "status": "ok",
+      "pages": 22,
+      "text_sha256": "08388c7728d63619aeed956d66bd95a0602f2d3745f0a2a6d0ce864868916992"
+    },
+    {
+      "name": "nz-template-rfp-government-model.docx",
+      "mode": "chromium",
+      "status": "ok",
+      "pages": 22,
+      "text_sha256": "08388c7728d63619aeed956d66bd95a0602f2d3745f0a2a6d0ce864868916992"
+    },
+    {
+      "name": "nz-template-rfp-government-model.docx",
+      "mode": "webkit",
+      "status": "ok",
+      "pages": 22,
+      "text_sha256": "08388c7728d63619aeed956d66bd95a0602f2d3745f0a2a6d0ce864868916992"
+    }
+  ],
+  "baseline_rfp_pages": {
+    "original": 22,
+    "cli": 32,
+    "chromium": 32,
+    "webkit": 32
+  },
+  "artifacts": "eli@bbb:~/stress-corpus-fix (logs and tests/stress/corpus/results-fixes)"
+}

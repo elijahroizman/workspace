@@ -121,7 +121,7 @@ export interface FileVersion {
   time: number
   size: number
   label?: string
-  /** 'save', or 'original': the file as it was before Writan first saved over it. */
+  /** 'save'; 'original', the file as it was before Writan first saved over it; or 'outside', a change another app made before Writan saved over it. */
   source: string
 }
 
@@ -250,6 +250,14 @@ export async function pickFolder(): Promise<string | null> {
   const { open } = await dialog()
   const picked = await open({ directory: true, multiple: false })
   return typeof picked === 'string' ? picked : null
+}
+
+/** A file's size and modified time, to tell later whether something else changed it. Null in the browser, or when there's no file. */
+export async function fileStamp(path: string): Promise<string | null> {
+  if (!isTauri || path.startsWith('browser:')) return null
+  const { invoke } = await core()
+  const info = await invoke<{ exists: boolean; size: number; modifiedMs: number }>('path_info', { path })
+  return info.exists ? `${info.size}:${info.modifiedMs}` : null
 }
 
 export async function pathExists(path: string): Promise<boolean> {
@@ -394,13 +402,25 @@ export async function showError(message: string, title?: string): Promise<void> 
   })
 }
 
+/** Web and email links: the only kinds a document may open (never javascript:, file: or another app's scheme). */
+export const isWebLink = (url: string) => /^(https?:\/\/|mailto:)/i.test(url)
+
+/** Open a link in the browser or mail app. Anything else is refused with a message, never thrown. */
 export async function openExternal(url: string): Promise<void> {
+  if (!isWebLink(url)) {
+    await showError(url.length > 200 ? url.slice(0, 200) + '…' : url, 'Writan opens only web and email links')
+    return
+  }
   if (!isTauri) {
     window.open(url, '_blank', 'noopener')
     return
   }
-  const { openUrl } = await import('@tauri-apps/plugin-opener')
-  await openUrl(url)
+  try {
+    const { openUrl } = await import('@tauri-apps/plugin-opener')
+    await openUrl(url)
+  } catch (err) {
+    await showError(String(err), 'Couldn’t open the link')
+  }
 }
 
 export async function revealInFinder(path: string): Promise<void> {

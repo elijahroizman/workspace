@@ -462,7 +462,7 @@ function Book({ tab, active, engine }: EditorProps & { engine: SheetsEngine }) {
 
   const left = (
     <nav className="list" aria-label="Sheets">
-      {engine.sheets.map((s, i) => (
+      {engine.sheets.map((s, i) => !s.hidden && (
         <button
           key={`${i}-${s.name}`}
           type="button"

@@ -1,0 +1,243 @@
+{
+  "date": "2026-10-24",
+  "runtime_revision": "5f57f3a",
+  "verification_revision": "5f57f3a",
+  "host": "bbb",
+  "browsers": {
+    "chromium": {
+      "datasafety": {
+        "assertions_passed": 108,
+        "assertions_failed": 0
+      },
+      "session": {
+        "assertions_passed": 8,
+        "assertions_failed": 0,
+        "known_open_finding": "UI-001: unsaved edits and untitled tabs lost on reload"
+      },
+      "hidden-sheets": {
+        "assertions_passed": 8,
+        "assertions_failed": 0
+      },
+      "nasty": {
+        "assertions_passed": 119,
+        "assertions_failed": 0
+      },
+      "security": {
+        "assertions_passed": 18,
+        "assertions_failed": 0
+      },
+      "css-fonts": {
+        "assertions_passed": 17,
+        "assertions_failed": 0
+      }
+    },
+    "webkit": {
+      "datasafety": {
+        "assertions_passed": 108,
+        "assertions_failed": 0
+      },
+      "session": {
+        "assertions_passed": 8,
+        "assertions_failed": 0,
+        "known_open_finding": "UI-001: unsaved edits and untitled tabs lost on reload"
+      },
+      "hidden-sheets": {
+        "assertions_passed": 8,
+        "assertions_failed": 0
+      },
+      "nasty": {
+        "assertions_passed": 119,
+        "assertions_failed": 0
+      },
+      "security": {
+        "assertions_passed": 18,
+        "assertions_failed": 0
+      },
+      "css-fonts": {
+        "assertions_passed": 17,
+        "assertions_failed": 0
+      }
+    }
+  },
+  "core": {
+    "passed": 378,
+    "failed": 0,
+    "ignored": 8,
+    "all_features": true,
+    "profile": "release",
+    "corpus_files_supplied": true
+  },
+  "corpus": {
+    "chromium": {
+      "open_save_flows": 4,
+      "pbo_unchanged_parts": 376,
+      "pbo_changed_parts": [],
+      "pbo_added_parts": []
+    },
+    "webkit": {
+      "open_save_flows": 4,
+      "pbo_unchanged_parts": 376,
+      "pbo_changed_parts": [],
+      "pbo_added_parts": []
+    }
+  },
+  "pdf": {
+    "chromium": {
+      "original_sha256": "878f0fd2950f06a2534a956c838eb20ba6ac78e086bfcbef990a48e5bf48013b",
+      "unchanged_sha256": "878f0fd2950f06a2534a956c838eb20ba6ac78e086bfcbef990a48e5bf48013b",
+      "signature_digest": "valid",
+      "certificate": "expired in original",
+      "undo_restores_original": true,
+      "rotation_persisted": 90,
+      "repeated_save_identical": true
+    },
+    "webkit": {
+      "original_sha256": "878f0fd2950f06a2534a956c838eb20ba6ac78e086bfcbef990a48e5bf48013b",
+      "unchanged_sha256": "878f0fd2950f06a2534a956c838eb20ba6ac78e086bfcbef990a48e5bf48013b",
+      "signature_digest": "valid",
+      "certificate": "expired in original",
+      "undo_restores_original": true,
+      "rotation_persisted": 90,
+      "repeated_save_identical": true
+    }
+  },
+  "rfp_reference_pages": {
+    "original": 22,
+    "chromium": 22,
+    "webkit": 22
+  },
+  "rfp_and_cjk_saved_table_order": "identical to originals in both browsers",
+  "cjk_marker_checks": [
+    {
+      "browser": "chromium",
+      "name": "lo-cjklist30.docx",
+      "url": "http://localhost:4173/?open=%2Fdev-samples%2Flo-cjklist30.docx",
+      "title": "Writan",
+      "markers": [
+        "甲.",
+        "乙.",
+        "丙.",
+        "丁.",
+        "戊.",
+        "己.",
+        "庚.",
+        "辛.",
+        "壬.",
+        "癸.",
+        "11.",
+        "12.",
+        "13.",
+        "14.",
+        "15.",
+        "16.",
+        "17.",
+        "18.",
+        "19.",
+        "20."
+      ],
+      "status": "pass"
+    },
+    {
+      "browser": "chromium",
+      "name": "lo-cjklist31.docx",
+      "url": "http://localhost:4173/?open=%2Fdev-samples%2Flo-cjklist31.docx",
+      "title": "Writan",
+      "markers": [
+        "子.",
+        "丑.",
+        "寅.",
+        "卯.",
+        "辰.",
+        "巳.",
+        "午.",
+        "未.",
+        "申.",
+        "酉.",
+        "戌.",
+        "亥.",
+        "13.",
+        "14.",
+        "15.",
+        "16.",
+        "17.",
+        "18.",
+        "19.",
+        "20."
+      ],
+      "status": "pass"
+    },
+    {
+      "browser": "webkit",
+      "name": "lo-cjklist30.docx",
+      "url": "http://localhost:4173/?open=%2Fdev-samples%2Flo-cjklist30.docx",
+      "title": "Writan",
+      "markers": [
+        "甲.",
+        "乙.",
+        "丙.",
+        "丁.",
+        "戊.",
+        "己.",
+        "庚.",
+        "辛.",
+        "壬.",
+        "癸.",
+        "11.",
+        "12.",
+        "13.",
+        "14.",
+        "15.",
+        "16.",
+        "17.",
+        "18.",
+        "19.",
+        "20."
+      ],
+      "status": "pass"
+    },
+    {
+      "browser": "webkit",
+      "name": "lo-cjklist31.docx",
+      "url": "http://localhost:4173/?open=%2Fdev-samples%2Flo-cjklist31.docx",
+      "title": "Writan",
+      "markers": [
+        "子.",
+        "丑.",
+        "寅.",
+        "卯.",
+        "辰.",
+        "巳.",
+        "午.",
+        "未.",
+        "申.",
+        "酉.",
+        "戌.",
+        "亥.",
+        "13.",
+        "14.",
+        "15.",
+        "16.",
+        "17.",
+        "18.",
+        "19.",
+        "20."
+      ],
+      "status": "pass"
+    }
+  ],
+  "expected_resource_errors": "Missing-image 404s from deliberately malformed fixtures; no unhandled page errors",
+  "native": {
+    "host": "local Linux",
+    "passed": 38,
+    "failed": 0,
+    "ignored": 3,
+    "clippy_all_targets_warnings_denied": "passed",
+    "gio_forwarding": "passed"
+  },
+  "build": {
+    "forced_wasm": "passed; six Office crates recompiled",
+    "typecheck_app_and_plugins": "passed",
+    "production": "passed",
+    "core_formatting": "passed"
+  }
+}
