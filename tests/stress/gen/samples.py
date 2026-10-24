@@ -27,7 +27,10 @@ def zipped(parts, names=None):
     b = io.BytesIO()
     with zipfile.ZipFile(b, "w", zipfile.ZIP_DEFLATED) as z:
         for name, data in parts:
-            z.writestr(name, data.encode() if isinstance(data, str) else data)
+            # A fixed date, so the same sample comes out byte for byte.
+            info = zipfile.ZipInfo(name, (2026, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            z.writestr(info, data.encode() if isinstance(data, str) else data)
     return b.getvalue()
 
 
@@ -108,3 +111,7 @@ try:
 except ImportError:
     print("msoffcrypto-tool isn't installed: S2-password-protected.docx not written")
 os.remove(os.path.join(out, "plain.docx"))
+
+# Entries named `xl\workbook.xml`, as some .NET writers make them (POI's 49609.xlsx): "the file
+# has no main document part".
+save("S2-backslash-part-names.xlsx", xlsx([("Sheet1", '<row r="1"><c r="A1"><v>42</v></c></row>')], sep="\\"))

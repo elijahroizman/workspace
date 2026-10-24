@@ -154,3 +154,26 @@ fn a_part_bigger_than_it_says_is_refused() {
     assert!(pkg.part("word/document.xml").is_ok());
     assert!(pkg.part("word/big.bin").is_err());
 }
+
+#[test]
+fn backslashes_in_entry_names_are_folders() {
+    // Some writers name entries `xl\workbook.xml`, and `[content_types].xml` in lower case.
+    let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    let o = SimpleFileOptions::default();
+    let src = sample();
+    for name in std::iter::once(content_types::PART).chain(src.part_names()) {
+        let data = if name == content_types::PART { src.content_types.to_xml().to_bytes() } else { src.part(name).unwrap().to_vec() };
+        let written = if name == content_types::PART { "[content_types].xml".to_string() } else { name.replace('/', "\\") };
+        zip.start_file(written, o).unwrap();
+        zip.write_all(&data).unwrap();
+    }
+    let bytes = zip.finish().unwrap().into_inner();
+    let pkg = Package::read(&bytes).unwrap();
+    assert_eq!(pkg.main_part().unwrap(), "word/document.xml");
+    assert_eq!(pkg.related("word/document.xml", kind::IMAGE).unwrap()[0].1, "word/media/image1.png");
+    // Saved with `/`, and the content types under their proper name.
+    let saved = pkg.to_bytes().unwrap();
+    let mut names: Vec<String> = ZipArchive::new(Cursor::new(saved)).unwrap().file_names().map(str::to_string).collect();
+    names.sort();
+    assert_eq!(names, ["[Content_Types].xml", "_rels/.rels", "word/_rels/document.xml.rels", "word/document.xml", "word/media/image1.png"]);
+}

@@ -78,7 +78,8 @@ impl Package {
                 .checked_add(file.size())
                 .filter(|t| *t <= MAX_SIZE)
                 .ok_or_else(|| Error::Zip("the file is too large once decompressed".into()))?;
-            let name = file.name().trim_start_matches('/').to_string();
+            // Some writers separate folders with `\`, as Windows paths do; Office reads them.
+            let name = file.name().replace('\\', "/").trim_start_matches('/').to_string();
             if name.eq_ignore_ascii_case(content_types::PART) {
                 content_types_entry = Some(i);
             } else {
@@ -102,14 +103,20 @@ impl Package {
         let mut zip = ZipWriter::new(Cursor::new(Vec::new()));
         let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
         let mut source = self.source.clone();
-        let mut copy = |zip: &mut ZipWriter<_>, entry: usize| -> Result<()> {
+        // Under the part's own name, which is the entry's unless the entry's used `\`.
+        let mut copy = |zip: &mut ZipWriter<_>, entry: usize, name: &str| -> Result<()> {
             let archive = source.as_mut().expect("parts with an entry come from a source zip");
-            zip.raw_copy_file(archive.by_index_raw(entry)?)?;
+            let file = archive.by_index_raw(entry)?;
+            if file.name() == name {
+                zip.raw_copy_file(file)?;
+            } else {
+                zip.raw_copy_file_rename(file, name)?;
+            }
             Ok(())
         };
         // [Content_Types].xml goes first, as Office writes it.
         match self.content_types_entry {
-            Some(entry) => copy(&mut zip, entry)?,
+            Some(entry) => copy(&mut zip, entry, content_types::PART)?,
             None => {
                 zip.start_file(content_types::PART, options)?;
                 write_all(&mut zip, &self.content_types.to_xml().to_bytes())?;
@@ -117,7 +124,7 @@ impl Package {
         }
         for part in &self.parts {
             match (part.entry, part.data.get()) {
-                (Some(entry), _) => copy(&mut zip, entry)?,
+                (Some(entry), _) => copy(&mut zip, entry, &part.name)?,
                 (None, Some(data)) => {
                     zip.start_file(part.name.as_str(), options)?;
                     write_all(&mut zip, data)?;
