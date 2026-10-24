@@ -1,19 +1,40 @@
 #!/bin/sh
 # Adds Writan's APT repository, so new versions arrive with the system's other updates
 # (Software Updater, apt upgrade) and the app's Update button can install them. The repository is
-# the assets of the GitHub release tagged "apt", signed with the key this package installs. Once the
-# sources file exists it's left alone, so commenting its line out turns the updates off until
+# the assets of the GitHub release tagged "apt", signed with the key this package installs.
+# Once writan.list exists it is left alone, so commenting its line out turns the updates off until
 # Writan is removed (postrm deletes the file with the keyring).
+#
+# Packages before the rename wrote workspace.list. Upgrade moves that file to writan.list and
+# rewrites the keyring path and the old GitHub address. A commented-out deb line stays commented out.
 set -e
 
-SOURCES=/etc/apt/sources.list.d/workspace.list
-KEYRING=/usr/share/keyrings/workspace-archive-keyring.gpg
+SOURCES=/etc/apt/sources.list.d/writan.list
+OLD=/etc/apt/sources.list.d/workspace.list
+KEYRING=/usr/share/keyrings/writan-archive-keyring.gpg
 
-if [ "$1" = configure ] && [ ! -e "$SOURCES" ] && [ -d /etc/apt/sources.list.d ] && [ -r "$KEYRING" ]; then
-  cat > "$SOURCES" <<LIST
+rewrite() {
+  sed \
+    -e 's|/usr/share/keyrings/workspace-archive-keyring.gpg|/usr/share/keyrings/writan-archive-keyring.gpg|g' \
+    -e 's|github.com/elijahroizman/workspace|github.com/elijahroizman/writan|g' \
+    "$1"
+}
+
+if [ "$1" = configure ]; then
+  if [ -f "$OLD" ] && [ ! -e "$SOURCES" ]; then
+    tmp="$(mktemp)"
+    rewrite "$OLD" > "$tmp"
+    mv "$tmp" "$SOURCES"
+    chmod 644 "$SOURCES"
+    rm -f "$OLD"
+  elif [ -f "$OLD" ] && [ -f "$SOURCES" ] && grep -q 'releases/download/apt/' "$OLD"; then
+    rm -f "$OLD"
+  elif [ ! -e "$SOURCES" ] && [ -d /etc/apt/sources.list.d ] && [ -r "$KEYRING" ]; then
+    cat > "$SOURCES" <<LIST
 # Writan updates (https://github.com/elijahroizman/writan). Put a # before the deb line to stop them.
 deb [arch=amd64 signed-by=$KEYRING] https://github.com/elijahroizman/writan/releases/download/apt/ ./
 LIST
+  fi
 fi
 
 exit 0

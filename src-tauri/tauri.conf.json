@@ -182,7 +182,7 @@
         ],
         "section": "editors",
         "files": {
-          "/usr/share/keyrings/workspace-archive-keyring.gpg": "linux/workspace-archive-keyring.gpg"
+          "/usr/share/keyrings/writan-archive-keyring.gpg": "linux/writan-archive-keyring.gpg"
         },
         "postInstallScript": "linux/postinst",
         "postRemoveScript": "linux/postrm"
@@ -193,7 +193,7 @@
           "gtk3"
         ],
         "files": {
-          "/etc/pki/rpm-gpg/RPM-GPG-KEY-workspace": "linux/RPM-GPG-KEY-workspace"
+          "/etc/pki/rpm-gpg/RPM-GPG-KEY-writan": "linux/RPM-GPG-KEY-writan"
         },
         "postInstallScript": "linux/rpm-postinst",
         "postRemoveScript": "linux/rpm-postrm"

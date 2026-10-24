@@ -143,10 +143,22 @@ jobs:
       - name: Publish the APT repository
         # A flat APT repository in the assets of the release tagged "apt" (a pre-release, so the
         # updater and the app's "latest release" never pick it). The .deb's postinst points
-        # /etc/apt/sources.list.d/workspace.list there, signed-by the key it installs
-        # (src-tauri/linux/workspace-archive-keyring.gpg; the private half is APT_SIGNING_KEY).
+        # /etc/apt/sources.list.d/writan.list there, signed-by the key it installs
+        # (src-tauri/linux/writan-archive-keyring.gpg; the private half is APT_SIGNING_KEY).
         # The new .deb goes up first, then the index, then the signed Release, so apt never sees
         # an index pointing at a file that isn't there yet.
+        #
+        # apt upgrade does not install a package that is not already installed, and the Update
+        # button shipped before the rename runs `apt-get install --only-upgrade workspace`.
+        # This step also publishes an empty package named workspace that depends on writan, at
+        # the same version. Upgrading that name pulls writan in.
+        #
+        # Tauri writes Provides and Replaces. It has no Breaks field, so this step adds
+        # `Breaks: workspace (<< <this version>)` to the built .deb and uploads that file over
+        # the release asset. The transitional package is the same version, so the break does
+        # not apply to it. Origin and Label stay Workspace. Changing them makes apt-get update
+        # on already-installed copies stop until someone passes --allow-releaseinfo-change,
+        # and the shipped Update button does not pass it.
         if: matrix.os == 'ubuntu-22.04' && env.PUBLISH == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -159,11 +171,47 @@ jobs:
             echo "expected one .deb, found ${#debs[@]}"
             exit 1
           fi
+          deb_path="${debs[0]}"
+          version="$(dpkg-deb -f "$deb_path" Version)"
+          maintainer="$(dpkg-deb -f "$deb_path" Maintainer)"
+          work="$(mktemp -d)"
+          dpkg-deb -R "$deb_path" "$work"
+          if ! grep -q '^Replaces:' "$work/DEBIAN/control"; then
+            echo "deb control has no Replaces field. Set bundle.linux.deb.replaces in tauri.linux.conf.json." >&2
+            exit 1
+          fi
+          if grep -q '^Breaks:' "$work/DEBIAN/control"; then
+            echo "deb control already has a Breaks field" >&2
+            exit 1
+          fi
+          sed -i "/^Replaces:/a Breaks: workspace (<< ${version})" "$work/DEBIAN/control"
+          dpkg-deb -b "$work" "$deb_path"
+          rm -rf "$work"
+          tag="v$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          gh release upload "$tag" -R "$GITHUB_REPOSITORY" "$deb_path" --clobber
+
           repo="$RUNNER_TEMP/apt"
           rm -rf "$repo"
           mkdir -p "$repo"
-          cp "${debs[0]}" "$repo/"
-          deb="$(basename "${debs[0]}")"
+          cp "$deb_path" "$repo/"
+          deb="$(basename "$deb_path")"
+          empty="$(mktemp -d)"
+          mkdir -p "$empty/DEBIAN"
+          cat > "$empty/DEBIAN/control" <<EOF
+          Package: workspace
+          Version: ${version}
+          Architecture: all
+          Maintainer: ${maintainer}
+          Installed-Size: 0
+          Depends: writan
+          Section: oldlibs
+          Priority: optional
+          Description: Transitional package for Writan
+           The Linux package was renamed from workspace to writan. This empty package
+           depends on writan so apt upgrade installs the new name.
+          EOF
+          dpkg-deb --build "$empty" "$repo/workspace_${version}_all.deb"
+          rm -rf "$empty"
           cd "$repo"
           # Asset names can't hold a path, so the index names the file alone.
           apt-ftparchive packages . | sed 's|^Filename: \./|Filename: |' > Packages
@@ -187,15 +235,24 @@ jobs:
             gh release create apt -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease --title "APT repository" \
               --notes "Writan's APT repository for Debian and Ubuntu. The .deb adds it for you; nothing here needs downloading by hand."
           fi
-          gh release upload apt -R "$GITHUB_REPOSITORY" "$deb" --clobber
+          gh release upload apt -R "$GITHUB_REPOSITORY" "$deb" "workspace_${version}_all.deb" --clobber
           gh release upload apt -R "$GITHUB_REPOSITORY" Packages Packages.gz --clobber
           gh release upload apt -R "$GITHUB_REPOSITORY" Release Release.gpg InRelease --clobber
-          # Keep the new .deb and the one before it, for anyone whose index is a step behind.
-          old="$(gh release view apt -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' \
-            | grep -E '^Workspace_.*_amd64\.deb$' | grep -vxF "$deb" | sort -V | head -n -1 || true)"
-          for name in $old; do
-            gh release delete-asset apt "$name" -R "$GITHUB_REPOSITORY" --yes
-          done
+          # Keep the two newest real packages and the two newest transitional packages,
+          # for anyone whose index is a step behind. Sort by the version field, not the whole name,
+          # so Workspace_0.10.4 and Writan_0.10.5 compare as versions.
+          prune_apt() {
+            local pattern="$1"
+            local names old
+            names="$(gh release view apt -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -E "$pattern" || true)"
+            [ -n "$names" ] || return 0
+            old="$(printf '%s\n' "$names" | sort -t_ -k2,2V | head -n -2 || true)"
+            for name in $old; do
+              gh release delete-asset apt "$name" -R "$GITHUB_REPOSITORY" --yes
+            done
+          }
+          prune_apt '^(Writan|Workspace)_.+_amd64\.deb$'
+          prune_apt '^workspace_.+_all\.deb$'
       - name: Publish the dnf repository
         # A dnf repository at https://github.com/<repo>/releases/download/rpm/, which src-tauri/linux/rpm-postinst
         # adds to /etc/yum.repos.d. dnf reads <baseurl>/repodata/… and the index points packages at
@@ -243,8 +300,9 @@ jobs:
             case "$name" in repomd.xml | repomd.xml.asc) continue ;; esac
             [ -e "repodata/$name" ] || gh release delete-asset rpm/repodata "$name" -R "$GITHUB_REPOSITORY" --yes
           done
+          # Sort by the version field so Workspace-0.10.4 and Writan-0.10.5 compare as versions.
           old="$(gh release view rpm/packages -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' \
-            | grep -E '\.rpm$' | grep -vxF "$rpm" | sort -V | head -n -1 || true)"
+            | grep -E '^(Writan|Workspace)-.+\.rpm$' | grep -vxF "$rpm" | sort -t- -k2,2V | head -n -1 || true)"
           for name in $old; do
             gh release delete-asset rpm/packages "$name" -R "$GITHUB_REPOSITORY" --yes
           done

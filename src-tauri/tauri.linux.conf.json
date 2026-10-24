@@ -1,15 +1,26 @@
 {
-  "productName": "Workspace",
   "bundle": {
     "linux": {
       "deb": {
         "desktopTemplate": "linux/main.desktop",
+        "provides": [
+          "workspace"
+        ],
+        "replaces": [
+          "workspace"
+        ],
         "files": {
           "/usr/bin/workspace": "linux/workspace"
         }
       },
       "rpm": {
         "desktopTemplate": "linux/main.desktop",
+        "provides": [
+          "workspace"
+        ],
+        "obsoletes": [
+          "workspace"
+        ],
         "files": {
           "/usr/bin/workspace": "linux/workspace"
         }

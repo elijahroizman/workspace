@@ -72,12 +72,23 @@ fn fetch_latest_release() -> Result<ReleaseNotes, String> {
 }
 
 /// Where the .deb's install script puts Writan's APT repository (src-tauri/linux/postinst).
+/// The old path is what packages wrote before the rename. Upgrade moves it, and a file that
+/// has not moved yet still counts.
 #[cfg(target_os = "linux")]
-const APT_SOURCES: &str = "/etc/apt/sources.list.d/workspace.list";
+const APT_SOURCES: &str = "/etc/apt/sources.list.d/writan.list";
+#[cfg(target_os = "linux")]
+const APT_SOURCES_OLD: &str = "/etc/apt/sources.list.d/workspace.list";
 
 /// Where the .rpm's install script puts Writan's dnf repository (src-tauri/linux/rpm-postinst).
 #[cfg(target_os = "linux")]
-const DNF_REPO: &str = "/etc/yum.repos.d/workspace.repo";
+const DNF_REPO: &str = "/etc/yum.repos.d/writan.repo";
+#[cfg(target_os = "linux")]
+const DNF_REPO_OLD: &str = "/etc/yum.repos.d/workspace.repo";
+
+#[cfg(target_os = "linux")]
+fn existing_file<'a>(primary: &'a str, legacy: &'a str) -> &'a str {
+    if std::path::Path::new(primary).is_file() { primary } else { legacy }
+}
 
 /// How this Linux copy was installed: `format` is "deb" or "rpm" (none for a build run from
 /// source), and `repo` says Writan's own repository is there and on, so the package manager
@@ -89,12 +100,19 @@ pub struct LinuxPackage {
 }
 
 #[cfg(target_os = "linux")]
-fn installed_version(format: &str) -> Option<String> {
+fn query_installed(format: &str, name: &str) -> Option<String> {
     let output = match format {
-        "deb" => std::process::Command::new("dpkg-query").args(["-W", "-f=${Version}", "workspace"]).output(),
-        _ => std::process::Command::new("rpm").args(["-q", "--qf", "%{VERSION}-%{RELEASE}", "workspace"]).output(),
+        "deb" => std::process::Command::new("dpkg-query").args(["-W", "-f=${Version}", name]).output(),
+        _ => std::process::Command::new("rpm").args(["-q", "--qf", "%{VERSION}-%{RELEASE}", name]).output(),
     };
     output.ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).filter(|v| !v.is_empty())
+}
+
+/// The installed package version. `writan` is the package name. `workspace` is the previous name,
+/// still present until dnf obsoletes it or apt moves it to the empty transitional package.
+#[cfg(target_os = "linux")]
+fn installed_version(format: &str) -> Option<String> {
+    query_installed(format, "writan").or_else(|| query_installed(format, "workspace"))
 }
 
 /// Whether the dnf repo file has Writan's section switched on (`enabled=1`, the default).
@@ -105,7 +123,7 @@ fn dnf_repo_enabled(repo: &str) -> bool {
     let mut found = false;
     for line in repo.lines().map(str::trim) {
         if line.starts_with('[') {
-            in_section = line == "[workspace]";
+            in_section = line == "[writan]" || line == "[workspace]";
             found |= in_section;
         } else if in_section {
             if let Some((key, value)) = line.split_once('=') {
@@ -127,10 +145,11 @@ fn linux_package_now() -> LinuxPackage {
         exe.as_ref().is_some_and(|exe| std::process::Command::new(cmd).args(args).arg(exe).output().is_ok_and(|o| o.status.success()))
     };
     if owned_by("dpkg-query", &["-S"]) {
-        let repo = std::fs::read_to_string(APT_SOURCES).is_ok_and(|list| list.lines().any(|l| l.trim_start().starts_with("deb ")));
+        let repo = std::fs::read_to_string(existing_file(APT_SOURCES, APT_SOURCES_OLD))
+            .is_ok_and(|list| list.lines().any(|l| l.trim_start().starts_with("deb ")));
         LinuxPackage { format: Some("deb"), repo: repo && Path::new("/usr/bin/apt-get").is_file() }
     } else if owned_by("rpm", &["-qf"]) {
-        let repo = std::fs::read_to_string(DNF_REPO).is_ok_and(|repo| dnf_repo_enabled(&repo));
+        let repo = std::fs::read_to_string(existing_file(DNF_REPO, DNF_REPO_OLD)).is_ok_and(|repo| dnf_repo_enabled(&repo));
         LinuxPackage { format: Some("rpm"), repo: repo && Path::new("/usr/bin/dnf").is_file() }
     } else {
         LinuxPackage { format: None, repo: false }
@@ -160,15 +179,22 @@ pub async fn package_upgrade() -> Result<(), String> {
         tauri::async_runtime::spawn_blocking(|| {
             let package = linux_package_now();
             let (format, line, what) = match package.format {
-                Some("deb") if package.repo => (
-                    "deb",
-                    format!(
-                        "export DEBIAN_FRONTEND=noninteractive; apt-get update -o Dir::Etc::sourcelist={APT_SOURCES} -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0 && apt-get install -y --only-upgrade workspace"
-                    ),
-                    "APT",
-                ),
+                Some("deb") if package.repo => {
+                    let sources = existing_file(APT_SOURCES, APT_SOURCES_OLD);
+                    (
+                        "deb",
+                        format!(
+                            "export DEBIAN_FRONTEND=noninteractive; apt-get update -o Dir::Etc::sourcelist={sources} -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0 && apt-get install -y writan"
+                        ),
+                        "APT",
+                    )
+                }
                 // -y also accepts the repository's key the first time dnf sees it.
-                Some("rpm") if package.repo => ("rpm", "dnf -y --refresh --repo=workspace upgrade workspace".to_string(), "dnf"),
+                // The section id was `workspace` before the rename. The file that is on disk decides it.
+                Some("rpm") if package.repo => {
+                    let repo_id = if std::path::Path::new(DNF_REPO).is_file() { "writan" } else { "workspace" };
+                    ("rpm", format!("dnf -y --refresh --repo={repo_id} upgrade writan"), "dnf")
+                }
                 _ => return Err("This copy of Writan didn't come with its update repository.".into()),
             };
             let before = installed_version(format);
@@ -285,9 +311,10 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn reads_the_dnf_repo_switch() {
-        let repo = "[workspace]\nname=Writan\nbaseurl=https://example.com/\nenabled=1\n";
+        let repo = "[writan]\nname=Writan\nbaseurl=https://example.com/\nenabled=1\n";
         assert!(dnf_repo_enabled(repo));
         assert!(!dnf_repo_enabled(&repo.replace("enabled=1", "enabled=0")));
+        assert!(dnf_repo_enabled("[workspace]\nname=Writan\nenabled=1\n"));
         assert!(!dnf_repo_enabled("[other]\nenabled=1\n"));
         assert!(!dnf_repo_enabled("[workspace]\nenabled=0\n[other]\nenabled=1\n"));
     }
