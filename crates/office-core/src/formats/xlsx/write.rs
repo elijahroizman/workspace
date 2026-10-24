@@ -408,7 +408,8 @@ pub(super) fn sheet_names(sheets: &[Sheet], generated: bool) -> Result<Vec<Strin
             }
         }
         if name.is_empty()
-            || name.chars().count() > 31
+            // Excel counts a character it writes as `_x000A_` once.
+            || super::props::unescape(&name).chars().count() > 31
             || name.chars().any(|c| ":\\/?*[]".contains(c))
             || name.starts_with('\'')
             || name.ends_with('\'')

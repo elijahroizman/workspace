@@ -504,3 +504,19 @@ fn cells_sharing_one_long_string_stop_at_the_text_budget() {
     let e = crate::read(&p.to_bytes().unwrap(), Some("x.xlsx")).unwrap_err().to_string();
     assert!(e.contains("too large to open"), "{e}");
 }
+
+#[test]
+fn a_sheet_name_with_an_escaped_character_saves() {
+    // 28 characters, the last a line break Excel wrote as `_x000a_`: it once failed to save as
+    // a 34-character name.
+    let name = "Контрольний список  \"Школа\"_x000a_";
+    let mut p = save(&sheet_doc(), Kind::Sheets);
+    let wb = String::from_utf8(p.part("xl/workbook.xml").unwrap().to_vec()).unwrap();
+    let wb = wb.replace(r#"name="Sheet1""#, &format!(r#"name="{}""#, name.replace('"', "&quot;")));
+    p.replace("xl/workbook.xml", wb.into_bytes()).unwrap();
+    let mut d = read(&p, Kind::Sheets);
+    edit_b1(&mut d);
+    let out = save(&d, Kind::Sheets);
+    let wb = out.xml("xl/workbook.xml").unwrap();
+    assert_eq!(wb.root.descendant(ns::X, "sheet").unwrap().attr("name"), Some(name));
+}

@@ -115,3 +115,7 @@ os.remove(os.path.join(out, "plain.docx"))
 # Entries named `xl\workbook.xml`, as some .NET writers make them (POI's 49609.xlsx): "the file
 # has no main document part".
 save("S2-backslash-part-names.xlsx", xlsx([("Sheet1", '<row r="1"><c r="A1"><v>42</v></c></row>')], sep="\\"))
+
+# A sheet name with a line break Excel wrote as `_x000a_` (POI's xssf-enum.xltx.xlsx): 28
+# characters, counted as 34, so saving failed with "invalid or duplicate worksheet name".
+save("S1-sheet-name-escape-cant-save.xlsx", xlsx([("Контрольний список  &quot;Школа&quot;_x000a_", '<row r="1"><c r="A1"><v>1</v></c></row>')]))
