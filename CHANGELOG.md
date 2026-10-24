@@ -2,6 +2,26 @@
 
 Every release's notes. The release workflow copies a version's section into its GitHub release, and the app's update panel shows it.
 
+## 0.10.5 — 2026-10-24
+
+### Safer saves
+- Unchanged Excel workbooks keep imported formula results, and unchanged PDFs keep their original bytes and digital signatures. Undoing PDF edits restores the original bytes too.
+- Text and Markdown saves preserve UTF-16, UTF-8 byte-order marks, Windows-1252, and untouched line endings. Saving edits to malformed BOM-marked text stops with an explanation before replacing invalid bytes.
+- Saving asks before replacing changes from another app or tab, including changes made while a large document exports. Concurrent saves are serialized, and failed native saves preserve the existing file.
+- Quitting from the macOS Dock checks the current unsaved edits before exiting.
+
+### Documents and spreadsheets
+- Word table rows, checklist cells, content controls, and column grids retain their order and structure when saved. Traditional Chinese and zodiac list markers render correctly.
+- Hidden worksheets stay hidden on open. Empty TSV files open like empty CSV files.
+- Damaged or mislabeled Office files show an error. Oversized or deeply nested XML, extreme row indices, amplified shared strings, long formulas, and malformed font names are handled without the crashes found in the stress tests.
+- Document links are restricted to web and email addresses.
+
+### Linux packages
+- The Debian and RPM packages are now named `writan`. Existing `workspace` installations migrate through apt or dnf; the old `/usr/bin/workspace` command forwards to `writan` for compatibility.
+- Package repository files and key paths use the Writan name while retaining the existing signing key. Repacked Debian files keep root ownership.
+
+The stress report and reproducible regression samples are in [tests/stress/BUGS.md](https://github.com/elijahroizman/writan/blob/v0.10.5/tests/stress/BUGS.md). Unsaved crash recovery and the rendering gaps listed there remain open.
+
 ## 0.10.4 — 2026-10-23
 
 ### Spreadsheets
