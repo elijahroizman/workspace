@@ -1,11 +1,11 @@
 [package]
-name = "workspace"
+name = "writan"
 version = "0.10.4"
 description = "A fast, tabbed editor for Word, PowerPoint, PDF and Markdown files"
 edition = "2021"
 
 [lib]
-name = "workspace_lib"
+name = "writan_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

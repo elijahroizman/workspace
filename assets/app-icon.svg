@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <!-- Workspace: a W made of three blue sheets of paper on a dark tile (the brand board's mark,
+  <!-- Writan: a W made of three blue sheets of paper on a dark tile (the brand board's mark,
        Logo in src/components/ui.tsx). The tile sits on Apple's 824 px icon grid. Source for every
        icon size: `npx tauri icon assets/app-icon.svg -o /tmp/icons` (see docs/internals/development.md). -->
   <defs>

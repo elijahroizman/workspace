@@ -12,7 +12,7 @@ Word, PowerPoint and Preview are slow to open and heavy to keep running. Writan 
 
 ## Install
 
-Download the latest build from [Releases](https://github.com/elijahroizman/workspace/releases/latest).
+Download the latest build from [Releases](https://github.com/elijahroizman/writan/releases/latest).
 
 | | |
 | --- | --- |
@@ -27,7 +27,7 @@ Writan keeps itself up to date. On Mac and Windows, new versions download in the
 
 ## Some notes
 
-This is early software, mostly written by AI models, and it has bugs. LaTeX on Windows in particular is still being tested. Please [open an issue](https://github.com/elijahroizman/workspace/issues) when something breaks.
+This is early software, mostly written by AI models, and it has bugs. LaTeX on Windows in particular is still being tested. Please [open an issue](https://github.com/elijahroizman/writan/issues) when something breaks.
 
 ## Documentation
 

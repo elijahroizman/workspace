@@ -12,10 +12,10 @@ KEY=/etc/pki/rpm-gpg/RPM-GPG-KEY-workspace
 
 if [ ! -e "$REPO" ] && [ -d /etc/yum.repos.d ] && [ -r "$KEY" ]; then
   cat > "$REPO" <<LIST
-# Writan updates (https://github.com/elijahroizman/workspace). Set enabled=0 to stop them.
+# Writan updates (https://github.com/elijahroizman/writan). Set enabled=0 to stop them.
 [workspace]
 name=Writan
-baseurl=https://github.com/elijahroizman/workspace/releases/download/rpm/
+baseurl=https://github.com/elijahroizman/writan/releases/download/rpm/
 enabled=1
 gpgcheck=0
 repo_gpgcheck=1

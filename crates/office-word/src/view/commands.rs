@@ -863,7 +863,7 @@ impl WordView {
 
     // ---- clipboard ----
 
-    /// The selection as plain text and as model blocks (JSON) for pasting back into Workspace.
+    /// The selection as plain text and as model blocks (JSON) for pasting back into Writan.
     pub fn copy(&self) -> (String, String) {
         let blocks = edit::copy(self.blocks(self.story), &self.sel);
         let text = office_core::model::blocks_text(&blocks);
@@ -882,7 +882,7 @@ impl WordView {
         out
     }
 
-    /// Pastes blocks copied from Workspace (JSON), or plain text if they can't be read.
+    /// Pastes blocks copied from Writan (JSON), or plain text if they can't be read.
     pub fn paste(&mut self, text: &str, json: Option<&str>) {
         let blocks: Option<Vec<Block>> = json.and_then(|j| serde_json::from_str(j).ok());
         match blocks {

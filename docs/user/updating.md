@@ -24,7 +24,7 @@ To stop updates, put a `#` in front of the `deb` line in `workspace.list`. Neith
 To add the repository by hand (for example on a machine that never had the .deb), install the key from this repository's `src-tauri/linux/workspace-archive-keyring.gpg` to `/usr/share/keyrings/` and add:
 
 ```
-deb [arch=amd64 signed-by=/usr/share/keyrings/workspace-archive-keyring.gpg] https://github.com/elijahroizman/workspace/releases/download/apt/ ./
+deb [arch=amd64 signed-by=/usr/share/keyrings/workspace-archive-keyring.gpg] https://github.com/elijahroizman/writan/releases/download/apt/ ./
 ```
 
 ## Fedora
@@ -46,4 +46,4 @@ To stop updates, set `enabled=0` in `workspace.repo`. Upgrading Writan leaves th
 
 A copy you build from source isn't signed and doesn't update itself. Pull the new code and build again.
 
-The Linux package is still named `workspace` so older installations upgrade normally. The app is Writan and its terminal command is `writan`. Repository paths and signing keys keep their original names.
+The Linux package is still named `workspace` so older installations upgrade normally. The app is Writan and its terminal command is `writan`. Repository file names and signing keys keep their original names. The GitHub address is elijahroizman/writan. A `workspace.list` or `workspace.repo` written by an older package still points at the previous address. GitHub redirects it, and upgrading Writan leaves that file alone.

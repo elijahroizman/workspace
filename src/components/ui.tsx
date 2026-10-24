@@ -1,4 +1,4 @@
-// Workspace's design system: every shared piece of UI lives here, so screens look alike. Build a
+// Writan's design system: every shared piece of UI lives here, so screens look alike. Build a
 // screen out of these before writing new markup and CSS; if something is missing, add it here.
 // Colours, radii and type come from the tokens at the top of styles/app.css (the brand board's
 // light and dark palettes), which themes override.

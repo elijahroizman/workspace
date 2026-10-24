@@ -214,7 +214,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBBNzUxMjYwNUZGMEI4QTAKUldTZ3VQQmZZQkoxQ3ZKMm41ZHBtenYxV1ErcnE4UjgzMUJOYzlEMHRySldZdGFLcnh3UFpMQjIK",
       "endpoints": [
-        "https://github.com/elijahroizman/workspace/releases/latest/download/latest.json"
+        "https://github.com/elijahroizman/writan/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

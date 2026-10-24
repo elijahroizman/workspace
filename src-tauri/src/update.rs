@@ -4,7 +4,7 @@
 
 use serde::Serialize;
 
-const LATEST_RELEASE: &str = "https://api.github.com/repos/elijahroizman/workspace/releases/latest";
+const LATEST_RELEASE: &str = "https://api.github.com/repos/elijahroizman/writan/releases/latest";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -298,7 +298,7 @@ mod tests {
             tag_name: "v0.4.0".into(),
             name: Some("Writan v0.4.0".into()),
             body: Some("## Changes\n\n- Fixes the Dock icon".into()),
-            html_url: "https://github.com/elijahroizman/workspace/releases/tag/v0.4.0".into(),
+            html_url: "https://github.com/elijahroizman/writan/releases/tag/v0.4.0".into(),
             published_at: Some("2026-10-16T00:00:00Z".into()),
         };
         let notes = notes_from_release(release);

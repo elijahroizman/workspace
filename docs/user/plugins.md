@@ -34,7 +34,7 @@ If there's no TeX when you turn LaTeX on, Writan offers to install it:
 
 You can hide the install window while it runs; **Settings › Plugins** shows the progress. When you turn LaTeX off, Writan asks whether to remove TeX too (only if it knows how it was installed). It's unticked unless you choose it.
 
-LaTeX on Windows is still being tested. If installing or removing TeX fails, the message includes what winget or the installer said; please put that in an [issue](https://github.com/elijahroizman/workspace/issues).
+LaTeX on Windows is still being tested. If installing or removing TeX fails, the message includes what winget or the installer said; please put that in an [issue](https://github.com/elijahroizman/writan/issues).
 
 ## Fonts
 

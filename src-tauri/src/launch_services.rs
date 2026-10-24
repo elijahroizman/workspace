@@ -204,7 +204,7 @@ mod tests {
             "Writan.app",
             "Contents",
             "MacOS",
-            "workspace",
+            "writan",
         ]);
         assert_eq!(
             bundle_app_dir(&exe),
@@ -215,11 +215,11 @@ mod tests {
     #[test]
     fn dev_binary_is_not_a_bundle() {
         assert_eq!(
-            bundle_app_dir(&parts(&["src-tauri", "target", "debug", "workspace"])),
+            bundle_app_dir(&parts(&["src-tauri", "target", "debug", "writan"])),
             None
         );
         assert_eq!(
-            bundle_app_dir(&parts(&["Writan.app", "workspace"])),
+            bundle_app_dir(&parts(&["Writan.app", "writan"])),
             None
         );
     }
