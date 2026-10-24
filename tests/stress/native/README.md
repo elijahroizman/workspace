@@ -23,3 +23,5 @@ pdfsig /tmp/writan-pdf-chromium-unchanged.pdf
 The scripts use the repository's documented Playwright workflow on bbb. Browser plugin not available. The PDF script writes its saved revisions and screenshot under `/tmp` on the test host.
 
 `files::tests::partial_write_failure_keeps_original_and_removes_temp` injects a full-disk error after a partial write. It runs without mounting a filesystem. To test real ENOSPC, provide an isolated tiny filesystem in `WRITAN_FULL_DIR` and run the ignored `full_disk_keeps_the_original_and_no_scraps` test. The `unshare` recipe in its source requires a host that permits user namespace mappings and mounts.
+
+On Linux, `python3 tests/stress/native/desktop-open.py` checks the launcher template through GIO using a harmless argument recorder. It creates two sample Markdown files, including names with spaces and Unicode, and verifies that both are forwarded in one launch. It does not launch or install Writan.
