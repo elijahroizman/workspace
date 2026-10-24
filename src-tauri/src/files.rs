@@ -38,10 +38,11 @@ pub fn write_file<R: tauri::Runtime>(app: tauri::AppHandle<R>, request: Request<
     atomic_write(&path, bytes)
         .map_err(|e| format!("Couldn't save “{}”: {e}", display_name(&path.to_string_lossy())))?;
     if let Some(root) = history {
+        let disk = crate::history::stamp(&path);
         // Off the save's path: hashing and copying a big file shouldn't hold up the next edit.
         let bytes = bytes.clone();
         std::thread::spawn(move || {
-            if let Err(e) = crate::history::record(&root, &path, &bytes, label) {
+            if let Err(e) = crate::history::record(&root, &path, &bytes, label, disk) {
                 eprintln!("version history: {e}");
             }
         });
@@ -241,6 +242,15 @@ fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    // Saving through a symlink changes the file it points to and keeps the link.
+    let linked = fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink());
+    let resolved = if linked { fs::canonicalize(path).ok() } else { None };
+    let path = resolved.as_deref().unwrap_or(path);
+    // Replacing the file would succeed on a Mac or Linux, since only its folder needs to be
+    // writable, but a read-only file is one someone meant not to change.
+    if fs::metadata(path).is_ok_and(|m| m.permissions().readonly()) {
+        return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "the file is read-only. Use Save As to save a copy"));
+    }
     let dir = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let tmp = dir.join(format!(".{name}.workspace-saving"));
@@ -255,7 +265,13 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     }
     fs::rename(&tmp, path).inspect_err(|_| {
         let _ = fs::remove_file(&tmp);
-    })
+    })?;
+    // So the rename itself survives a power cut.
+    #[cfg(unix)]
+    if let Ok(dir) = fs::File::open(dir) {
+        let _ = dir.sync_all();
+    }
+    Ok(())
 }
 
 pub(crate) fn percent_decode(input: &str) -> Result<String, String> {
@@ -308,6 +324,38 @@ mod tests {
         atomic_write(&file, b"two").unwrap();
         assert_eq!(fs::read(&file).unwrap(), b"two");
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 1, "temp file left behind");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn refuses_read_only_files() {
+        let dir = std::env::temp_dir().join(format!("workspace-test-ro-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("a.md");
+        fs::write(&file, b"one").unwrap();
+        let mut perms = fs::metadata(&file).unwrap().permissions();
+        perms.set_readonly(true);
+        fs::set_permissions(&file, perms.clone()).unwrap();
+        assert!(atomic_write(&file, b"two").is_err());
+        assert_eq!(fs::read(&file).unwrap(), b"one");
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        fs::set_permissions(&file, perms).unwrap();
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn saves_through_symlinks() {
+        let dir = std::env::temp_dir().join(format!("workspace-test-link-{}", std::process::id()));
+        fs::create_dir_all(dir.join("real")).unwrap();
+        let target = dir.join("real/a.md");
+        let link = dir.join("a.md");
+        fs::write(&target, b"one").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        atomic_write(&link, b"two").unwrap();
+        assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read(&target).unwrap(), b"two");
         fs::remove_dir_all(&dir).unwrap();
     }
 
