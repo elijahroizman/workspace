@@ -213,11 +213,10 @@ impl SheetsView {
         self.revision
     }
 
-    /// Sets what NOW() and TODAY() give (a serial number) and works the formulas out again.
+    /// Sets what NOW() and TODAY() give on the next edit. Opening a file must keep its cached
+    /// results: our evaluator cannot reproduce every formula Excel supports.
     pub fn set_now(&mut self, serial: f64) {
         self.now = Some(serial);
-        crate::recalculate(&mut self.doc, self.now);
-        self.revision += 1;
     }
 
     pub fn sheets(&self) -> &[Sheet] {
