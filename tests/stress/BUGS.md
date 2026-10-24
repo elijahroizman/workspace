@@ -4,6 +4,8 @@ This is the consolidated status for `stress-test`. The original corpus report re
 
 Every row names a small committed repro, a test that creates its sample, or a pinned source in [corpus/manifest.tsv](corpus/manifest.tsv). Reproduction commands and evidence are in the linked detailed reports. This is a bounded stress pass, not a claim that every document or platform is safe.
 
+Additional findings recovered after the 0.10.5 release are tracked in [FOLLOWUP-core.md](FOLLOWUP-core.md). Their fixes are separate from that release.
+
 ## S1
 
 | Finding | Final status | Reproducible sample or test |

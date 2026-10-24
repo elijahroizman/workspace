@@ -1,5 +1,5 @@
 use super::props::{read_para_props, read_run_props, val};
-use crate::formats::common::{read_theme, rel_attr, shell, PartRels};
+use crate::formats::common::{expect_root, read_theme, rel_attr, shell, PartRels};
 use crate::model::{Block, Body, BreakKind, Cell, Document, Image, Inline, Kind, Link, Origin, Paragraph, Row, Run, Table};
 use crate::opc::{Package, Properties};
 use crate::units::Emu;
@@ -19,6 +19,7 @@ pub(super) fn hyperlink_origin<'a>(doc: &'a Document, run: &Run) -> Option<&'a E
 pub fn read(pkg: Package) -> Result<Document> {
     let main = pkg.main_part()?;
     let xml = pkg.xml_shared(&main)?;
+    expect_root(&xml.root, &main, ns::W, "document")?;
     let rels = PartRels::new(&pkg, &main)?;
     let mut doc = Document::new(Kind::Word);
     doc.properties = Properties::read(&pkg)?;
@@ -194,7 +195,10 @@ fn read_text_run(r: &Element, link: Option<&Link>, out: &mut Vec<Inline>) {
             "br" => match c.attr_ns(ns::W, "type") {
                 Some(kind @ ("page" | "column")) => {
                     push(&mut text, out);
-                    out.push(Inline::Break { kind: if kind == "page" { BreakKind::Page } else { BreakKind::Column } });
+                    out.push(Inline::Break {
+                        kind: if kind == "page" { BreakKind::Page } else { BreakKind::Column },
+                        origin: origin.clone(),
+                    });
                     any = true;
                     continue;
                 }

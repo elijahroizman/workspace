@@ -80,7 +80,7 @@ pub fn paragraph(h: &mut Fnv, p: &Paragraph) {
                 r.link.as_ref().map(|l| (&l.url, &l.anchor)).hash(h);
                 r.origin.id().hash(h);
             }
-            Inline::Break { kind } => (1u8, *kind as u8).hash(h),
+            Inline::Break { kind, .. } => (1u8, *kind as u8).hash(h),
             Inline::Image(img) => (2u8, &img.media, img.width.0, img.height.0, img.origin.id()).hash(h),
             Inline::Raw { xml } => (3u8, &xml.local, xml.children.as_ptr() as usize, xml.children.len(), xml.attrs.len()).hash(h),
         }

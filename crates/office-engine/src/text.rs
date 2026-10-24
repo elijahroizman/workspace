@@ -24,8 +24,8 @@ pub fn flat(p: &Paragraph) -> Flat {
         let start = text.len() as u32;
         match inline {
             Inline::Text(r) => text.push_str(&r.text),
-            Inline::Break { kind: BreakKind::Page } => text.push(PAGE_BREAK),
-            Inline::Break { kind: BreakKind::Column } => text.push(COLUMN_BREAK),
+            Inline::Break { kind: BreakKind::Page, .. } => text.push(PAGE_BREAK),
+            Inline::Break { kind: BreakKind::Column, .. } => text.push(COLUMN_BREAK),
             Inline::Image(_) | Inline::Raw { .. } => text.push(OBJECT),
         }
         spans.push((start, text.len() as u32));

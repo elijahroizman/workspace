@@ -112,7 +112,11 @@ fn page_break_within_paragraph_splits_the_text_at_the_break() {
     let mut d = Document::new(Kind::Word);
     d.body = Body::Flow {
         blocks: vec![Block::Paragraph(Paragraph {
-            content: vec![Inline::Text(Run::new("before")), Inline::Break { kind: BreakKind::Page }, Inline::Text(Run::new("after"))],
+            content: vec![
+                Inline::Text(Run::new("before")),
+                Inline::Break { kind: BreakKind::Page, origin: Default::default() },
+                Inline::Text(Run::new("after")),
+            ],
             ..Default::default()
         })],
     };
@@ -560,4 +564,81 @@ fn table_grids_keep_what_their_columns_carry() {
     assert!(xml.contains("a16:colId"), "{xml}");
     p.replace(part, xml.into_bytes()).unwrap();
     assert_eq!(text(&save(&read(&p, Kind::Slides), Kind::Slides), part), text(&p, part));
+}
+
+#[test]
+fn nested_groups_read_whole_and_save_unchanged() {
+    // Reading copied each group's whole tree at every level, which made nesting quadratic.
+    let mut d = Document::new(Kind::Slides);
+    d.body = Body::Slides { size: SlideSize::default(), slides: vec![Slide::default()] };
+    let mut p = save(&d, Kind::Slides);
+    let part = "ppt/slides/slide1.xml";
+    let grp = |i: usize| {
+        format!(r#"<p:grpSp><p:nvGrpSpPr><p:cNvPr id="{}" name="g"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>"#, i + 10)
+    };
+    let n = 200;
+    let groups = (0..n).map(grp).collect::<String>() + &"</p:grpSp>".repeat(n);
+    let xml = String::from_utf8(p.part(part).unwrap().to_vec()).unwrap().replacen("</p:spTree>", &(groups + "</p:spTree>"), 1);
+    p.replace(part, xml.clone().into_bytes()).unwrap();
+    let d = read(&p, Kind::Slides);
+    let Body::Slides { slides, .. } = &d.body else { unreachable!() };
+    let (mut frames, mut depth) = (&slides[0].frames, 0);
+    while let Some(Frame { content: FrameContent::Group { frames: inner }, .. }) = frames.first() {
+        frames = inner;
+        depth += 1;
+    }
+    assert_eq!(depth, n);
+    assert_eq!(String::from_utf8(save(&d, Kind::Slides).part(part).unwrap().to_vec()).unwrap(), xml);
+}
+
+#[test]
+fn a_main_part_in_another_namespace_is_an_error() {
+    for (kind, namespace) in [(Kind::Word, ns::W), (Kind::Slides, ns::P)] {
+        let mut package = save(&Document::new(kind), kind);
+        let part = package.main_part().unwrap();
+        let xml = String::from_utf8(package.part(&part).unwrap().to_vec()).unwrap();
+        package.replace(&part, xml.replace(namespace, "urn:unsupported-office-format").into_bytes()).unwrap();
+        let error = crate::read(&package.to_bytes().unwrap(), Some(&format!("x.{}", kind.extension()))).unwrap_err().to_string();
+        assert!(error.contains("isn't a document this app reads"), "{error}");
+    }
+
+    // Excel 2007's beta wrote its own namespace: the workbook read as no sheets, and saving it
+    // removed every worksheet.
+    let mut p = save(&sheet_doc(), Kind::Sheets);
+    let wb = String::from_utf8(p.part("xl/workbook.xml").unwrap().to_vec()).unwrap();
+    p.replace("xl/workbook.xml", wb.replace(ns::X, "http://schemas.microsoft.com/office/excel/2006/2").into_bytes()).unwrap();
+    let e = crate::read(&p.to_bytes().unwrap(), Some("x.xlsx")).unwrap_err().to_string();
+    assert!(e.contains("isn't a document this app reads"), "{e}");
+    // Strict files' namespaces are the same format.
+    let mut p = save(&sheet_doc(), Kind::Sheets);
+    p.replace("xl/workbook.xml", wb.replace(ns::X, "http://purl.oclc.org/ooxml/spreadsheetml/main").into_bytes()).unwrap();
+    crate::read(&p.to_bytes().unwrap(), Some("x.xlsx")).unwrap();
+}
+
+#[test]
+fn page_break_runs_keep_their_formatting() {
+    // A run of just a page break lost its formatting and attributes, so every Word document
+    // with one had its body rewritten on an unchanged save.
+    let doc = |body: &str| {
+        let mut p = save(&Document::new(Kind::Word), Kind::Word);
+        p.replace(
+            "word/document.xml",
+            format!(r#"<w:document xmlns:w="{}"><w:body>{body}<w:sectPr/></w:body></w:document>"#, ns::W).into_bytes(),
+        )
+        .unwrap();
+        p
+    };
+    let text = |p: &Package| String::from_utf8(p.part("word/document.xml").unwrap().to_vec()).unwrap();
+    let p = doc(
+        r#"<w:p><w:r><w:t>one</w:t></w:r><w:r w:rsidR="00AB12CD"><w:rPr><w:rFonts w:ascii="Arial"/><w:sz w:val="20"/></w:rPr><w:br w:type="page"/></w:r><w:r><w:t>two</w:t></w:r></w:p>"#,
+    );
+    assert_eq!(text(&save(&read(&p, Kind::Word), Kind::Word)), text(&p));
+    // A break split out of a longer run keeps that run's formatting.
+    let mut d = read(&doc(r#"<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>a</w:t><w:br w:type="column"/><w:t>b</w:t></w:r></w:p>"#), Kind::Word);
+    if let Body::Flow { blocks } = &mut d.body {
+        let Block::Paragraph(para) = &mut blocks[0] else { panic!() };
+        para.content.push(Inline::Text(Run::new("more")));
+    }
+    let xml = text(&save(&d, Kind::Word));
+    assert!(xml.contains(r#"<w:r><w:rPr><w:b/></w:rPr><w:br w:type="column"/></w:r>"#), "{xml}");
 }

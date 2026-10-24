@@ -208,3 +208,14 @@ pub fn grid(
     grid.children.splice(0..0, cols);
     grid
 }
+
+/// Fails unless a main part's root is the element its format says. One in another namespace
+/// (Excel 2007's beta wrote its own) would read as an empty document, and saving it would then
+/// remove what the file held.
+pub fn expect_root(root: &Element, part: &str, ns: &str, local: &str) -> crate::Result<()> {
+    if root.is(ns, local) {
+        return Ok(());
+    }
+    let found = root.ns.as_deref().unwrap_or("no namespace");
+    Err(crate::Error::Invalid(format!("{part} isn't a document this app reads: its root is {} in {found}", root.local)))
+}

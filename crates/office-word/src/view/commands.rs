@@ -585,7 +585,7 @@ impl WordView {
         }
         let sel = self.sel.clone();
         let root = self.blocks_mut(self.story);
-        let e = edit::insert_inline(root, &sel, Inline::Break { kind: office_core::model::BreakKind::Page });
+        let e = edit::insert_inline(root, &sel, Inline::Break { kind: office_core::model::BreakKind::Page, origin: Default::default() });
         self.apply_edit(e, None);
     }
 

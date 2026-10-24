@@ -69,7 +69,7 @@ pub fn word() -> Document {
                 description: Some("A dot".into()),
                 origin: Default::default(),
             }),
-            Inline::Break { kind: BreakKind::Page },
+            Inline::Break { kind: BreakKind::Page, origin: Default::default() },
             Inline::Text(Run::new("after the break")),
         ],
         ..Default::default()

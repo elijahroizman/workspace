@@ -2,24 +2,26 @@
 //! [`parse_hollow`] parses a part with one element's content left out as text, and
 //! [`for_each_element`] and [`parse_in`] then go through that content one element at a time.
 
+use std::borrow::Cow;
+
 use quick_xml::events::Event;
 use quick_xml::{name::ResolveResult, NsReader, Reader};
 
 use super::{Attr, Element, XmlDoc};
 
 /// A part parsed with one element's content left as source text.
-pub struct Hollow {
+pub struct Hollow<'a> {
     /// The part, with that element there but empty.
     pub doc: XmlDoc,
     /// The element's content as written, or `None` if the part has no such element.
-    pub inner: Option<String>,
+    pub inner: Option<Cow<'a, str>>,
     /// The namespace declarations in force inside the element.
     pub scope: Vec<Attr>,
 }
 
 /// Parses `bytes`, leaving out the content of the root's first child named `local` (or of the
 /// root itself, for `None`).
-pub fn parse_hollow(bytes: &[u8], local: Option<&str>) -> Result<Hollow, String> {
+pub fn parse_hollow<'a>(bytes: &'a [u8], local: Option<&str>) -> Result<Hollow<'a>, String> {
     let text = super::parse::decode(bytes)?;
     let target_depth = if local.is_some() { 1 } else { 0 };
     let mut reader = NsReader::from_str(&text);
@@ -69,9 +71,23 @@ pub fn parse_hollow(bytes: &[u8], local: Option<&str>) -> Result<Hollow, String>
             _ => {}
         }
     }
+    drop(reader);
     let (shell, inner) = match span {
-        Some((a, b)) => (format!("{}{}", &text[..a], &text[b..]), Some(text[a..b].to_string())),
-        None => (text.clone(), None),
+        // The content is nearly all of a big sheet, so it borrows the part's bytes rather than
+        // copying them.
+        Some((a, b)) => {
+            let shell = format!("{}{}", &text[..a], &text[b..]);
+            let inner = match text {
+                Cow::Borrowed(t) => Cow::Borrowed(&t[a..b]),
+                Cow::Owned(mut t) => {
+                    t.truncate(b);
+                    t.drain(..a);
+                    Cow::Owned(t)
+                }
+            };
+            (shell, Some(inner))
+        }
+        None => (text.into_owned(), None),
     };
     let doc = super::parse(shell.as_bytes())?;
     let mut scope: Vec<Attr> = doc.root.attrs.iter().filter(|a| a.is_ns_decl()).cloned().collect();
@@ -204,6 +220,24 @@ mod tests {
         assert_eq!(rows[0].path(ns::X, &["c", "v"]).unwrap().text(), "1");
         // Written back where those declarations are in force, nothing is declared again.
         assert_eq!(rows[0].to_xml_string_in(&h.scope), r#"<row r="1" x14ac:dy="1"><c r="A1"><v>1</v></c></row>"#);
+    }
+
+    #[test]
+    fn utf8_content_borrows_the_part_and_utf16_keeps_owned_text() {
+        let expected = parse_hollow(SHEET.as_bytes(), Some("sheetData")).unwrap();
+        let Some(Cow::Borrowed(content)) = &expected.inner else { panic!("UTF-8 worksheet content was copied") };
+        let offset = content.as_ptr() as usize - SHEET.as_ptr() as usize;
+        assert_eq!(*content, &SHEET[offset..offset + content.len()]);
+        for le in [true, false] {
+            let mut bytes = if le { vec![0xff, 0xfe] } else { vec![0xfe, 0xff] };
+            for unit in SHEET.encode_utf16() {
+                bytes.extend(if le { unit.to_le_bytes() } else { unit.to_be_bytes() });
+            }
+            let actual = parse_hollow(&bytes, Some("sheetData")).unwrap();
+            assert!(matches!(actual.inner, Some(Cow::Owned(_))));
+            assert_eq!(actual.inner.as_deref(), expected.inner.as_deref());
+            assert_eq!(actual.doc, expected.doc);
+        }
     }
 
     #[test]

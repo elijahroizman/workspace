@@ -177,9 +177,8 @@ fn write_paragraph(p: &Paragraph, ctx: &mut Ctx) -> Result<Element> {
         };
         match inline {
             Inline::Text(run) => write_run(run, ctx, target),
-            Inline::Break { kind } => {
-                let t = if *kind == BreakKind::Page { "page" } else { "column" };
-                target.push(Element::new(ns::W, "r").with_child(Element::new(ns::W, "br").with_attr(ns::W, "type", t)));
+            Inline::Break { kind, origin } => {
+                target.push(write_break(*kind, origin.get().filter(|o| o.is(ns::W, "r"))));
             }
             Inline::Image(image) => {
                 let r = write_image(image, ctx)?;
@@ -219,6 +218,25 @@ fn hyperlink(l: &Link, origin: Option<&Element>, rels: &mut PartCtx) -> Element 
         h.set_attr(ns::W, "history", "1");
     }
     h
+}
+
+/// A page or column break's run. An untouched run of just the break goes back as it was;
+/// a break split out of a longer run keeps that run's attributes and formatting.
+fn write_break(kind: BreakKind, origin: Option<&Element>) -> Element {
+    let t = if kind == BreakKind::Page { "page" } else { "column" };
+    let br = Element::new(ns::W, "br").with_attr(ns::W, "type", t);
+    let Some(o) = origin else { return Element::new(ns::W, "r").with_child(br) };
+    let mut content = o.elements().filter(|e| !e.is(ns::W, "rPr") && !e.is(ns::W, "lastRenderedPageBreak"));
+    let only_break = content.next().is_some_and(|e| e.is(ns::W, "br") && e.attr_ns(ns::W, "type") == Some(t)) && content.next().is_none();
+    if only_break {
+        return o.clone();
+    }
+    let mut r = Element::new(o.ns.as_deref().unwrap_or(ns::W), "r");
+    r.attrs = o.attrs.clone();
+    if let Some(rpr) = o.child(ns::W, "rPr") {
+        r.push(rpr.clone());
+    }
+    r.with_child(br)
 }
 
 fn write_run(run: &Run, ctx: &mut Ctx, parent: &mut Element) {

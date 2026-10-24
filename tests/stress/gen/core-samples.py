@@ -151,3 +151,11 @@ save("S1-deep-groups-stack-overflow.pptx", zipped([
     ("ppt/_rels/presentation.xml.rels", rels([("rId1", R + "/slide", "slides/slide1.xml")])),
     ("ppt/slides/slide1.xml", slide),
 ]))
+
+# A workbook in Excel 2007 beta's namespace (POI's sample-beta.xlsx): it opened as no sheets, and
+# saving it removed every worksheet. Now an error.
+save("S2-beta-namespace-workbook.xlsx", xlsx([("Sheet1", '<row r="1"><c r="A1"><v>1</v></c></row>')], workbook_ns="http://schemas.microsoft.com/office/excel/2006/2"))
+
+# A run holding only a page break, with formatting (Word writes these): its rPr and rsid were
+# dropped, so the whole body was rewritten on an unchanged save (POI's bug57031.docx).
+save("S3-page-break-run-formatting-lost.docx", docx('<w:p><w:r><w:t>one</w:t></w:r><w:r w:rsidR="00AB12CD"><w:rPr><w:rFonts w:ascii="Arial"/><w:sz w:val="20"/></w:rPr><w:br w:type="page"/></w:r><w:r><w:t>two</w:t></w:r></w:p>'))
