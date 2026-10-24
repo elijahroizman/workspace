@@ -272,8 +272,26 @@ def corrupt():
     for ext in ('docx', 'pptx', 'xlsx'):
         with open(out('S2-encrypted.' + ext), 'wb') as f:
             f.write(ole)
-    # A PDF with the standard security handler (RC4, user password "user").
-    pdf([b'<< /Type /Catalog /Pages 2 0 R >>', b'<< /Type /Pages /Kids [] /Count 0 >>'], 'S2-pdf-encrypted-stub.pdf')
+    # A PDF with no pages at all.
+    pdf([b'<< /Type /Catalog /Pages 2 0 R >>', b'<< /Type /Pages /Kids [] /Count 0 >>'], 'S2-pdf-no-pages.pdf')
+
+
+def encrypted():
+    # Really password-protected files (password "user"), when the tools are there.
+    try:
+        import msoffcrypto
+        from msoffcrypto.format.ooxml import OOXMLFile
+        for src, ext in (('S1-docx-evil-links.docx', 'docx'), ('S1-pptx-evil-links.pptx', 'pptx'), ('S1-xlsx-html-cells.xlsx', 'xlsx')):
+            with open(out(src), 'rb') as f, open(out('S2-password.' + ext), 'wb') as o:
+                OOXMLFile(f).encrypt('user', o)
+    except Exception as e:
+        print('skipped encrypted Office files:', e)
+    import shutil, subprocess
+    if shutil.which('gs'):
+        subprocess.run(['gs', '-q', '-dNOPAUSE', '-dBATCH', '-sDEVICE=pdfwrite', '-sOwnerPassword=owner', '-sUserPassword=user',
+                        '-dEncryptionR=3', '-dKeyLength=128', '-o', out('S2-password.pdf'), out('S1-pdf-evil-links.pdf')], check=True)
+        subprocess.run(['gs', '-q', '-dNOPAUSE', '-dBATCH', '-sDEVICE=pdfwrite', '-sOwnerPassword=owner',
+                        '-dEncryptionR=3', '-dKeyLength=128', '-dPermissions=-3904', '-o', out('S3-pdf-owner-password.pdf'), out('S1-pdf-evil-links.pdf')], check=True)
 
 
 docx_links()
@@ -284,4 +302,5 @@ docx_with_svg(svg())
 pdf_links()
 text_encodings()
 corrupt()
+encrypted()
 print('wrote', len(os.listdir(OUT)), 'files to', os.path.abspath(OUT))
