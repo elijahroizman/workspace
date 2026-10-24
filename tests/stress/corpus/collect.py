@@ -5,11 +5,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 UA = 'Writan-fidelity-corpus/1.0 (public document compatibility testing)'
+MAX_DOWNLOAD_BYTES = 80 * 1024 * 1024
 
 def get(url):
     url = urllib.parse.quote(url, safe=':/?&=%+#')
     with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': UA}), timeout=90) as r:
-        return r.read(80 * 1024 * 1024)
+        data = r.read(MAX_DOWNLOAD_BYTES + 1)
+        if len(data) > MAX_DOWNLOAD_BYTES:
+            raise ValueError(f'Download exceeds {MAX_DOWNLOAD_BYTES} bytes: {url}')
+        return data
 
 def links(page):
     text = get(page).decode('utf-8', 'replace')

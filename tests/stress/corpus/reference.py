@@ -21,7 +21,8 @@ def main():
     ap.add_argument('--soffice', default=os.environ.get('SOFFICE', 'soffice'))
     ap.add_argument('--filter', default='.')
     args = ap.parse_args()
-    rows = [r for r in csv.DictReader((ROOT / 'manifest.tsv').open(), delimiter='\t') if re.search(args.filter, r['file'])]
+    with (ROOT / 'manifest.tsv').open() as manifest:
+        rows = [r for r in csv.DictReader(manifest, delimiter='\t') if re.search(args.filter, r['file'])]
     jobs = [(row['file'], mode) for row in rows for mode in ('original', 'cli', 'chromium', 'webkit')
             if (args.files / row['file'] if mode == 'original' else args.results / mode / row['file']).exists()]
     def check(job):
@@ -32,12 +33,15 @@ def main():
         result = {'name': name, 'mode': mode}
         pdf = dest / (source.stem + '.pdf')
         try:
+            pdf.unlink(missing_ok=True)
             if source.suffix == '.pdf':
                 shutil.copyfile(source, pdf)
             else:
                 with tempfile.TemporaryDirectory(prefix='corpus-lo-') as profile:
                     p = subprocess.run([args.soffice, '-env:UserInstallation=' + Path(profile).as_uri(), '--headless', '--convert-to', 'pdf', '--outdir', str(dest), str(source)], capture_output=True, text=True, timeout=75)
                     result.update(returncode=p.returncode, log=p.stdout, stderr=p.stderr[-1500:])
+                    if p.returncode != 0:
+                        raise RuntimeError(f'LibreOffice exited with {p.returncode}')
             if not pdf.exists(): raise RuntimeError('Reference PDF was not produced')
             info, text = pdf_info(pdf)
             result.update(info)

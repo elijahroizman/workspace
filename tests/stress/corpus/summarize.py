@@ -9,8 +9,23 @@ def read(name, default=None):
     p = RESULTS / name
     return json.loads(p.read_text()) if p.exists() else default
 
+def intact(comparison, mode):
+    if mode == 'cli':
+        if comparison.get('returncode') != 0 or comparison.get('timeout'):
+            return False
+        comparison = comparison.get('diff')
+    if not isinstance(comparison, dict):
+        return False
+    if 'byte_identical' in comparison:
+        return comparison['byte_identical'] is True
+    if not all(k in comparison for k in ('changed', 'added', 'removed')):
+        return False
+    return not comparison['changed'] and not comparison['added'] and not [
+        n for n in comparison['removed'] if not n.endswith('/')]
+
 def main():
-    rows = list(csv.DictReader((ROOT / 'manifest.tsv').open(), delimiter='\t'))
+    with (ROOT / 'manifest.tsv').open() as manifest:
+        rows = list(csv.DictReader(manifest, delimiter='\t'))
     manifest = {x['file']: x for x in rows}
     evidence = {'date': '2026-10-24', 'baseline_commit': 'b088f996153b1a639dedcd9ca5119ee050e892e5', 'host': 'bbb, Ubuntu 26.04.1, Node 24, LibreOffice 26.2.6.3', 'files': len(rows),
         'categories': dict(collections.Counter(r['category'] for r in rows)), 'formats': {}, 'browser': [],
@@ -34,11 +49,8 @@ def main():
         cli = [x for x in evidence['structure'] if x['name'] in names]
         info['cli'] = {'tested': len(cli), 'save_ok': sum(x.get('cli', {}).get('returncode') == 0 for x in cli)}
         for mode in ['cli', 'chromium', 'webkit']:
-            checks = [x[mode].get('diff', x[mode]) for x in cli if mode in x]
-            def intact(d):
-                if 'byte_identical' in d: return d['byte_identical']
-                return not d.get('changed') and not d.get('added') and not [n for n in d.get('removed', []) if not n.endswith('/')]
-            info[mode + '_parts_unchanged'] = {'tested': len(checks), 'passed': sum(intact(d) for d in checks)}
+            checks = [x[mode] for x in cli if mode in x]
+            info[mode + '_parts_unchanged'] = {'tested': len(checks), 'passed': sum(intact(d, mode) for d in checks)}
         evidence['formats'][fmt] = info
     for r in read('references.json', []):
         evidence['references'].append({k: r[k] for k in ['name', 'mode', 'status', 'pages', 'text_bytes', 'text_sha256', 'error'] if k in r})

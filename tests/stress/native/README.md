@@ -2,11 +2,28 @@
 
 Playwright scripts that fake the Tauri backend (`window.__TAURI_INTERNALS__`) to test what the app does around the file system. Run them against a test build, with Playwright available (`npm i --no-save playwright`):
 
-```sh
-VITE_TEST_HOOKS=1 npx vite build && npx vite preview --port 4173 &
+```bash
+set -e
+VITE_TEST_HOOKS=1 npx vite build
+# Use a free port so readiness cannot come from an older preview.
+if curl -fsS http://127.0.0.1:4173/ >/dev/null 2>&1; then
+  echo 'Port 4173 is already in use' >&2
+  exit 1
+fi
+node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 4173 --strictPort >/tmp/writan-native-preview.log 2>&1 &
+preview_pid=$!
+trap 'kill "$preview_pid" 2>/dev/null || true; wait "$preview_pid" 2>/dev/null || true' EXIT
+for ((attempt = 0; attempt < 100; attempt++)); do
+  kill -0 "$preview_pid"
+  if curl -fsS http://127.0.0.1:4173/ >/dev/null 2>&1; then break; fi
+  sleep 0.2
+done
+curl -fsS http://127.0.0.1:4173/ >/dev/null
 node tests/stress/native/save-conflict.mjs http://localhost:4173/ chromium
 node tests/stress/native/save-conflict.mjs http://localhost:4173/ webkit
 ```
+
+Run this in a dedicated Bash shell. Run any PDF checks below in that same shell, then exit it to stop the preview. The exit trap also stops it if a check fails.
 
 - `save-conflict.mjs`: a file another app changed after Writan opened it isn't autosaved over, and Save asks before replacing it.
 
