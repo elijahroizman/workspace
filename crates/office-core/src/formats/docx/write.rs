@@ -367,6 +367,27 @@ const TC_PR: &[&[&str]] = &[
     &["tcPrChange"],
 ];
 
+/// Replace the reader's slots in order, keeping unmodeled siblings in place. Removed model
+/// children drop their slots; added ones follow the last slot, before any trailing raw XML.
+fn fill_table_slots(parent: &mut Element, local: &str, children: Vec<Element>) {
+    let last = parent.children.iter().rposition(|n| matches!(n, Node::Element(e) if e.is(ns::W, local)));
+    let mut children = children.into_iter();
+    let old = std::mem::take(&mut parent.children);
+    for (i, node) in old.into_iter().enumerate() {
+        if matches!(&node, Node::Element(e) if e.is(ns::W, local)) {
+            if let Some(child) = children.next() {
+                parent.push(child);
+            }
+        } else {
+            parent.children.push(node);
+        }
+        if last == Some(i) {
+            parent.children.extend(children.by_ref().map(Node::Element));
+        }
+    }
+    parent.children.extend(children.map(Node::Element));
+}
+
 fn write_table(table: &Table, ctx: &mut Ctx) -> Result<Element> {
     let mut tbl = origin_as(&table.origin, ns::W, "tbl").unwrap_or_else(|| {
         let border = |side: &str| {
@@ -408,6 +429,7 @@ fn write_table(table: &Table, ctx: &mut Ctx) -> Result<Element> {
     );
     tbl.place(grid, &[&["tblPr"], &["tblGrid"], &["tr"]]);
 
+    let mut rows = Vec::new();
     for (r, row) in table.rows.iter().enumerate() {
         let mut tr = origin_as(&row.origin, ns::W, "tr").unwrap_or_else(|| Element::new(ns::W, "tr"));
         let trpr_now = tr.child(ns::W, "trPr");
@@ -461,6 +483,7 @@ fn write_table(table: &Table, ctx: &mut Ctx) -> Result<Element> {
                 }
             }
         }
+        let mut cells = Vec::new();
         let mut c = before;
         let end = row.cells.len().saturating_sub(after);
         while c < end {
@@ -536,11 +559,13 @@ fn write_table(table: &Table, ctx: &mut Ctx) -> Result<Element> {
                 blocks.push(Element::new(ns::W, "p"));
             }
             tc.children.extend(blocks.into_iter().map(Node::Element));
-            tr.push(tc);
+            cells.push(tc);
             c += span.max(1) as usize;
         }
-        tbl.push(tr);
+        fill_table_slots(&mut tr, "tc", cells);
+        rows.push(tr);
     }
+    fill_table_slots(&mut tbl, "tr", rows);
     Ok(tbl)
 }
 
