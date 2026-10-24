@@ -107,12 +107,8 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     update::remember_bundle();
 
-    let cli_paths: Vec<String> = std::env::args()
-        .skip(1)
-        .filter(|arg| !arg.starts_with('-'))
-        .filter_map(|arg| std::fs::canonicalize(arg).ok())
-        .map(|p| p.to_string_lossy().into_owned())
-        .collect();
+    let cwd = std::env::current_dir().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
+    let cli_paths = cli::paths_from_args(&std::env::args().collect::<Vec<_>>(), &cwd);
 
     let builder = tauri::Builder::default();
     // Windows and Linux start a second copy for `workspace notes.md` or a double-click; it hands
