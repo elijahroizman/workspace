@@ -118,3 +118,18 @@ fn relationship_indexes_follow_direct_mutation() {
     assert!(rels.get("rId2").is_none());
     assert_eq!(rels.add(kind::IMAGE, "image.png", false), "rId2");
 }
+
+#[test]
+fn a_password_protected_file_says_so() {
+    // A compound file whose directory names the EncryptedPackage stream, as Office writes one.
+    let mut cfb = vec![0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+    cfb.resize(1024, 0);
+    cfb.extend("EncryptedPackage".encode_utf16().flat_map(u16::to_le_bytes));
+    cfb.resize(2048, 0);
+    let e = office_core::read(&cfb, Some("Budget.xlsx")).unwrap_err().to_string();
+    assert!(e.contains("protected with a password"), "{e}");
+    // A .doc is still an old binary file.
+    cfb.truncate(1024);
+    let e = office_core::read(&cfb, Some("Letter.docx")).unwrap_err().to_string();
+    assert!(e.contains("old binary Office file"), "{e}");
+}

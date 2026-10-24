@@ -91,3 +91,20 @@ save("S1-xlsx-named-docx-panics.docx", xlsx([("Sheet1", '<row r="1"><c r="A1"><v
 
 # A row numbered 2^31: the sheet grid asked for 16 GB of row positions and aborted.
 save("S1-row-2147483648-oom.xlsx", xlsx([("Sheet1", '<row r="2147483648"><c r="A1"><v>1</v></c></row>')]))
+
+# 5,000 cells pointing at one 1 MB shared string: 5 GB once each cell had its own copy (POI's
+# poc-shared-strings.xlsx is the same attack). Now a "too large to open" error.
+sst = f'{DECL}<sst xmlns="{X}"><si><t>{"x" * (1 << 20)}</t></si></sst>'
+rows = "".join(f'<row r="{r}"><c r="A{r}" t="s"><v>0</v></c></row>' for r in range(1, 5001))
+save("S1-shared-string-amplification-oom.xlsx", xlsx([("Sheet1", rows)], sst=sst))
+
+# A plain document, for encrypting (below).
+save("plain.docx", docx('<w:p><w:r><w:t>Secret</w:t></w:r></w:p>'))
+try:
+    from msoffcrypto.format.ooxml import OOXMLFile  # pip install msoffcrypto-tool
+
+    with open(os.path.join(out, "plain.docx"), "rb") as f, open(os.path.join(out, "S2-password-protected.docx"), "wb") as o:
+        OOXMLFile(f).encrypt("stress", o)
+except ImportError:
+    print("msoffcrypto-tool isn't installed: S2-password-protected.docx not written")
+os.remove(os.path.join(out, "plain.docx"))
