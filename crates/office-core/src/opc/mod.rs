@@ -27,6 +27,10 @@ use crate::{Error, Result};
 /// The most a package may hold once decompressed, so a zip bomb fails instead of eating memory.
 const MAX_SIZE: u64 = 4 << 30;
 
+/// XML is copied and expanded into model/tree data, so the package's 4 GB media allowance
+/// is too large for any one XML part. Check before inflating, including streaming sheets.
+const MAX_XML_SIZE: u64 = 128 << 20;
+
 type Archive = ZipArchive<Cursor<Arc<[u8]>>>;
 
 #[derive(Clone, Default)]
@@ -92,7 +96,7 @@ impl Package {
         }
         let mut pkg = Package { content_types: ContentTypes::default(), content_types_entry, parts, index, source: Some(archive) };
         let entry = content_types_entry.ok_or_else(|| Error::MissingPart(content_types::PART.into()))?;
-        let ct = pkg.decompress(entry)?;
+        let ct = pkg.decompress(entry, MAX_XML_SIZE)?;
         let doc = xml::parse(&ct).map_err(|message| Error::Xml { part: content_types::PART.into(), message })?;
         pkg.content_types = ContentTypes::parse(&doc);
         Ok(pkg)
@@ -135,12 +139,15 @@ impl Package {
         Ok(zip.finish()?.into_inner())
     }
 
-    fn decompress(&self, entry: usize) -> Result<Vec<u8>> {
+    fn decompress(&self, entry: usize, limit: u64) -> Result<Vec<u8>> {
         let mut archive = self.source.clone().expect("parts with an entry come from a source zip");
         let file = archive.by_index(entry)?;
         // The declared size is the limit: `read` added them up against MAX_SIZE, so an entry
         // that inflates past its own can't get round that.
         let declared = file.size();
+        if declared > limit {
+            return Err(Error::Zip(format!("{} is too large to open (over {} MB decompressed)", file.name(), limit >> 20)));
+        }
         let mut out = Vec::with_capacity(declared.min(1 << 24) as usize);
         file.take(declared + 1).read_to_end(&mut out).map_err(|e| Error::Zip(e.to_string()))?;
         if out.len() as u64 > declared {
@@ -167,18 +174,31 @@ impl Package {
 
     /// A part's bytes. Part names compare without case when there's no exact match, as OPC says.
     pub fn part(&self, name: &str) -> Result<&[u8]> {
+        self.part_with_limit(name, MAX_SIZE)
+    }
+
+    /// XML source bytes, bounded before decompression. Used by streaming readers as well
+    /// as the tree parser, so a large sheet cannot bypass the XML allocation limit.
+    pub fn xml_bytes(&self, name: &str) -> Result<&[u8]> {
+        self.part_with_limit(name, MAX_XML_SIZE)
+    }
+
+    fn part_with_limit(&self, name: &str, limit: u64) -> Result<&[u8]> {
         let part = &self.parts[self.find(name).ok_or_else(|| Error::MissingPart(name.into()))?];
         if let Some(data) = part.data.get() {
+            if data.len() as u64 > limit {
+                return Err(Error::Zip(format!("{name} is too large to open (over {} MB decompressed)", limit >> 20)));
+            }
             return Ok(data);
         }
         let entry = part.entry.expect("a part without bytes comes from the source zip");
-        let data = self.decompress(entry)?;
+        let data = self.decompress(entry, limit)?;
         Ok(part.data.get_or_init(|| data))
     }
 
     /// A part, parsed.
     pub fn xml(&self, name: &str) -> Result<XmlDoc> {
-        xml::parse(self.part(name)?).map_err(|message| Error::Xml { part: name.into(), message })
+        xml::parse(self.xml_bytes(name)?).map_err(|message| Error::Xml { part: name.into(), message })
     }
 
     /// A part, parsed once and kept: copies of the package (each save makes one) share it until

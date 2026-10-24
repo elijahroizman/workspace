@@ -75,7 +75,7 @@ impl TextBudget {
 /// A shared string table's `si` elements, read one at a time: the table can be huge.
 pub(super) fn shared_strings(pkg: &Package, part: &str) -> Result<Vec<Element>> {
     let bad = |message: String| Error::Xml { part: part.to_string(), message };
-    let hollow = stream::parse_hollow(pkg.part(part)?, None).map_err(bad)?;
+    let hollow = stream::parse_hollow(pkg.xml_bytes(part)?, None).map_err(bad)?;
     let mut items = Vec::new();
     stream::for_each_batch(hollow.inner.as_deref().unwrap_or(""), 256 * 1024, |source| {
         items.extend(stream::parse_all_in(source, &hollow.scope)?.into_iter().filter(|el| el.is(ns::X, "si")));
@@ -90,7 +90,7 @@ pub(super) fn shared_strings(pkg: &Package, part: &str) -> Result<Vec<Element>> 
 /// again from the model (Excel's row attributes, a shared formula, an inline string).
 fn read_sheet(pkg: &Package, part: &str, strings: &[Value], duplicate: &[bool], budget: &mut TextBudget) -> Result<Sheet> {
     let bad = |message: String| Error::Xml { part: part.to_string(), message };
-    let hollow = stream::parse_hollow(pkg.part(part)?, Some("sheetData")).map_err(bad)?;
+    let hollow = stream::parse_hollow(pkg.xml_bytes(part)?, Some("sheetData")).map_err(bad)?;
     let root = &hollow.doc.root;
     let mut rows = Vec::new();
     let mut next_row = 0u32;
