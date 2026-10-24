@@ -793,7 +793,14 @@ export default function PdfEditor({ tab, active, visible = false }: EditorProps)
   }, [layoutSig])
 
   // ── Shell integration
-  const saveBytes = async () => new Uint8Array(await call((s) => s.engine.call('save', [])))
+  const saveBytes = async () => {
+    // Rewriting an unchanged PDF breaks digital signatures and can alter unsupported content.
+    // The clean bytes also cover repeated saves after an edit and undo back to the saved state.
+    if (!history.current.dirty && !fieldsDirty.current) {
+      return cleanBytes.current ?? tab.bytes ?? new Uint8Array()
+    }
+    return new Uint8Array(await call((s) => s.engine.call('save', [])))
+  }
   useEffect(
     () =>
       registerEditor(tab.id, {
@@ -829,7 +836,7 @@ export default function PdfEditor({ tab, active, visible = false }: EditorProps)
         },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tab.id],
+    [tab.id, tab.bytes],
   )
 
   // Undo/redo and deleting the selected annotation from the keyboard.
