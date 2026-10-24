@@ -13,7 +13,7 @@ await start(page)
 // A healthy document first, to check it survives everything else.
 await open(page, `${S}/S3-text-mixed-eol.txt`)
 await page.waitForSelector('.view[data-active=true] .cm-content')
-const keeper = (await tabs(page))[0].id
+const keeper = await page.evaluate(() => window.__workspace.useWorkspace.getState().activeId)
 
 for (const f of files) {
   const before = logs.length
@@ -27,24 +27,32 @@ for (const f of files) {
       const v = document.querySelector('.view[data-active=true]')
       if (!v) return 'no view'
       const msg = v.querySelector('.center-state')
-      if (msg && !msg.querySelector('svg circle')) return 'message: ' + msg.textContent
-      if (v.querySelector('.workbench .cm-content, .workbench .wp-page, .workbench .slide-surface, .workbench .pdf-page, .workbench canvas')) return 'editor'
-      if (v.querySelector('.workbench')) return 'empty editor'
+      if (msg && !msg.querySelector('.spin')) return 'message: ' + msg.textContent
+      if (v.querySelector('.workbench .cm-content, .workbench .wp-page, .workbench .slide-surface, .workbench .pdf-page, .workbench .sheet-grid, .workbench canvas')) return 'editor'
+      if (v.querySelector('.workbench')) return 'loading'
       const text = v.textContent.trim()
-      if (text) return 'message: ' + text
+      if (text && !v.querySelector('.spin')) return 'message: ' + text
       return 'blank'
     })
-    if (state !== 'blank' && state !== 'no view') break
+    if (state.startsWith('message:') || state.startsWith('dialog:') || state === 'editor') break
   }
   await page.screenshot({ path: `/tmp/writan-stress/nasty-${f}.png` })
   const errs = logs.slice(before).filter((l) => l.startsWith('[pageerror]'))
   console.log(`      ${f}: ${state.slice(0, 160).replace(/\s+/g, ' ')}`)
   check(`${f}: a message or an editor, not blank`, state.startsWith('message') || state.startsWith('dialog') || state.endsWith('editor'), state.slice(0, 80))
+  if (/\.(docx|pptx|xlsx|png)$/.test(f)) {
+    check(`${f}: damaged Office/image is refused, never an empty writable editor`, state.startsWith('message:') || state.startsWith('dialog:'), state.slice(0, 180))
+    if (f.includes('password.')) check(`${f}: password is explained`, /password/i.test(state), state)
+    if (/docx-renamed\.(pptx|xlsx)$/.test(f)) check(`${f}: correct file type is explained`, /Word document.*not.*(PowerPoint|Excel)/i.test(state), state)
+  }
   check(`${f}: no unhandled errors`, errs.length === 0, errs.join(' | ').slice(0, 300))
   if (state.startsWith('dialog')) await page.locator('.dialog button').last().click()
   // Close the tab again; the app must respond.
   const t = await tabs(page)
   const last = t.find((x) => x.path?.endsWith(f))
+  if (last) {
+    check(`${f}: opening never writes over the sample`, await page.evaluate((p) => !window.__fake.writes.some((w) => w.path === p), last.path))
+  }
   if (last) await page.evaluate((id) => window.__workspace.useWorkspace.getState().closeTab(id), last.id)
 }
 
@@ -54,4 +62,5 @@ await page.click('.view[data-active=true] .cm-content')
 await page.keyboard.type('still alive')
 const text = await page.locator('.view[data-active=true] .cm-content').textContent()
 check('the first tab still edits', text.includes('still alive'))
+await page.screenshot({ path: `/tmp/writan-stress/nasty-final-${process.env.ENGINE ?? 'chromium'}.png` })
 await done(browser, logs)

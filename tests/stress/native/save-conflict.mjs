@@ -91,18 +91,18 @@ if (!(await fake('text', '/docs/notes.md')).includes('Theirs.')) fail('outside c
 const dirty = await page.evaluate(() => window.__workspace.useWorkspace.getState().tabs[0].dirty)
 if (!dirty) fail('tab not dirty after a refused autosave')
 
-// Save asks; Cancel keeps their version, Replace writes ours.
+// Save asks; Cancel keeps their version, Save Anyway writes ours.
 await page.keyboard.press('Control+s')
 await page.waitForSelector('.dialog', { timeout: 5000 })
 const title = await page.textContent('.dialog')
-if (!/changed outside Writan/.test(title)) fail(`dialog says: ${title}`)
+if (!/changed on disk/.test(title)) fail(`dialog says: ${title}`)
 await page.getByRole('button', { name: 'Cancel' }).click()
 await page.waitForTimeout(300)
 if ((await writes()) !== 1) fail('Cancel still saved')
 await page.keyboard.press('Control+s')
-await page.getByRole('button', { name: 'Replace' }).click()
+await page.getByRole('button', { name: 'Save Anyway' }).click()
 await page.waitForTimeout(500)
-if ((await writes()) !== 2) fail('Replace did not save')
+if ((await writes()) !== 2) fail('Save Anyway did not save')
 if (!(await fake('text', '/docs/notes.md')).includes('Mine two.')) fail('our version not written')
 
 // After that, autosave carries on normally.
@@ -110,7 +110,7 @@ await page.click('.cm-content')
 await page.keyboard.press('Control+End')
 await page.keyboard.type(' Three.')
 await page.waitForTimeout(2500)
-if ((await writes()) !== 3) fail(`autosave after Replace: ${await writes()} writes`)
+if ((await writes()) !== 3) fail(`autosave after Save Anyway: ${await writes()} writes`)
 
 if (errors.length) fail(`page errors: ${errors.join(' | ')}`)
 console.log(process.exitCode ? 'save-conflict: FAILED' : 'save-conflict: ok')

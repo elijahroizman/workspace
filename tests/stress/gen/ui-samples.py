@@ -1,11 +1,12 @@
 """Builds the stress samples into tests/stress/samples/ (or the folder given).
 
-Needs python-docx, python-pptx and openpyxl:  python gen/samples.py [out]
+Needs python-docx, python-pptx and openpyxl:  python tests/stress/gen/ui-samples.py [out]
 The PDFs are written by hand, so they need nothing.
 """
 import io
 import os
 import sys
+import random
 import zipfile
 
 from docx import Document
@@ -17,6 +18,7 @@ from pptx.util import Inches
 from openpyxl import Workbook
 from openpyxl.comments import Comment
 
+RNG = random.Random(1)
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), '..', 'samples')
 os.makedirs(OUT, exist_ok=True)
 out = lambda name: os.path.join(OUT, name)
@@ -233,6 +235,14 @@ def text_encodings():
         f.write(b'\xff\xfe' + 'name\tcity\nZoë\tMünchen\n'.encode('utf-16-le'))
     with open(out('S2-csv-windows1252.csv'), 'wb') as f:
         f.write('name;city\r\nZoë;München\r\n'.encode('cp1252'))
+    for name, data in [
+        ('S2-markdown-crlf.md', b'# CRLF\r\n\r\nText\r\n'),
+        ('S2-markdown-utf16le.md', b'\xff\xfe' + '# Caf\u00e9\r\nText\r\n'.encode('utf-16-le')),
+        ('S2-text-cr.txt', b'old mac\rnext\rend\r'),
+        ('S2-text-double-bom.txt', b'\xef\xbb\xbf\xef\xbb\xbfText\n'),
+    ]:
+        with open(out(name), 'wb') as f:
+            f.write(data)
     with open(out('S3-text-binary.txt'), 'wb') as f:
         f.write(bytes(range(256)) * 4)
     with open(out('S3-text-mixed-eol.txt'), 'wb') as f:
@@ -251,10 +261,10 @@ def corrupt():
         ('S2-docx-renamed.pdf', docbytes),
         ('S2-docx-renamed.pptx', docbytes),
         ('S2-docx-renamed.xlsx', docbytes),
-        ('S2-random.docx', os.urandom(4096)),
-        ('S2-random.pptx', os.urandom(4096)),
-        ('S2-random.xlsx', os.urandom(4096)),
-        ('S2-random.pdf', os.urandom(4096)),
+        ('S2-random.docx', RNG.randbytes(4096)),
+        ('S2-random.pptx', RNG.randbytes(4096)),
+        ('S2-random.xlsx', RNG.randbytes(4096)),
+        ('S2-random.pdf', RNG.randbytes(4096)),
         ('S2-empty.docx', b''),
         ('S2-empty.pptx', b''),
         ('S2-empty.xlsx', b''),
@@ -262,7 +272,7 @@ def corrupt():
         ('S2-empty.csv', b''),
         ('S2-truncated.docx', docbytes[: len(docbytes) // 2]),
         ('S2-truncated.pdf', pdfbytes[: len(pdfbytes) // 2]),
-        ('S2-random.png', os.urandom(2048)),
+        ('S2-random.png', RNG.randbytes(2048)),
         ('S2-empty.png', b''),
     ]:
         with open(out(name), 'wb') as f:
@@ -303,4 +313,47 @@ pdf_links()
 text_encodings()
 corrupt()
 encrypted()
+
+
+
+def css_fonts():
+    # Font names that try to break out of the page's style sheet.
+    d = Document()
+    names = ['Evil\\', '}*{display:none!important}', 'X"}body{background:red}', 'Y;color:red', 'Z\n}.app{display:none}', 'W</style><script>alert(1)</script>']
+    for n in names:
+        r = d.add_paragraph().add_run('font named ' + n.replace('\n', ' '))
+        r.font.name = n.replace('\n', '')
+    d.add_paragraph('If you can read this and the app around it, the fonts were harmless.')
+    d.save(out('S2-docx-css-font-names.docx'))
+    p = Presentation()
+    s = p.slides.add_slide(p.slide_layouts[6])
+    for i, n in enumerate(names):
+        box = s.shapes.add_textbox(Inches(0.5), Inches(0.5 + i * 0.8), Inches(8), Inches(0.7))
+        box.text_frame.text = 'font named ' + n
+        box.text_frame.paragraphs[0].runs[0].font.name = n.replace('\n', '')
+    p.save(out('S2-pptx-css-font-names.pptx'))
+    wb = Workbook()
+    from openpyxl.styles import Font
+    for i, n in enumerate(names, 1):
+        wb.active.cell(i, 1, 'font named ' + n).font = Font(name=n.replace('\n', '')[:31])
+    wb.save(out('S2-xlsx-css-font-names.xlsx'))
+
+
+css_fonts()
+
+
+
+# Imported hidden worksheets must never be the initial visible canvas.
+wb = Workbook()
+wb.active.title = 'Hidden first'
+wb.active['A1'] = 'Hidden contents'
+wb.active.sheet_state = 'hidden'
+very = wb.create_sheet('Very hidden')
+very['A1'] = 'Very hidden contents'
+very.sheet_state = 'veryHidden'
+visible = wb.create_sheet('Visible')
+visible['A1'] = 'Visible contents'
+wb.active = 2
+wb.save(out('S2-xlsx-hidden-first.xlsx'))
+
 print('wrote', len(os.listdir(OUT)), 'files to', os.path.abspath(OUT))

@@ -23,6 +23,7 @@ type OfficeKind = keyof typeof KINDS
  * the zip's list of names; damaged files are left for the editor to report.
  */
 export function expectKind(bytes: Uint8Array | null, expected: OfficeKind) {
+  if (bytes && bytes.length === 0) throw new Error('This file is empty. It does not contain an Office document.')
   if (bytes && isEncrypted(bytes)) throw new Error('This file is protected with a password. Writan can’t open password-protected Office files yet.')
   const kind = bytes && officeKind(bytes)
   if (!kind || kind === expected) return
