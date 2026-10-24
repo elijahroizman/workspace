@@ -293,6 +293,15 @@ mod tests {
     }
 
     #[test]
+    fn offline_plugin_download_has_a_useful_error() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+        let err = download(&format!("http://{addr}/plugin.zip"), 1024, |_, _| {}).unwrap_err();
+        assert!(err.contains("Check your connection"), "{err}");
+    }
+
+    #[test]
     fn plugin_ids_are_folder_names() {
         assert!(valid_id("latex"));
         assert!(!valid_id("../x"));
@@ -319,6 +328,12 @@ mod tests {
         assert!(!root.join("demo").exists());
         unpack(&archive, &root, "demo", "1.0.0").unwrap();
         assert_eq!(fs::read(root.join("demo/fonts/a.woff2")).unwrap(), b"font");
+        // A bad upgrade must leave the installed version available, with no staging scraps.
+        assert!(unpack(&archive, &root, "demo", "2.0.0").is_err());
+        assert!(unpack(b"broken zip", &root, "demo", "2.0.0").is_err());
+        assert_eq!(read_manifest(&root.join("demo")).unwrap().version, "1.0.0");
+        assert_eq!(fs::read(root.join("demo/fonts/a.woff2")).unwrap(), b"font");
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
         fs::remove_dir_all(&root).unwrap();
     }
 }
