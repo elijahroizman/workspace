@@ -44,6 +44,8 @@ CORPUS_FILTER='^au-pbo-' CORPUS_APPEND=1 node tests/stress/corpus/browser.mjs
 python3 tests/stress/corpus/structure.py --app-only
 python3 tests/stress/corpus/values.py
 CORPUS_FILTER='footnote|smartart|cjklist|table-rtl' node tests/stress/corpus/audit-pages.mjs
+node tests/stress/corpus/verify.mjs
+python3 tests/stress/corpus/signatures.py
 python3 tests/stress/corpus/reference.py --filter 'footnote|smartart|cjklist|table-rtl'
 uv run --with pypdf --with fonttools tests/stress/corpus/pdf-audit.py
 ```

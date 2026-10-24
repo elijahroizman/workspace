@@ -44,6 +44,7 @@ def main():
         evidence['references'].append({k: r[k] for k in ['name', 'mode', 'status', 'pages', 'text_bytes', 'text_sha256', 'error'] if k in r})
     for entry in evidence['verification']:
         entry.get('engine', {}).pop('text', None)
+    evidence['word_page_audit'] = [{k: x[k] for k in ['name', 'pageCount', 'status'] if k in x} for x in read('pages-chromium.json', [])]
     out = ROOT / 'evidence/2026-10-24.json'
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(evidence, indent=2, ensure_ascii=False) + '\n')
