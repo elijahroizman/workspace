@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Writan: Word, PowerPoint, Excel and PDF files in one small app</title>
+  <meta name="description" content="Writan opens Word, PowerPoint, Excel, CSV, PDF, Markdown, text and image files, each in a tab of one window. No account, nothing uploaded, works offline. For Mac, Windows and Linux.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f7f9fc" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1c1c1c" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="releases.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap header-row">
+      <a class="brand" href="#top" aria-label="Writan, back to top">
+        <img src="app-icon.svg" alt="" width="40" height="40">
+        <span>Writan</span>
+      </a>
+      <nav aria-label="Sections">
+        <ul>
+          <li><a href="#editors">Editors</a></li>
+          <li><a href="#everywhere">Every tab</a></li>
+          <li><a href="#early">Known gaps</a></li>
+          <li><a href="#download">Download</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <img class="hero-icon" src="app-icon.svg" alt="Writan app icon" width="112" height="112">
+          <h1 id="hero-title">The documents you actually open, in one small app.</h1>
+          <p class="lead">Writan opens Word, PowerPoint, Excel, CSV, PDF, Markdown, text and image files, each in a tab of one window. Use it in place of Word, PowerPoint, Excel and Preview.</p>
+          <ul class="promises">
+            <li>Runs on your computer. Nothing is uploaded.</li>
+            <li>No account to make or sign in to.</li>
+            <li>Works offline.</li>
+            <li>Launches fast and loads each editor only when you open that kind of file.</li>
+          </ul>
+          <div class="actions">
+            <a class="button primary" href="#download">Download Writan</a>
+            <a class="button" href="https://github.com/elijahroizman/writan">Source on GitHub</a>
+          </div>
+          <p class="fine" data-release-line>For Mac (Apple silicon), Windows, Debian, Ubuntu and Fedora.</p>
+        </div>
+
+        <figure class="window" role="img" aria-label="A Writan window with five documents open as tabs: a Word report, a PowerPoint deck, an Excel budget, a PDF lease and a Markdown note. The Word report is in front.">
+          <div class="window-bar" aria-hidden="true">
+            <span class="dots"><i></i><i></i><i></i></span>
+            <ol class="tabs">
+              <li class="tab is-active"><b class="kind docx">W</b>Q3 report.docx</li>
+              <li class="tab"><b class="kind pptx">P</b>Pitch.pptx</li>
+              <li class="tab"><b class="kind xlsx">X</b>Budget.xlsx</li>
+              <li class="tab"><b class="kind pdf">PDF</b>Lease.pdf</li>
+              <li class="tab"><b class="kind md">M</b>notes.md</li>
+            </ol>
+          </div>
+          <div class="window-body" aria-hidden="true">
+            <div class="pane outline">
+              <p class="pane-title">Outline</p>
+              <p class="is-current">Summary</p>
+              <p>Revenue</p>
+              <p>Hiring</p>
+              <p>Next quarter</p>
+              <p class="count">3 pages, 1,204 words</p>
+            </div>
+            <div class="page">
+              <p class="page-h">Summary</p>
+              <p>Sales grew in every region this quarter. The new pricing took effect in August and most customers moved to annual plans.</p>
+              <p class="page-h2">Revenue</p>
+              <p>Revenue was up 14% on the same quarter last year. <span class="comment">Support costs fell</span> as the help pages improved.</p>
+            </div>
+            <div class="pane inspector">
+              <p class="pane-title">Text</p>
+              <p class="field"><span>Style</span><span class="value">Heading 1</span></p>
+              <p class="field"><span>Font</span><span class="value">Calibri</span></p>
+              <p class="field"><span>Size</span><span class="value">16</span></p>
+              <p class="toggles"><span class="on">B</span><span><em>I</em></span><span><u>U</u></span></p>
+            </div>
+          </div>
+        </figure>
+      </div>
+    </section>
+
+    <section class="band why" aria-labelledby="why-title">
+      <div class="wrap narrow">
+        <h2 id="why-title">Why another document app</h2>
+        <p>Word, PowerPoint and Preview are slow to open and heavy to keep running. Writan is built on <a href="https://tauri.app">Tauri</a>, so it uses the web view your system already has instead of shipping a browser of its own. Word, PowerPoint and Excel files run on Writan's own document engine, written in Rust.</p>
+      </div>
+    </section>
+
+    <section class="band" id="editors" aria-labelledby="editors-title">
+      <div class="wrap">
+        <h2 id="editors-title">An editor for each kind of file</h2>
+        <p class="section-lead">Every file opens as a tab. Each kind gets its own sidebar on the left and an inspector on the right, and ⌘\ hides them. On Windows and Linux, read Ctrl for ⌘.</p>
+
+        <div class="editors">
+          <article class="editor">
+            <h3><b class="kind docx" aria-hidden="true">W</b>Word</h3>
+            <p>Styles, fonts, colors, lists, line spacing, tables, images, links and page breaks. Headers and footers with page numbers. Comments with replies. Page size and margins, with A4 for new documents.</p>
+            <p>Calibri, Cambria, Arial, Times New Roman and Courier New are replaced by open-licensed fonts of the same widths, so lines break where Word breaks them.</p>
+          </article>
+
+          <article class="editor">
+            <h3><b class="kind pptx" aria-hidden="true">P</b>PowerPoint</h3>
+            <p>Drag slide thumbnails to reorder them, and write speaker notes under each slide. Add text boxes, shapes, tables, images, video links and slides. Crop, rotate, flip, group, align and set transitions, then press Present.</p>
+          </article>
+
+          <article class="editor">
+            <h3><b class="kind xlsx" aria-hidden="true">X</b>Excel and CSV</h3>
+            <p>Type <code>=</code> in the formula bar to list functions and see what each one takes. Click or drag over cells, on any sheet, to put their references in the formula. Writan calculates about 140 common functions, including SUMIFS, XLOOKUP and IFS.</p>
+            <p>Make column, bar, line, area, pie, doughnut and scatter charts from the selected cells. CSV files open as one sheet and save as CSV.</p>
+          </article>
+
+          <article class="editor">
+            <h3><b class="kind pdf" aria-hidden="true">PDF</b>PDF</h3>
+            <p>Highlight, add text, draw and place images. Sign with a signature you draw, type or photograph, and add initials, the date or a check mark. Fill in forms and jump to the next empty field.</p>
+            <p>Reorder, rotate, insert, extract and delete pages. Save a flattened copy so nobody can change the answers.</p>
+          </article>
+
+          <article class="editor">
+            <h3><b class="kind md" aria-hidden="true">M</b>Markdown and text</h3>
+            <p>Read, edit with a live preview, or edit the source, and switch with ⌘E. Front matter, such as an Agent Skill's name and description, shows as a table.</p>
+          </article>
+
+          <article class="editor">
+            <h3><b class="kind img" aria-hidden="true">IMG</b>Images and LaTeX</h3>
+            <p>PNG, JPEG and HEIC open in a viewer with highlight, draw, arrow, box, crop and turn. The optional LaTeX plugin compiles with the TeX on your computer and shows source and PDF side by side.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="band alt" id="everywhere" aria-labelledby="everywhere-title">
+      <div class="wrap">
+        <h2 id="everywhere-title">In every tab</h2>
+        <dl class="facts">
+          <div>
+            <dt>Autosave to the file itself</dt>
+            <dd>A saved file is written back to the same place a few seconds after you stop typing. If that folder is in iCloud Drive, Dropbox or OneDrive, the sync app uploads it. Writan signs in to nothing.</dd>
+          </div>
+          <div>
+            <dt>Version history</dt>
+            <dd>Each save keeps a copy on your computer. Compare any version with now, restore it, open it in a new tab or give it a name so it's always kept.</dd>
+          </div>
+          <div>
+            <dt>Tabs that come back</dt>
+            <dd>Open tabs return the next time you launch. Switch with ⌘1 to ⌘9, drag to reorder, or duplicate a tab to keep two parts of one document in view.</dd>
+          </div>
+          <div>
+            <dt>Split view</dt>
+            <dd>Put two Word documents or PDFs side by side with ⇧⌘\, such as a textbook's questions and its answers.</dd>
+          </div>
+          <div>
+            <dt>Find and replace</dt>
+            <dd>⌘F searches the document in front of you. Replace works in Word, PowerPoint, Markdown and text files.</dd>
+          </div>
+          <div>
+            <dt>Command palette</dt>
+            <dd>⌘K searches commands, open tabs and recent files. Type "dark" or "new markdown" and press Return.</dd>
+          </div>
+          <div>
+            <dt>Folders</dt>
+            <dd>Open a folder into a sidebar, as in a code editor, and search every document under it by name.</dd>
+          </div>
+          <div>
+            <dt>Focus mode</dt>
+            <dd>⌥⌘F hides everything but the page and fades every paragraph except the one you're writing. Typewriter scrolling keeps your line at one height.</dd>
+          </div>
+          <div>
+            <dt>A <code>writan</code> command</dt>
+            <dd>Run <code>writan .</code> to open a folder or <code>writan a.pdf b.docx</code> to open files from a terminal, as <code>code</code> does for VS Code.</dd>
+          </div>
+          <div>
+            <dt>Light, dark and your own themes</dt>
+            <dd>Follow the system or pick one, and make a theme from two tones and an accent.</dd>
+          </div>
+        </dl>
+        <p class="more"><a href="https://github.com/elijahroizman/writan/blob/main/docs/user/features.md">Everything each editor can do</a> and the <a href="https://github.com/elijahroizman/writan/blob/main/docs/user/keyboard-shortcuts.md">keyboard shortcuts</a>.</p>
+      </div>
+    </section>
+
+    <section class="band" id="early" aria-labelledby="early-title">
+      <div class="wrap narrow">
+        <div class="note">
+          <h2 id="early-title">This is early software</h2>
+          <p>Writan is mostly written by AI models, and it has bugs. LaTeX on Windows is still being tested. Some things it doesn't do yet:</p>
+          <ul>
+            <li>Word: no spell check, and tracked changes can't be accepted or rejected.</li>
+            <li>Excel: pictures, conditional formatting and data validation aren't shown, though they're kept when you save.</li>
+            <li>PDF: signatures are pictures of your signature, not certificate signatures.</li>
+            <li>A crash loses edits you hadn't saved yet. Autosave and version history only protect saved changes.</li>
+          </ul>
+          <p><a href="https://github.com/elijahroizman/writan/blob/main/docs/user/limitations.md">Read the full list of what it doesn't do yet</a>, and please <a href="https://github.com/elijahroizman/writan/issues">open an issue</a> when something breaks.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="band alt" id="download" aria-labelledby="download-title">
+      <div class="wrap">
+        <h2 id="download-title">Download</h2>
+        <p class="section-lead" data-release-version>The buttons below link to the latest release on GitHub.</p>
+
+        <ul class="downloads">
+          <li class="download">
+            <div class="platform">
+              <h3>Mac</h3>
+              <p>Apple silicon (M1 and later). Signed with a Developer ID and notarized by Apple.</p>
+            </div>
+            <div class="how">
+              <p>Open the <code data-asset-name="mac">.dmg</code> and drag Writan to Applications.</p>
+            </div>
+            <a class="button primary" data-asset="mac" href="https://github.com/elijahroizman/writan/releases/latest">Download .dmg</a>
+          </li>
+
+          <li class="download">
+            <div class="platform">
+              <h3>Windows</h3>
+              <p>Windows 10 and 11, x64.</p>
+            </div>
+            <div class="how">
+              <p>Run the <code data-asset-name="windows">setup .exe</code>. Writan isn't code-signed for Windows yet, so SmartScreen may say it protected your PC. Click <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
+            </div>
+            <a class="button primary" data-asset="windows" href="https://github.com/elijahroizman/writan/releases/latest">Download .exe</a>
+          </li>
+
+          <li class="download">
+            <div class="platform">
+              <h3>Debian and Ubuntu</h3>
+              <p>Ubuntu 22.04 or Debian 12 and newer, x64.</p>
+            </div>
+            <div class="how">
+              <p>From the folder you downloaded it to:</p>
+              <pre><code>sudo apt install ./<span data-asset-name="deb">Writan_…_amd64.deb</span></code></pre>
+            </div>
+            <a class="button primary" data-asset="deb" href="https://github.com/elijahroizman/writan/releases/latest">Download .deb</a>
+          </li>
+
+          <li class="download">
+            <div class="platform">
+              <h3>Fedora</h3>
+              <p>x64.</p>
+            </div>
+            <div class="how">
+              <p>From the folder you downloaded it to:</p>
+              <pre><code>sudo dnf install ./<span data-asset-name="rpm">Writan-…x86_64.rpm</span></code></pre>
+            </div>
+            <a class="button primary" data-asset="rpm" href="https://github.com/elijahroizman/writan/releases/latest">Download .rpm</a>
+          </li>
+        </ul>
+
+        <p class="more">Writan keeps itself up to date. On Mac and Windows, new versions download in the background and install when you quit. The .deb adds Writan's APT repository and the .rpm its dnf repository, so updates arrive with your system's other updates. <a href="https://github.com/elijahroizman/writan/blob/main/docs/user/updating.md">How updating works</a>. Older versions are on the <a href="https://github.com/elijahroizman/writan/releases">releases page</a>.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <p class="brand small"><img src="app-icon.svg" alt="" width="28" height="28"><span>Writan</span></p>
+      <ul>
+        <li><a href="https://github.com/elijahroizman/writan">GitHub</a></li>
+        <li><a href="https://github.com/elijahroizman/writan/blob/main/CHANGELOG.md">Changelog</a></li>
+        <li><a href="https://github.com/elijahroizman/writan/issues">Report a problem</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>

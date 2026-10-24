@@ -38,7 +38,7 @@ This is early software, mostly written by AI models, and it has bugs. LaTeX on W
 - [What it doesn't do yet](docs/user/limitations.md)
 - [Changelog](CHANGELOG.md)
 
-Working on the code: [development](docs/internals/development.md), [releases and signing](docs/internals/releasing.md), [writing a plugin](plugins/README.md).
+Working on the code: [development](docs/internals/development.md), [releases and signing](docs/internals/releasing.md), [writing a plugin](plugins/README.md), [the website](website/README.md).
 
 ## Run it locally
 
