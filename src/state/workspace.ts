@@ -72,6 +72,11 @@ export const getEditor = (tabId: string) => handles.get(tabId)
 /** Counts edits per tab, so a save can tell whether the document changed while it was writing. */
 const edits = new Map<string, number>()
 
+/** Each tab's file as Writan last read or wrote it (platform.fileStamp), so saving can tell whether another app changed it since. */
+const stamps = new Map<string, string | null>()
+/** The save each tab is running, so the next one waits for it. */
+const saving = new Map<string, Promise<unknown>>()
+
 /** Autosave plugs in here (see lib/autosave.ts); until it does, nothing autosaves. */
 export const autosaveHooks = {
   /** A tab's document just changed. */
@@ -221,6 +226,31 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     localStorage.setItem(STORAGE.recents, JSON.stringify(recents))
   }
 
+  /** Who changed the file at `path` since this tab last read or wrote it: another tab, another app, or nobody (null). */
+  const changedBy = async (tabId: string, path: string) => {
+    const before = stamps.get(tabId)
+    if (!before) return null
+    const now = await platform.fileStamp(path)
+    if (now === null || now === before) return null
+    return get().tabs.some((t) => t.id !== tabId && t.path === path && stamps.get(t.id) === now) ? 'tab' : 'outside'
+  }
+
+  const writeTab = async (tab: DocTab, editor: EditorHandle, path: string, label?: string) => {
+    editor.prepareSave?.()
+    const editsBefore = edits.get(tab.id) ?? 0
+    const revisionBefore = editor.getRevision?.()
+    const bytes = await editor.getBytes()
+    await platform.writeFile(path, bytes, { history: useSettings.getState().history, label })
+    stamps.set(tab.id, await platform.fileStamp(path))
+    const title = stripExtension(platform.basename(path))
+    // An edit made while the file was being written isn't in it, so the tab stays unsaved.
+    const dirty = (edits.get(tab.id) ?? 0) !== editsBefore || editor.getRevision?.() !== revisionBefore || getEditor(tab.id) !== editor
+    if (!dirty) editor.markSaved?.()
+    set({ tabs: get().tabs.map((t) => (t.id === tab.id ? { ...t, path, title, dirty } : t)) })
+    addRecent(path, tab.kind)
+    return true
+  }
+
   const addTab = (tab: DocTab) => {
     const { tabs, activeId } = get()
     // Open next to the current tab, like a browser.
@@ -332,8 +362,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         }
         if (opened.some((t) => t.path === path)) continue
         try {
+          const stamp = await platform.fileStamp(path)
           const bytes = await platform.readFile(path)
-          opened.push({ id: newId(), kind, title: stripExtension(platform.basename(path)), path, bytes, loadId: 0, dirty: false })
+          const id = newId()
+          stamps.set(id, stamp)
+          opened.push({ id, kind, title: stripExtension(platform.basename(path)), path, bytes, loadId: 0, dirty: false })
         } catch (err) {
           failures.push(String(err))
           if (!(await platform.pathExists(path))) get().removeRecent(path)
@@ -422,32 +455,43 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
     },
 
     save: async (id, opts) => {
-      const tab = activeDoc(id)
-      if (!tab) return false
-      const editor = getEditor(tab.id)
-      if (!editor) return false
-      let path = opts?.to ?? tab.path
-      if (!path || opts?.saveAs) {
-        path = await platform.pickSavePath(tab.title, tab.kind)
-        if (!path) return false
+      const first = activeDoc(id)
+      if (!first || !getEditor(first.id)) return false
+      let to = opts?.to
+      if (opts?.saveAs || !(to ?? first.path)) {
+        to = (await platform.pickSavePath(first.title, first.kind)) ?? undefined
+        if (!to) return false
       }
+      // One save per tab at a time, so each checks the file the last one wrote.
+      while (saving.has(first.id)) await saving.get(first.id)
+      const tab = get().tabs.find((t) => t.id === first.id)
+      const editor = getEditor(first.id)
+      const path = to ?? tab?.path
+      if (!tab || !editor || !path) return false
+      const job = (async () => {
+        const by = path === tab.path ? await changedBy(tab.id, path) : null
+        if (!by) return true
+        const name = platform.basename(path)
+        const message = by === 'tab' ? `“${name}” was saved from another tab after it was opened here.` : `“${name}” was changed outside Writan after it was opened here, perhaps in another app or by a sync service.`
+        if (opts?.quiet) throw new Error(`${message} Save it yourself to choose which version to keep.`)
+        return platform.confirmDialog(`${message} Saving replaces that version with yours. ${useSettings.getState().history ? 'The other version stays in version history.' : ''}`.trim(), {
+          title: `Replace the changed “${name}”?`,
+          okLabel: 'Replace',
+          danger: true,
+        })
+      })().then(async (go) => {
+        if (!go) return false
+        return writeTab(tab, editor, path, opts?.label)
+      })
+      saving.set(tab.id, job.catch(() => {}))
       try {
-        editor.prepareSave?.()
-        const editsBefore = edits.get(tab.id) ?? 0
-        const revisionBefore = editor.getRevision?.()
-        const bytes = await editor.getBytes()
-        await platform.writeFile(path, bytes, { history: useSettings.getState().history, label: opts?.label })
-        const title = stripExtension(platform.basename(path))
-        // An edit made while the file was being written isn't in it, so the tab stays unsaved.
-        const dirty = (edits.get(tab.id) ?? 0) !== editsBefore || editor.getRevision?.() !== revisionBefore || getEditor(tab.id) !== editor
-        if (!dirty) editor.markSaved?.()
-        set({ tabs: get().tabs.map((t) => (t.id === tab.id ? { ...t, path, title, dirty } : t)) })
-        addRecent(path, tab.kind)
-        return true
+        return await job
       } catch (err) {
         if (opts?.quiet) throw err
         await platform.showError(String(err))
         return false
+      } finally {
+        saving.delete(tab.id)
       }
     },
 
@@ -457,6 +501,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       if (tab.dirty && (!(await get().save(id)) || get().tabs.find((t) => t.id === id)?.dirty)) return false
       try {
         await platform.writeFile(tab.path, bytes, { history: true, label })
+        stamps.set(id, await platform.fileStamp(tab.path))
       } catch (err) {
         await platform.showError(String(err))
         return false
@@ -476,7 +521,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         if (!ok) return
       }
       try {
+        const stamp = await platform.fileStamp(tab.path)
         const bytes = await platform.readFile(tab.path)
+        stamps.set(tab.id, stamp)
         set({
           tabs: get().tabs.map((t) => (t.id === tab.id ? { ...t, bytes, loadId: t.loadId + 1, dirty: false } : t)),
         })
@@ -513,6 +560,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
       const path = get().tabs.find((t) => t.id === tabId)?.path ?? tab.path
       const closedPaths = path ? [...get().closedPaths, path].slice(-20) : get().closedPaths
       edits.delete(tabId)
+      stamps.delete(tabId)
       set({ tabs: remaining, activeId: nextActive, closedPaths })
       return true
     },
@@ -533,7 +581,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
         const bytes = fromEditor ? ((await getEditor(tab.id)?.getBytes()) ?? tab.bytes) : await platform.readFile(tab.path!)
         const base = tab.title.replace(/ \(\d+\)$/, '')
         const copies = get().tabs.filter((t) => t.path === tab.path && t.path !== null).length
-        addTab({ ...tab, id: newId(), title: tab.path ? `${base} (${copies + 1})` : `${base} copy`, bytes, loadId: 0, dirty: tab.dirty })
+        const copyId = newId()
+        stamps.set(copyId, stamps.get(tab.id) ?? null)
+        addTab({ ...tab, id: copyId, title: tab.path ? `${base} (${copies + 1})` : `${base} copy`, bytes, loadId: 0, dirty: tab.dirty })
       } catch (err) {
         await platform.showError(String(err))
       }
