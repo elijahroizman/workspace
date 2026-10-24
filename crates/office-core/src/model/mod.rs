@@ -54,6 +54,16 @@ impl Kind {
         }
     }
 
+    /// What the kind is called in a message: "a Word document".
+    pub fn described(self) -> &'static str {
+        match self {
+            Kind::Word => "a Word document",
+            Kind::Slides => "a PowerPoint presentation",
+            Kind::Sheets => "an Excel workbook",
+            Kind::Csv => "a CSV file",
+        }
+    }
+
     /// From a file extension. Templates, slide shows and macro-enabled files are the same formats.
     pub fn from_extension(ext: &str) -> Option<Kind> {
         Some(match ext.to_ascii_lowercase().as_str() {

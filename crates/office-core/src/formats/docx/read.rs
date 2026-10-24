@@ -308,5 +308,7 @@ fn read_table(tbl: &Element, rels: &PartRels, doc: &mut Document) -> Table {
             rows[r].cells[c].row_span = 1 + below as u32;
         }
     }
-    Table { columns, rows, style, origin: shell(tbl, |c| c.is(ns::W, "tblGrid") || c.is(ns::W, "tr")) }
+    // The origin keeps the grid, for what its columns carry besides their widths (a tracked
+    // change to the grid, `w:tblGridChange`).
+    Table { columns, rows, style, origin: shell(tbl, |c| c.is(ns::W, "tr")) }
 }

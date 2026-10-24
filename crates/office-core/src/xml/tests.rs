@@ -186,4 +186,23 @@ fn deep_nesting_is_rejected() {
     let deep = |n: usize| format!("{}{}", "<a>".repeat(n), "</a>".repeat(n));
     assert!(super::parse(deep(super::parse::MAX_DEPTH).as_bytes()).is_ok());
     assert!(super::parse(deep(200_000).as_bytes()).unwrap_err().contains("nested"));
+    let empty_leaf = format!("{}<a/>{}", "<a>".repeat(super::parse::MAX_DEPTH), "</a>".repeat(super::parse::MAX_DEPTH));
+    assert!(super::parse(empty_leaf.as_bytes()).unwrap_err().contains("nested"));
+}
+
+#[test]
+fn deepest_accepted_tree_can_be_cloned_and_written_on_a_small_stack() {
+    std::thread::Builder::new()
+        .stack_size(1024 * 1024)
+        .spawn(|| {
+            let depth = super::parse::MAX_DEPTH;
+            let source = format!("{}{}", "<a>".repeat(depth), "</a>".repeat(depth));
+            let doc = super::parse(source.as_bytes()).unwrap();
+            let copy = doc.clone();
+            assert_eq!(copy.root.text(), "");
+            assert!(super::parse(&copy.to_bytes()).is_ok());
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
