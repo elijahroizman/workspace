@@ -474,3 +474,33 @@ fn sheet_to_table_includes_every_merge_even_without_values() {
     assert_eq!((t.rows[3].cells[3].row_span, t.rows[3].cells[3].col_span), (3, 3));
     assert_eq!(t.owner(5, 5), Some((3, 3)));
 }
+
+#[test]
+fn cells_sharing_one_long_string_stop_at_the_text_budget() {
+    // Every cell holds its own copy of its shared string: 12,000 cells of a 1 MB string once
+    // needed 12 GB. In tests the budget is a megabyte.
+    let mut p = save(&sheet_doc(), Kind::Sheets);
+    let long = "x".repeat(64 * 1024);
+    p.put(
+        "xl/sharedStrings.xml",
+        format!(r#"<sst xmlns="{}"><si><t>{long}</t></si><si><t>short</t></si></sst>"#, ns::X).into_bytes(),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml",
+    );
+    p.relate("xl/workbook.xml", kind::SHARED_STRINGS, "xl/sharedStrings.xml").unwrap();
+    let sheet = |cells: usize, si: u32| {
+        let cells: String = (1..=cells).map(|r| format!(r#"<row r="{r}"><c r="A{r}" t="s"><v>{si}</v></c></row>"#)).collect();
+        format!(r#"<worksheet xmlns="{}"><sheetData>{cells}</sheetData></worksheet>"#, ns::X).into_bytes()
+    };
+    let rows = |p: &Package| match read(p, Kind::Sheets).body {
+        Body::Workbook { sheets } => sheets[0].rows.len(),
+        _ => unreachable!(),
+    };
+    // Twelve copies are fine, and so are thousands of short ones.
+    p.replace("xl/worksheets/sheet1.xml", sheet(12, 0)).unwrap();
+    assert_eq!(rows(&p), 12);
+    p.replace("xl/worksheets/sheet1.xml", sheet(5000, 1)).unwrap();
+    assert_eq!(rows(&p), 5000);
+    p.replace("xl/worksheets/sheet1.xml", sheet(20, 0)).unwrap();
+    let e = crate::read(&p.to_bytes().unwrap(), Some("x.xlsx")).unwrap_err().to_string();
+    assert!(e.contains("too large to open"), "{e}");
+}

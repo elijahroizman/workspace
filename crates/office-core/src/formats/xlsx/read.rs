@@ -29,6 +29,7 @@ pub fn read(pkg: Package) -> Result<Document> {
         })
         .collect();
     let mut sheets = Vec::new();
+    let mut budget = TextBudget(MAX_SHARED_TEXT);
     for s in workbook.root.path(ns::X, &["sheets"]).into_iter().flat_map(|l| l.children_named(ns::X, "sheet")) {
         let name = s.attr("name").unwrap_or("").to_string();
         // Chart sheets and dialog sheets have no cells; they stay in the package.
@@ -40,7 +41,7 @@ pub fn read(pkg: Package) -> Result<Document> {
         if !pkg.has(&part) {
             continue;
         }
-        let mut sheet = read_sheet(&pkg, &part, &strings, &duplicate)?;
+        let mut sheet = read_sheet(&pkg, &part, &strings, &duplicate, &mut budget)?;
         sheet.name = name;
         sheet.hidden = matches!(s.attr("state"), Some("hidden" | "veryHidden"));
         sheets.push(sheet);
@@ -49,6 +50,26 @@ pub fn read(pkg: Package) -> Result<Document> {
     doc.origin = shell(&workbook.root, |_| false);
     doc.package = Some(pkg);
     Ok(doc)
+}
+
+/// The most text cells may copy out of the shared string table, all sheets together. Each cell
+/// holds its own copy of its string, so a small file whose thousands of cells all point at one
+/// long string would otherwise need many gigabytes (a 100 KB file, 12 GB).
+/// (A megabyte in this crate's tests, so they can show it without the memory.)
+const MAX_SHARED_TEXT: u64 = if cfg!(test) { 1 << 20 } else { 1 << 30 };
+
+struct TextBudget(u64);
+
+impl TextBudget {
+    fn spend(&mut self, value: &Value) -> Result<(), String> {
+        let len = match value {
+            Value::Text(t) => t.len(),
+            Value::Rich(runs) => runs.iter().map(|r| r.text.len() + 64).sum(),
+            _ => 0,
+        };
+        self.0 = self.0.checked_sub(len as u64).ok_or("the workbook's text is too large to open (over 1 GB in its cells)")?;
+        Ok(())
+    }
 }
 
 /// A shared string table's `si` elements, read one at a time: the table can be huge.
@@ -67,7 +88,7 @@ pub(super) fn shared_strings(pkg: &Package, part: &str) -> Result<Vec<Element>> 
 /// Reads a worksheet a row at a time, so a sheet with millions of cells never becomes one big
 /// tree. Rows and cells keep an origin only when they have markup the writer couldn't make
 /// again from the model (Excel's row attributes, a shared formula, an inline string).
-fn read_sheet(pkg: &Package, part: &str, strings: &[Value], duplicate: &[bool]) -> Result<Sheet> {
+fn read_sheet(pkg: &Package, part: &str, strings: &[Value], duplicate: &[bool], budget: &mut TextBudget) -> Result<Sheet> {
     let bad = |message: String| Error::Xml { part: part.to_string(), message };
     let hollow = stream::parse_hollow(pkg.part(part)?, Some("sheetData")).map_err(bad)?;
     let root = &hollow.doc.root;
@@ -87,7 +108,7 @@ fn read_sheet(pkg: &Package, part: &str, strings: &[Value], duplicate: &[bool]) 
             for c in row.children_named(ns::X, "c") {
                 let col = c.attr("r").and_then(CellRef::parse).map(|r| r.col).unwrap_or(next_col);
                 next_col = col + 1;
-                cells.push(read_cell(c, col, strings, duplicate)?);
+                cells.push(read_cell(c, col, strings, duplicate, budget)?);
             }
             let origin = if row_needs_origin(&row) { shell(&row, |e| e.is(ns::X, "c")) } else { Origin::default() };
             rows.push(SheetRow { index, cells, origin });
@@ -144,7 +165,7 @@ fn cell_needs_origin(c: &Element) -> bool {
     !(plain_attrs && plain_type && plain_children)
 }
 
-fn read_cell(c: &Element, col: u32, strings: &[Value], duplicate: &[bool]) -> Result<SheetCell, String> {
+fn read_cell(c: &Element, col: u32, strings: &[Value], duplicate: &[bool], budget: &mut TextBudget) -> Result<SheetCell, String> {
     // An empty `v` (a formula nobody has calculated yet) is no value.
     let v = c.child(ns::X, "v").map(Element::text).filter(|v| !v.is_empty());
     let value = match (c.attr("t").unwrap_or("n"), v) {
@@ -152,7 +173,9 @@ fn read_cell(c: &Element, col: u32, strings: &[Value], duplicate: &[bool]) -> Re
         (_, None) => Value::Empty,
         ("s", Some(v)) => {
             let i: usize = v.trim().parse().map_err(|_| format!("shared string index {v:?}"))?;
-            strings.get(i).cloned().ok_or_else(|| format!("shared string {i} doesn't exist"))?
+            let value = strings.get(i).ok_or_else(|| format!("shared string {i} doesn't exist"))?;
+            budget.spend(value)?;
+            value.clone()
         }
         ("b", Some(v)) => Value::Bool(v.trim() == "1"),
         ("e", Some(v)) => Value::Error(v),
