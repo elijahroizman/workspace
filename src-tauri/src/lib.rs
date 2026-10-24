@@ -11,6 +11,7 @@ mod launch_services;
 mod menu;
 mod open_dialog;
 mod plugins;
+mod quit;
 mod tex;
 mod update;
 #[cfg(windows)]
@@ -42,6 +43,8 @@ fn take_pending_opens(state: tauri::State<'_, PendingOpens>) -> Vec<String> {
 
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
+    // The page has already asked about unsaved changes.
+    quit::set_unsaved(false);
     app.exit(0);
 }
 
@@ -140,6 +143,7 @@ pub fn run() {
                 let _ = std::thread::Builder::new()
                     .name("launch-services".into())
                     .spawn(move || launch_services::claim_single_open_with_entry(&bundle_id));
+                quit::install(app.handle());
             }
             #[cfg(windows)]
             if let Some(window) = app.get_webview_window("main") {
@@ -171,6 +175,7 @@ pub fn run() {
             cli::cli_install,
             cli::cli_uninstall,
             quit_app,
+            quit::set_unsaved,
             update::latest_release,
             update::relaunch_in_place,
             update::linux_package,

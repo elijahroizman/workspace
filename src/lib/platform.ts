@@ -451,6 +451,13 @@ export async function setCliInstalled(on: boolean): Promise<boolean> {
   }
 }
 
+/** Tell the app whether any tab has unsaved changes, so quitting from the Dock or logging out asks first. */
+export async function setUnsaved(unsaved: boolean): Promise<void> {
+  if (!isTauri) return
+  const { invoke } = await core()
+  await invoke('set_unsaved', { unsaved })
+}
+
 export async function quitApp(): Promise<void> {
   if (!isTauri) return
   const { invoke } = await core()

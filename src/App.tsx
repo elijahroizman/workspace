@@ -364,9 +364,16 @@ export async function runCommand(id: string) {
       ws.activateOffset(-1)
       break
     case 'quit':
-      if (await confirmDiscardAll()) {
-        await installUpdate({ restart: false })
-        await platform.quitApp()
+      // The Dock's Quit can arrive while Quit is already asking.
+      if (quitting) break
+      quitting = true
+      try {
+        if (await confirmDiscardAll()) {
+          await installUpdate({ restart: false })
+          await platform.quitApp()
+        }
+      } finally {
+        quitting = false
       }
       break
     case 'check-updates':
@@ -400,6 +407,8 @@ async function confirmDiscardAll(): Promise<boolean> {
 }
 
 let sessionFrozen = false
+/** Quit is asking about unsaved tabs. */
+let quitting = false
 
 /** Whether a command does anything right now, for the command palette. */
 export function commandAvailable(command: string) {
@@ -504,6 +513,11 @@ export default function App() {
         return true
       }),
     )
+    let unsaved = false
+    const stopUnsaved = useWorkspace.subscribe((s) => {
+      const now = s.tabs.some((t) => t.dirty)
+      if (now !== unsaved) void platform.setUnsaved((unsaved = now))
+    })
     // Shortcuts changed in Settings: the menu is built with the defaults.
     void syncMenu()
     const stopUpdateChecks = startUpdateChecks()
@@ -515,6 +529,7 @@ export default function App() {
     const stopPruneOnChange = useSettings.subscribe((s, prev) => s.recentDays !== prev.recentDays && pruneRecents())
     return () => {
       window.clearInterval(pruneTimer)
+      stopUnsaved()
       stopPruneOnChange()
       stopUpdateChecks()
       stopAutosave()
