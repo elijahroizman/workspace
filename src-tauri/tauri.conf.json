@@ -184,7 +184,7 @@
         ],
         "section": "editors",
         "files": {
-          "/usr/share/keyrings/workspace-archive-keyring.gpg": "linux/workspace-archive-keyring.gpg"
+          "/usr/share/keyrings/writan-archive-keyring.gpg": "linux/writan-archive-keyring.gpg"
         },
         "postInstallScript": "linux/postinst",
         "postRemoveScript": "linux/postrm"
@@ -195,7 +195,7 @@
           "gtk3"
         ],
         "files": {
-          "/etc/pki/rpm-gpg/RPM-GPG-KEY-workspace": "linux/RPM-GPG-KEY-workspace"
+          "/etc/pki/rpm-gpg/RPM-GPG-KEY-writan": "linux/RPM-GPG-KEY-writan"
         },
         "postInstallScript": "linux/rpm-postinst",
         "postRemoveScript": "linux/rpm-postrm"
@@ -216,7 +216,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBBNzUxMjYwNUZGMEI4QTAKUldTZ3VQQmZZQkoxQ3ZKMm41ZHBtenYxV1ErcnE4UjgzMUJOYzlEMHRySldZdGFLcnh3UFpMQjIK",
       "endpoints": [
-        "https://github.com/elijahroizman/workspace/releases/latest/download/latest.json"
+        "https://github.com/elijahroizman/writan/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

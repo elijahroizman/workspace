@@ -99,7 +99,7 @@ fn properties_round_trip() {
         title: Some("Q3 & Q4 plan".into()),
         creator: Some("Ada".into()),
         created: Some("2026-10-20T09:30:00Z".into()),
-        application: Some("Workspace".into()),
+        application: Some("Writan".into()),
         ..Default::default()
     };
     props.write(&mut pkg).unwrap();

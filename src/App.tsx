@@ -348,7 +348,7 @@ export async function runCommand(id: string) {
     case 'install-cli':
       try {
         if (await platform.setCliInstalled(true)) {
-          await platform.showMessage('Type workspace . in Terminal to open the folder you’re in, or workspace and a file’s name to open it.', 'The workspace command is installed')
+          await platform.showMessage('Type writan . in Terminal to open the folder you’re in, or writan and a file’s name to open it.', 'The writan command is installed')
         }
       } catch (err) {
         await platform.showError(String(err), 'Couldn’t install the command')

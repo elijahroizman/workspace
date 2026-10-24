@@ -2,20 +2,41 @@
 # Adds Writan's dnf repository, so new versions arrive with the system's other updates
 # (GNOME Software, dnf upgrade) and the app's Update button can install them. The repository is
 # the assets of the GitHub releases tagged "rpm/repodata" and "rpm/packages"; its metadata is
-# signed with the key this package installs (the same key as the APT repository). Once the repo
-# file exists it's left alone, so setting enabled=0 turns the updates off until Writan is
-# removed (the uninstall script deletes the file).
+# signed with the key this package installs (the same key as the APT repository). Once writan.repo
+# exists it is left alone, so setting enabled=0 turns the updates off until Writan is removed
+# (the uninstall script deletes the file).
+#
+# Packages before the rename wrote workspace.repo with the section id workspace. Upgrade moves
+# that file to writan.repo and rewrites the section id, key path and old GitHub address.
+# enabled=0 is left as it was.
 set -e
 
-REPO=/etc/yum.repos.d/workspace.repo
-KEY=/etc/pki/rpm-gpg/RPM-GPG-KEY-workspace
+REPO=/etc/yum.repos.d/writan.repo
+OLD=/etc/yum.repos.d/workspace.repo
+KEY=/etc/pki/rpm-gpg/RPM-GPG-KEY-writan
 
-if [ ! -e "$REPO" ] && [ -d /etc/yum.repos.d ] && [ -r "$KEY" ]; then
+rewrite() {
+  sed \
+    -e 's|^\[workspace\]|[writan]|' \
+    -e 's|/etc/pki/rpm-gpg/RPM-GPG-KEY-workspace|/etc/pki/rpm-gpg/RPM-GPG-KEY-writan|g' \
+    -e 's|github.com/elijahroizman/workspace|github.com/elijahroizman/writan|g' \
+    "$1"
+}
+
+if [ -f "$OLD" ] && [ ! -e "$REPO" ]; then
+  tmp="$(mktemp)"
+  rewrite "$OLD" > "$tmp"
+  mv "$tmp" "$REPO"
+  chmod 644 "$REPO"
+  rm -f "$OLD"
+elif [ -f "$OLD" ] && [ -f "$REPO" ] && grep -q 'releases/download/rpm/' "$OLD"; then
+  rm -f "$OLD"
+elif [ ! -e "$REPO" ] && [ -d /etc/yum.repos.d ] && [ -r "$KEY" ]; then
   cat > "$REPO" <<LIST
-# Writan updates (https://github.com/elijahroizman/workspace). Set enabled=0 to stop them.
-[workspace]
+# Writan updates (https://github.com/elijahroizman/writan). Set enabled=0 to stop them.
+[writan]
 name=Writan
-baseurl=https://github.com/elijahroizman/workspace/releases/download/rpm/
+baseurl=https://github.com/elijahroizman/writan/releases/download/rpm/
 enabled=1
 gpgcheck=0
 repo_gpgcheck=1

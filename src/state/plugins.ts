@@ -7,7 +7,7 @@ import { isTauri, isWindows } from '../lib/platform'
 import { texTestHook, useTex } from './tex'
 
 const KEY = 'workspace.plugins'
-const RELEASES = 'https://github.com/elijahroizman/workspace/releases/download'
+const RELEASES = 'https://github.com/elijahroizman/writan/releases/download'
 
 export interface InstallProgress {
   received: number

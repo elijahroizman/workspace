@@ -439,12 +439,12 @@ export interface CliStatus {
   /** Settings can install it (a Mac). */
   supported: boolean
   installed: boolean
-  /** Something else called `workspace` is in the way. */
+  /** Something else called `writan` is in the way. */
   taken: boolean
   path: string
 }
 
-/** The `workspace` shell command (src-tauri/src/cli.rs). */
+/** The `writan` shell command (src-tauri/src/cli.rs). */
 export async function cliStatus(): Promise<CliStatus> {
   if (!isTauri) return { supported: false, installed: false, taken: false, path: '' }
   const { invoke } = await core()

@@ -114,7 +114,7 @@ pub fn run() {
     let cli_paths = cli::paths_from_args(&std::env::args().collect::<Vec<_>>(), &cwd);
 
     let builder = tauri::Builder::default();
-    // Windows and Linux start a second copy for `workspace notes.md` or a double-click; it hands
+    // Windows and Linux start a second copy for `writan notes.md` (or the older `workspace` command) or a double-click; it hands
     // its paths to this one and quits. (A Mac sends them to the running app itself.)
     #[cfg(not(target_os = "macos"))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, cwd| {

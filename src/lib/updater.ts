@@ -9,7 +9,7 @@ import { isLinux, isMac, isTauri } from './platform'
 
 const FIRST_CHECK = 10_000
 const CHECK_EVERY = 4 * 60 * 60_000
-const RELEASE_URL = 'https://api.github.com/repos/elijahroizman/workspace/releases/latest'
+const RELEASE_URL = 'https://api.github.com/repos/elijahroizman/writan/releases/latest'
 
 export type UpdatePhase = 'idle' | 'checking' | 'downloading' | 'ready' | 'installing' | 'current' | 'error'
 
