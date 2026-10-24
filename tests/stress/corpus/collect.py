@@ -29,6 +29,11 @@ def main():
         ('nasa', 'https://sewp.nasa.gov/documents/training/sewp.shtml', {'pptx'}, 4, 'NASA training; third-party graphics possible; URL-only'),
         ('nih', 'https://grants.nih.gov/grants/forms/biosketch.htm', {'docx'}, 4, 'US federal government form; public domain federal text'),
         ('mass', 'https://budget.digital.mass.gov/govbudget/fy27/downloads', {'xlsx'}, 5, 'Massachusetts government; rights not verified; URL-only'),
+        ('au-budget', 'https://budget.gov.au/content/bp1/', {'docx', 'xlsx', 'csv'}, 8, 'Australian Commonwealth budget; rights not verified; URL-only'),
+        ('au-business', 'https://business.gov.au/finance/financial-tools-and-templates/create-a-budget', {'xlsx'}, 1, 'Australian government template; rights not verified; URL-only'),
+        ('au-pbo', 'https://www.pbo.gov.au/publications-and-data/data-and-tools/build-your-own-budget', {'xlsx'}, 1, 'Australian PBO educational workbook; attribution required; URL-only'),
+        ('uk-acas', 'https://www.acas.org.uk/job-application-form-template', {'docx'}, 1, 'Acas government template; free to use; redistribution not verified; URL-only'),
+        ('jp-akita', 'https://www.akita-u.ac.jp/honbu/work/deresume.html', {'docx'}, 1, 'Japanese university resume template; redistribution not verified; URL-only'),
     ]
     for prefix, page, exts, cap, note in sources:
         try:
@@ -42,9 +47,10 @@ def main():
             print(prefix, str(e), file=sys.stderr, flush=True)
     for f in ['fw4', 'fw9', 'f1040', 'f1040s1', 'f1040s2', 'f1040s3', 'f1040sa', 'f1040sb', 'f1040sc', 'f941', 'f4506t', 'fss4']:
         candidates.append(('irs-' + f + '.pdf', 'https://www.irs.gov/pub/irs-pdf/' + f + '.pdf', 'US federal government IRS form; public domain federal text', 'published'))
+    candidates.append(('us-budget-2025-appendix.pdf', 'https://www.govinfo.gov/content/pkg/BUDGET-2025-APP/pdf/BUDGET-2025-APP.pdf', 'US federal budget publication; public domain federal text; over 2 MB, URL-only', 'published'))
     # Supplemental fixtures are explicitly distinguished from published real-world files.
     paths = [
-        ('sw/qa/extras/ooxmlexport/data', 'docx', ['arabic', 'hebrew', 'chinese', 'japanese', 'korean', 'math', 'footnote', 'smartart', 'sdt', 'iwork', 'googledocs', 'libreoffice', 'tracked']),
+        ('sw/qa/extras/ooxmlexport/data', 'docx', ['arabic', 'hebrew', 'chinese', 'japanese', 'korean', 'math', 'footnote', 'smartart', 'sdt', 'iwork', 'googledocs', 'libreoffice', 'tracked', 'cjklist30', 'cjklist31', 'table-rtl', 'rtl-gutter', 'tdf106174_rtlParaAlign'.lower(), 'tdf118361_RTLfootnoteSeparator'.lower()]),
         ('sd/qa/unit/data/pptx', 'pptx', ['smartart', 'chart', 'math', 'font', 'media', 'group', 'iwork', 'google']),
         ('sc/qa/unit/data/xlsx', 'xlsx', ['conditional', 'validation', 'formula', 'chart', 'date', 'merged', 'google']),
     ]
@@ -61,10 +67,11 @@ def main():
             print('lo', ext, len(chosen), flush=True)
         except Exception as e:
             print(path, str(e), file=sys.stderr)
+    for lang in ['hbr', 'chn', 'jpn', 'kkn']:
+        candidates.append(('udhr-' + lang + '.pdf', 'https://www.ohchr.org/sites/default/files/UDHR/Documents/UDHR_Translations/' + lang + '.pdf', 'UN translation; rights not verified; URL-only', 'published'))
     candidates.extend([
         ('pdfjs-arabic.pdf', 'https://raw.githubusercontent.com/mozilla/pdf.js/master/test/pdfs/ArabicCIDTrueType.pdf', 'PDF.js regression fixture; provenance not verified; URL-only', 'regression'),
-        ('pdfjs-cjk.pdf', 'https://raw.githubusercontent.com/mozilla/pdf.js/master/test/pdfs/cjk.pdf', 'PDF.js regression fixture; provenance not verified; URL-only', 'regression'),
-        ('pdfjs-encrypted.pdf', 'https://raw.githubusercontent.com/mozilla/pdf.js/master/test/pdfs/encrypted.pdf', 'PDF.js regression fixture; provenance not verified; URL-only', 'regression'),
+        ('pdfjs-encrypted-attachment.pdf', 'https://raw.githubusercontent.com/mozilla/pdf.js/master/test/pdfs/encrypted-attachment.pdf', 'PDF.js regression fixture; provenance not verified; URL-only', 'regression'),
         ('iris.csv', 'https://raw.githubusercontent.com/mwaskom/seaborn-data/master/iris.csv', 'Public Fisher iris dataset; source license not verified; URL-only', 'published'),
         ('titanic.csv', 'https://raw.githubusercontent.com/mwaskom/seaborn-data/master/titanic.csv', 'Public Titanic dataset; source license not verified; URL-only', 'published'),
     ])

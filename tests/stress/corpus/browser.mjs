@@ -12,7 +12,7 @@ const filter = process.env.CORPUS_FILTER ? new RegExp(process.env.CORPUS_FILTER)
 await mkdir(out, { recursive: true })
 const engines = process.env.CORPUS_BROWSER ? [process.env.CORPUS_BROWSER] : ['chromium', 'webkit']
 for (const kind of engines) {
-  const browser = await ({ chromium, webkit })[kind].launch({ headless: true })
+  const browser = await ({ chromium, webkit })[kind].launch({ headless: true, ...(kind === 'chromium' ? { args: ['--enable-precise-memory-info'] } : {}) })
   const resultFile = join(out, `browser-${kind}.jsonl`)
   if (!process.env.CORPUS_APPEND) await writeFile(resultFile, '')
   for (const [name, url, hash] of rows) {
@@ -38,12 +38,16 @@ for (const kind of engines) {
     try {
       await Promise.race([(async () => {
         await page.goto(`${base}/?open=${encodeURIComponent('/dev-samples/' + name)}`, { waitUntil: 'domcontentloaded', timeout: 30000 })
+        if (name === 'irs-fw9-password.pdf') {
+          await page.locator('input[type=password]').fill('corpus', { timeout: 15000 })
+          await page.getByRole('button', { name: 'Unlock', exact: true }).click()
+        }
         await page.waitForFunction(() => {
           const w = window.__workspace
           if (!w) return false
           const s = w.useWorkspace.getState()
           return s.activeId !== 'home' && !!w.getEditor(s.activeId)
-        }, { timeout: 40000 })
+        }, null, { timeout: 40000 })
         // DOCX registers a handle before its engine is ready. Probe until getBytes succeeds.
         await page.waitForFunction(async () => {
           try {
@@ -51,7 +55,7 @@ for (const kind of engines) {
             await w.getEditor(s.activeId).getBytes()
             return true
           } catch { return false }
-        }, { timeout: 40000 })
+        }, null, { timeout: 40000 })
         result.openMs = Math.round(performance.now() - start)
         await page.evaluate(() => document.fonts.ready)
         await page.waitForTimeout(350)
