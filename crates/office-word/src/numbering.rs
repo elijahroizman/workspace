@@ -173,9 +173,16 @@ pub fn format_number(n: u32, format: &str) -> String {
         "upperRoman" => roman(n),
         "decimalZero" => format!("{n:02}"),
         "ordinal" => format!("{n}{}", ordinal_suffix(n)),
+        "ideographTraditional" => ideograph(n, "甲乙丙丁戊己庚辛壬癸"),
+        "ideographZodiac" => ideograph(n, "子丑寅卯辰巳午未申酉戌亥"),
         "none" => String::new(),
         _ => n.to_string(),
     }
+}
+
+fn ideograph(n: u32, sequence: &str) -> String {
+    // These finite sequences fall back to decimal after the last ideograph.
+    n.checked_sub(1).and_then(|i| sequence.chars().nth(i as usize)).map(|c| c.to_string()).unwrap_or_else(|| n.to_string())
 }
 
 fn ordinal_suffix(n: u32) -> &'static str {

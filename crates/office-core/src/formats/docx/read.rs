@@ -3,7 +3,7 @@ use crate::formats::common::{read_theme, rel_attr, shell, PartRels};
 use crate::model::{Block, Body, BreakKind, Cell, Document, Image, Inline, Kind, Link, Origin, Paragraph, Row, Run, Table};
 use crate::opc::{Package, Properties};
 use crate::units::Emu;
-use crate::xml::{ns, Element};
+use crate::xml::{ns, Element, Node};
 use crate::Result;
 
 /// A run keeps its own origin for the Word layer; its hyperlink wrapper is shared here.
@@ -230,6 +230,23 @@ fn read_inline_picture(r: &Element, inline: &Element, rels: &PartRels, doc: &mut
 /// The most grid slots spans fill in a table row: Word's limit on columns.
 const MAX_ROW_SLOTS: usize = 63;
 
+/// Keep empty slots for modeled children so raw content controls, revision markers and other
+/// siblings stay on the same side of each cell or row when the table is written back.
+fn table_shell(el: &Element, slot: &str) -> Origin {
+    let mut copy =
+        Element { prefix: el.prefix.clone(), local: el.local.clone(), ns: el.ns.clone(), attrs: el.attrs.clone(), children: Vec::new() };
+    for n in &el.children {
+        match n {
+            Node::Element(e) if e.is(ns::W, slot) => {
+                copy.push(Element::new(ns::W, slot));
+            }
+            Node::Text(t) if t.trim().is_empty() => {}
+            n => copy.children.push(n.clone()),
+        }
+    }
+    Origin::new(copy)
+}
+
 fn read_table(tbl: &Element, rels: &PartRels, doc: &mut Document) -> Table {
     let columns: Vec<Emu> = tbl
         .child(ns::W, "tblGrid")
@@ -294,7 +311,7 @@ fn read_table(tbl: &Element, rels: &PartRels, doc: &mut Document) -> Table {
                 .and_then(|h| h.attr_ns(ns::W, "val"))
                 .and_then(|v| Emu::parse(v, Emu::PER_TWIP)),
             header: trpr.and_then(|p| super::props::toggle(p, "tblHeader")).unwrap_or(false),
-            origin: shell(tr, |c| c.is(ns::W, "tc")),
+            origin: table_shell(tr, "tc"),
         });
         continues.push(cont);
     }
@@ -308,5 +325,5 @@ fn read_table(tbl: &Element, rels: &PartRels, doc: &mut Document) -> Table {
             rows[r].cells[c].row_span = 1 + below as u32;
         }
     }
-    Table { columns, rows, style, origin: shell(tbl, |c| c.is(ns::W, "tblGrid") || c.is(ns::W, "tr")) }
+    Table { columns, rows, style, origin: table_shell(tbl, "tr") }
 }
