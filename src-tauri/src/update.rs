@@ -85,6 +85,7 @@ const DNF_REPO: &str = "/etc/yum.repos.d/writan.repo";
 #[cfg(target_os = "linux")]
 const DNF_REPO_OLD: &str = "/etc/yum.repos.d/workspace.repo";
 
+/// Prefer the renamed repository file, while accepting an installation not yet migrated.
 #[cfg(target_os = "linux")]
 fn existing_file<'a>(primary: &'a str, legacy: &'a str) -> &'a str {
     if std::path::Path::new(primary).is_file() { primary } else { legacy }
@@ -99,6 +100,7 @@ pub struct LinuxPackage {
     repo: bool,
 }
 
+/// Query one real package name; a missing command or package is treated as not installed.
 #[cfg(target_os = "linux")]
 fn query_installed(format: &str, name: &str) -> Option<String> {
     let output = match format {

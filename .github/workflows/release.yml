@@ -185,7 +185,10 @@ jobs:
             exit 1
           fi
           sed -i "/^Replaces:/a Breaks: workspace (<< ${version})" "$work/DEBIAN/control"
-          dpkg-deb -b "$work" "$deb_path"
+          dpkg-deb --root-owner-group -b "$work" "$deb_path"
+          # Extraction runs as the Actions user; installed code and signing keys must be root-owned.
+          dpkg-deb --fsys-tarfile "$deb_path" | tar --numeric-owner -tvf - | \
+            awk '{ seen = 1; if ($2 != "0/0") { print "Non-root package owner: " $0; bad = 1 } } END { exit (!seen || bad) }'
           rm -rf "$work"
           tag="v$(node -p "require('./src-tauri/tauri.conf.json').version")"
           gh release upload "$tag" -R "$GITHUB_REPOSITORY" "$deb_path" --clobber
@@ -210,7 +213,7 @@ jobs:
            The Linux package was renamed from workspace to writan. This empty package
            depends on writan so apt upgrade installs the new name.
           EOF
-          dpkg-deb --build "$empty" "$repo/workspace_${version}_all.deb"
+          dpkg-deb --root-owner-group --build "$empty" "$repo/workspace_${version}_all.deb"
           rm -rf "$empty"
           cd "$repo"
           # Asset names can't hold a path, so the index names the file alone.
