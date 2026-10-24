@@ -147,20 +147,30 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
     if (!preview || !tab.path || tab.path.startsWith('browser:')) return
     const dir = platform.dirname(tab.path)
     const urls: string[] = []
+    let live = true
     for (const img of preview.querySelectorAll('img')) {
       const src = img.getAttribute('src') ?? ''
       if (!src || /^(https?:|data:|blob:)/i.test(src)) continue
-      const path = src.startsWith('/') ? src : platform.joinPath(dir, decodeURI(src))
+      const path = src.startsWith('/') ? src : platform.joinPath(dir, safeDecodeURI(src))
+      // Only pictures: a document mustn't make the app read /dev/zero or a huge file.
+      if (!IMAGE_EXT.test(path)) {
+        img.classList.add('missing')
+        continue
+      }
       void platform
         .readFile(path)
         .then((bytes) => {
+          if (!live) return
           const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: mimeFor(path) }))
           urls.push(url)
           img.src = url
         })
         .catch(() => img.classList.add('missing'))
     }
-    return () => urls.forEach(URL.revokeObjectURL)
+    return () => {
+      live = false
+      urls.forEach(URL.revokeObjectURL)
+    }
   }, [rendered, tab.path])
 
   const onPreviewClick = (e: React.MouseEvent) => {
@@ -170,12 +180,12 @@ export default function MarkdownEditor({ tab, active }: EditorProps) {
     const href = link.getAttribute('href') ?? ''
     e.preventDefault()
     if (href.startsWith('#')) {
-      previewRef.current?.querySelector(`#${CSS.escape(decodeURIComponent(href.slice(1)))}`)?.scrollIntoView({ behavior: 'smooth' })
+      previewRef.current?.querySelector(`#${CSS.escape(safeDecodeURI(href.slice(1), decodeURIComponent))}`)?.scrollIntoView({ behavior: 'smooth' })
     } else if (/^(https?:|mailto:)/i.test(href)) {
       void platform.openExternal(href)
     } else if (tab.path && kindFromPath(href.split('#')[0])) {
       // Links to other documents open as tabs.
-      void useWorkspace.getState().openPaths([platform.joinPath(platform.dirname(tab.path), decodeURI(href.split('#')[0]))])
+      void useWorkspace.getState().openPaths([platform.joinPath(platform.dirname(tab.path), safeDecodeURI(href.split('#')[0]))])
     }
   }
 
@@ -318,6 +328,17 @@ async function runPrint(tabId: string) {
 
 function decode(bytes: Uint8Array) {
   return new TextDecoder('utf-8').decode(bytes).replace(/^﻿/, '')
+}
+
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i
+
+/** decodeURI, but a stray % (“50%.png”) stays as it is instead of throwing. */
+function safeDecodeURI(s: string, decode = decodeURI) {
+  try {
+    return decode(s)
+  } catch {
+    return s
+  }
 }
 
 function mimeFor(path: string) {

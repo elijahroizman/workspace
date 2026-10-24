@@ -1,0 +1,3 @@
+name,html
+"<img src=x onerror=alert(12)>","<script>alert(13)</script>"
+=HYPERLINK("javascript:alert(14)"),x

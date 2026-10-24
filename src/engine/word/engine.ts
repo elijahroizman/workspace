@@ -3,7 +3,7 @@
 // layout, the selection and the state are brought up to date and subscribers hear about it.
 
 import { host, onFontsChanged, preloadFonts } from '../host'
-import { loadEngine } from '../load'
+import { expectKind, loadEngine } from '../load'
 import { BASE_FONTS } from '../preload'
 import { MediaCache, StyleSheet } from '../paint'
 import type { WordDoc } from '../wasm/office_wasm'
@@ -135,6 +135,7 @@ export class WordEngine {
   static async open(bytes: Uint8Array | null): Promise<WordEngine> {
     const t = timer()
     const engine = await loadEngine()
+    expectKind(bytes, 'word')
     t('engine')
     await preloadFonts(BASE_FONTS)
     t('fonts')

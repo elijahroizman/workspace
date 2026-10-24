@@ -2,7 +2,7 @@
 // selection, and drawing blocks of cells.
 
 import { host, onFontsChanged, preloadFonts } from '../host'
-import { loadEngine } from '../load'
+import { expectKind, loadEngine } from '../load'
 import type { PaintItem, PaintStyle } from '../paint'
 import { itemsHtml, MediaCache, StyleSheet } from '../paint'
 import { BASE_FONTS } from '../preload'
@@ -156,6 +156,7 @@ export class SheetsEngine {
 
   static async open(bytes: Uint8Array | null, name: string): Promise<SheetsEngine> {
     const engine = await loadEngine()
+    expectKind(bytes, 'sheets')
     await preloadFonts(BASE_FONTS)
     const doc = new engine.SheetsDoc(bytes ?? new Uint8Array(), name, host)
     doc.setNow(serialNow())

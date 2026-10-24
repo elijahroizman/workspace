@@ -1,0 +1,161 @@
+// Shared setup for the stress scripts: a browser on a VITE_TEST_HOOKS build with a fake Tauri
+// bridge, so app-only code (saving, autosave, the close prompt, opening links) runs for real.
+//
+// Paths the app opens are real paths on this machine: read_file serves them from disk. Writes go
+// to an in-memory overlay (window.__fake.files) that later reads see; nothing on disk changes.
+// window.__fake.failWrite = 'message' makes every write_file reject with that message.
+import { chromium, webkit } from 'playwright'
+import { existsSync, readFileSync, statSync } from 'node:fs'
+
+export const BASE = process.env.WRITAN_URL ?? 'http://localhost:1420/'
+export const ENGINE = process.env.ENGINE ?? 'chromium'
+
+export async function launch({ scale = 1, viewport = { width: 1400, height: 900 }, tauri = true, init } = {}) {
+  const browser = await (ENGINE === 'webkit' ? webkit : chromium).launch(ENGINE === 'webkit' ? {} : { args: ['--no-sandbox', '--enable-precise-memory-info'] })
+  const context = await browser.newContext({ viewport, deviceScaleFactor: scale })
+  const page = await context.newPage()
+  const logs = []
+  page.on('console', (m) => {
+    if (['error', 'warning'].includes(m.type())) logs.push(`[${m.type()}] ${m.text().slice(0, 300)}`)
+  })
+  page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message.slice(0, 300)}${process.env.STACKS ? '\n' + e.stack : ''}`))
+  page.on('dialog', (d) => {
+    logs.push(`[native-dialog] ${d.type()} ${d.message().slice(0, 100)}`)
+    void d.dismiss()
+  })
+  // Popups are navigations away from the app (window.open in browser mode).
+  context.on('page', (p) => logs.push(`[popup] ${p.url()}`))
+  await context.route('**/__fs/**', async (route) => {
+    const url = new URL(route.request().url())
+    const path = decodeURIComponent(url.pathname.slice('/__fs'.length))
+    if (url.searchParams.has('info')) {
+      const exists = existsSync(path)
+      const st = exists ? statSync(path) : null
+      return route.fulfill({ json: { exists, isDir: !!st?.isDirectory(), size: st?.size ?? 0, modifiedMs: st ? Math.round(st.mtimeMs) : 0 } })
+    }
+    if (!existsSync(path)) return route.fulfill({ status: 404, body: 'missing' })
+    return route.fulfill({ body: readFileSync(path), contentType: 'application/octet-stream' })
+  })
+  await page.addInitScript(() => localStorage.getItem('workspace.setupDone') || localStorage.setItem('workspace.setupDone', '1'))
+  if (tauri) await page.addInitScript(fakeTauri)
+  if (init) await page.addInitScript(init)
+  return { browser, context, page, logs }
+}
+
+/** Runs in the page before the app: a stand-in for window.__TAURI_INTERNALS__. */
+function fakeTauri() {
+  let cb = 0
+  const fake = {
+    files: new Map(),
+    writes: [],
+    opened: [],
+    calls: [],
+    listeners: {},
+    failWrite: null,
+    savePath: null,
+    destroyed: false,
+    infoOverride: new Map(),
+    emit(event, payload) {
+      for (const id of fake.listeners[event] ?? []) window[`_${id}`]?.({ event, id: 0, payload })
+    },
+  }
+  window.__fake = fake
+  const fsUrl = (path, q = '') => '/__fs' + encodeURI(path).replace(/\?/g, '%3F').replace(/#/g, '%23') + q
+  window.__TAURI_INTERNALS__ = {
+    metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
+    plugins: {},
+    transformCallback: (fn) => {
+      const id = ++cb
+      window[`_${id}`] = fn
+      return id
+    },
+    unregisterCallback: () => {},
+    convertFileSrc: (p) => p,
+    invoke: async (cmd, args, opts) => {
+      fake.calls.push(cmd)
+      switch (cmd) {
+        case 'read_file': {
+          if (fake.files.has(args.path)) return fake.files.get(args.path).buffer.slice(0)
+          const res = await fetch(fsUrl(args.path))
+          if (!res.ok) throw `No such file or directory (os error 2): ${args.path}`
+          return await res.arrayBuffer()
+        }
+        case 'path_info': {
+          if (fake.infoOverride.has(args.path)) return fake.infoOverride.get(args.path)
+          if (fake.files.has(args.path)) return { exists: true, isDir: false, size: fake.files.get(args.path).length, modifiedMs: fake.files.get(args.path).mtime }
+          return (await fetch(fsUrl(args.path, '?info'))).json()
+        }
+        case 'write_file': {
+          const path = decodeURIComponent(opts.headers['x-path'])
+          if (fake.failWrite) throw fake.failWrite
+          const bytes = new Uint8Array(args)
+          bytes.mtime = Date.now()
+          fake.files.set(path, bytes)
+          fake.writes.push({ path, size: bytes.length, at: Date.now() })
+          return null
+        }
+        case 'plugin:opener|open_url':
+          fake.opened.push(args.url)
+          // The real opener's default scope: http(s), mailto and tel only.
+          if (!/^(https?:|mailto:|tel:)/i.test(args.url)) throw `Not allowed to open url ${args.url}`
+          return null
+        case 'plugin:dialog|save':
+          return fake.savePath
+        case 'plugin:dialog|open':
+          return null
+        case 'plugin:event|listen':
+          ;(fake.listeners[args.event] ??= []).push(args.handler)
+          return args.handler
+        case 'plugin:event|unlisten':
+          return null
+        case 'plugin:window|destroy':
+          fake.destroyed = true
+          return null
+        case 'take_pending_opens':
+        case 'installed_plugins':
+        case 'installed_fonts':
+        case 'history_list':
+          return []
+        case 'history_usage':
+          return 0
+        case 'cloud_folders':
+          return []
+        case 'latest_release':
+        case 'plugin:updater|check':
+          throw 'offline'
+        default:
+          return null
+      }
+    },
+  }
+}
+
+export async function open(page, paths) {
+  await page.evaluate((p) => window.__workspace.useWorkspace.getState().openPaths(p), Array.isArray(paths) ? paths : [paths])
+}
+
+export const tabs = (page) =>
+  page.evaluate(() => window.__workspace.useWorkspace.getState().tabs.map((t) => ({ id: t.id, kind: t.kind, title: t.title, path: t.path, dirty: t.dirty })))
+
+export const active = (page) => page.evaluate(() => window.__workspace.useWorkspace.getState().activeId)
+
+/** Visible text of the app's own dialog, or null. */
+export const dialogText = (page) => page.evaluate(() => document.querySelector('.dialog, [role=dialog], [role=alertdialog]')?.textContent ?? null)
+
+export async function start(page) {
+  await page.goto(BASE)
+  await page.waitForFunction(() => window.__workspace, null, { timeout: 15000 })
+  // Close the welcome tour if it shows.
+  await page.waitForTimeout(500)
+}
+
+let failures = 0
+export function check(name, ok, detail = '') {
+  if (!ok) failures++
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  — ' + detail : ''}`)
+}
+export const done = async (browser, logs) => {
+  if (logs?.length) console.log(logs.slice(0, 30).join('\n'))
+  await browser.close()
+  process.exitCode = failures ? 1 : 0
+}
