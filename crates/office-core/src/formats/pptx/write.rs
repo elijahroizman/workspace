@@ -448,10 +448,18 @@ fn write_table(table: &Table, ctx: &mut PartCtx) -> Element {
             pr.push(Element::new(ns::A, "tableStyleId").with_text(s));
         }
     }
-    let mut grid = Element::new(ns::A, "tblGrid");
-    for w in &table.columns {
-        grid.push(Element::new(ns::A, "gridCol").with_attr("", "w", w.0.to_string()));
-    }
+    let grid = crate::formats::common::grid(
+        tbl.child(ns::A, "tblGrid"),
+        &table.columns,
+        || Element::new(ns::A, "tblGrid"),
+        |col, w| {
+            let mut col = col.unwrap_or_else(|| Element::new(ns::A, "gridCol"));
+            if col.attr("w").and_then(|v| v.parse().ok()) != Some(w.0) {
+                col.set_attr("", "w", w.0.to_string());
+            }
+            col
+        },
+    );
     tbl.place(grid, &[&["tblPr"], &["tblGrid"], &["tr"]]);
     for (r, row) in table.rows.iter().enumerate() {
         let mut tr = origin_as(&row.origin, ns::A, "tr").unwrap_or_else(|| Element::new(ns::A, "tr"));

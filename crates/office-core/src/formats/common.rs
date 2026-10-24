@@ -182,3 +182,29 @@ pub fn put_if_changed(pkg: &mut Package, part: &str, mut doc: crate::xml::XmlDoc
     pkg.put_xml(part, &doc, media);
     Ok(())
 }
+
+/// A table's grid for its column widths, made from the grid it was read with: each column
+/// reuses the one at its place (`col` keeps what it carries and sets the width), and the grid's
+/// other children (Word's tracked grid change) stay after them.
+pub fn grid(
+    had: Option<&Element>,
+    widths: &[crate::units::Emu],
+    new: impl Fn() -> Element,
+    col: impl Fn(Option<Element>, crate::units::Emu) -> Element,
+) -> Element {
+    let mut grid = had.cloned().unwrap_or_else(new);
+    let ns = grid.ns.clone();
+    let mut old = Vec::new();
+    grid.children.retain(|n| match n {
+        Node::Element(e) if e.local == "gridCol" && e.ns == ns => {
+            old.push(e.clone());
+            false
+        }
+        Node::Text(t) => !t.trim().is_empty(),
+        _ => true,
+    });
+    let mut old = old.into_iter();
+    let cols = widths.iter().map(|w| Node::Element(col(old.next(), *w)));
+    grid.children.splice(0..0, cols);
+    grid
+}

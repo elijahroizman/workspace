@@ -119,3 +119,14 @@ save("S2-backslash-part-names.xlsx", xlsx([("Sheet1", '<row r="1"><c r="A1"><v>4
 # A sheet name with a line break Excel wrote as `_x000a_` (POI's xssf-enum.xltx.xlsx): 28
 # characters, counted as 34, so saving failed with "invalid or duplicate worksheet name".
 save("S1-sheet-name-escape-cant-save.xlsx", xlsx([("Контрольний список  &quot;Школа&quot;_x000a_", '<row r="1"><c r="A1"><v>1</v></c></row>')]))
+
+# A tracked change to a table's grid (w:tblGridChange) and a PowerPoint table's column ids
+# (a16:colId): the grid was rebuilt from the column widths, dropping both on an unchanged save.
+TBL = (
+    '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>'
+    '<w:tblGrid><w:gridCol w:w="2000"/><w:gridCol w:w="3000"/>'
+    '<w:tblGridChange w:id="7"><w:tblGrid><w:gridCol w:w="2500"/><w:gridCol w:w="2500"/></w:tblGrid></w:tblGridChange></w:tblGrid>'
+    '<w:tr><w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc>'
+    '<w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>b</w:t></w:r></w:p></w:tc></w:tr></w:tbl>'
+)
+save("S2-docx-table-grid-change-lost.docx", docx(TBL + '<w:p/>'))

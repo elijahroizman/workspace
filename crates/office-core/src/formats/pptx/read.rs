@@ -175,7 +175,8 @@ fn read_table(tbl: &Element, rels: &PartRels) -> Table {
             origin: shell(tr, |c| c.is(ns::A, "tc")),
         })
         .collect();
-    Table { columns, rows, style, origin: shell(tbl, |c| c.is(ns::A, "tblGrid") || c.is(ns::A, "tr")) }
+    // The origin keeps the grid, for what its columns carry besides their widths (ids in an extLst).
+    Table { columns, rows, style, origin: shell(tbl, |c| c.is(ns::A, "tr")) }
 }
 
 /// More rows or columns than any table PowerPoint makes.

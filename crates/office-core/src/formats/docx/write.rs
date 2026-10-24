@@ -394,9 +394,18 @@ fn write_table(table: &Table, ctx: &mut Ctx) -> Result<Element> {
             pr.children.insert(0, Node::Element(Element::new(ns::W, "tblStyle").with_attr(ns::W, "val", s)));
         }
     }
-    let grid = table.columns.iter().fold(Element::new(ns::W, "tblGrid"), |g, w| {
-        g.with_child(Element::new(ns::W, "gridCol").with_attr(ns::W, "w", w.twips().to_string()))
-    });
+    let grid = crate::formats::common::grid(
+        tbl.child(ns::W, "tblGrid"),
+        &table.columns,
+        || Element::new(ns::W, "tblGrid"),
+        |col, w| {
+            let mut col = col.unwrap_or_else(|| Element::new(ns::W, "gridCol"));
+            if col.attr_ns(ns::W, "w").and_then(|v| Emu::parse(v, Emu::PER_TWIP)) != Some(w) {
+                col.set_attr(ns::W, "w", w.twips().to_string());
+            }
+            col
+        },
+    );
     tbl.place(grid, &[&["tblPr"], &["tblGrid"], &["tr"]]);
 
     for (r, row) in table.rows.iter().enumerate() {
