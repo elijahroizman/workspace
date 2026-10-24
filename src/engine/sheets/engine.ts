@@ -156,7 +156,7 @@ export class SheetsEngine {
 
   static async open(bytes: Uint8Array | null, name: string): Promise<SheetsEngine> {
     const engine = await loadEngine()
-    if (!/\.csv$/i.test(name) || bytes?.length) expectKind(bytes, 'sheets')
+    if (!/\.(csv|tsv)$/i.test(name) || bytes?.length) expectKind(bytes, 'sheets')
     await preloadFonts(BASE_FONTS)
     const doc = new engine.SheetsDoc(bytes ?? new Uint8Array(), name, host)
     doc.setNow(serialNow())

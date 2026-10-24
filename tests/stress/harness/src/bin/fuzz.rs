@@ -189,6 +189,10 @@ fn main() {
         WHERE.with(|w| *w.borrow_mut() = format!("{loc} {msg}"));
     }));
     let seen = Arc::new(Mutex::new(HashSet::<String>::new()));
+    if seeds.is_empty() || threads == 0 {
+        eprintln!("fuzz needs at least one usable seed and one worker thread");
+        std::process::exit(1);
+    }
     let starts: Arc<Vec<AtomicU64>> = Arc::new((0..threads).map(|_| AtomicU64::new(0)).collect());
     let count = Arc::new(AtomicU64::new(0));
     let begin = Instant::now();
@@ -250,7 +254,10 @@ fn main() {
         }));
     }
     for h in handles {
-        let _ = h.join();
+        if h.join().is_err() {
+            eprintln!("fuzz worker failed");
+            std::process::exit(1);
+        }
     }
     eprintln!("{} runs in {}s", count.load(Ordering::Relaxed), begin.elapsed().as_secs());
 }

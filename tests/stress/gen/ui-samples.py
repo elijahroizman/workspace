@@ -242,6 +242,9 @@ def text_encodings():
         ('S2-text-double-bom.txt', b'\xef\xbb\xbf\xef\xbb\xbfText\n'),
         ('S2-markdown-malformed-utf8-bom.md', b'\xef\xbb\xbfA\xffB\r\n'),
         ('S2-text-truncated-utf16.txt', b'\xff\xfeA\x00\xff'),
+        ('S2-text-unpaired-utf16le.txt', b'\xff\xfeA\x00\x00\xd8B\x00'),
+        ('S2-text-unpaired-utf16be.txt', b'\xfe\xff\x00A\xdc\x00\x00B'),
+        ('S3-empty.tsv', b''),
     ]:
         with open(out(name), 'wb') as f:
             f.write(data)

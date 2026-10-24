@@ -1,18 +1,9 @@
 //! Quitting from outside the app's own Quit command (the Dock's Quit, logging out, shutting down)
 //! must ask about unsaved changes too. AppKit asks the app delegate whether it may terminate, but
 //! tao's delegate doesn't answer, so the app quit at once and unsaved work was lost. Writan adds
-//! the answer: with nothing unsaved it quits as before; otherwise it cancels and runs the app's
-//! own Quit command, which asks (as TextEdit does, this stops a logout until you answer).
-
-use std::sync::atomic::{AtomicBool, Ordering};
-
-/// Whether any tab has unsaved changes, as the page last said.
-static UNSAVED: AtomicBool = AtomicBool::new(false);
-
-#[tauri::command]
-pub fn set_unsaved(unsaved: bool) {
-    UNSAVED.store(unsaved, Ordering::Relaxed);
-}
+//! the answer: it cancels native termination and runs the app's own Quit command, which checks
+//! the current editor state and asks (as TextEdit does, this stops a logout until you answer).
+//! Always go through the page: a cached dirty flag sent over IPC can lag behind the last edit.
 
 #[cfg(target_os = "macos")]
 pub fn install(app: &tauri::AppHandle) {
@@ -26,9 +17,6 @@ pub fn install(app: &tauri::AppHandle) {
 
     // NSApplicationTerminateReply: NSTerminateCancel is 0, NSTerminateNow 1.
     extern "C-unwind" fn should_terminate(_this: &AnyObject, _sel: Sel, _sender: *mut AnyObject) -> usize {
-        if !UNSAVED.load(Ordering::Relaxed) {
-            return 1;
-        }
         if let Some(app) = APP.get() {
             let _ = app.emit("menu", "quit");
         }

@@ -67,6 +67,7 @@ export class TextFile {
   readonly text: string
   private readonly raw: string
   private readonly original: Uint8Array | null
+  private readonly malformed: boolean
   private readonly encoding: TextEncoding
   private readonly crlf: number[] = []
   private readonly lineEnding: string
@@ -77,6 +78,15 @@ export class TextFile {
     const decoded = bytes ? decodeText(bytes) : { text: fallback, encoding: 'utf-8' as const }
     this.raw = decoded.text
     this.encoding = decoded.encoding
+    this.malformed = false
+    if (bytes && this.encoding !== 'windows-1252') {
+      const skip = this.encoding === 'utf-8-bom' ? 3 : this.encoding.startsWith('utf-16') ? 2 : 0
+      try {
+        new TextDecoder(this.encoding === 'utf-8-bom' ? 'utf-8' : this.encoding, { fatal: true }).decode(bytes.subarray(skip))
+      } catch {
+        this.malformed = true
+      }
+    }
     let extra = 0
     this.text = this.raw.replace(/\r\n?|\n/g, (ending, offset: number) => {
       if (ending === '\r\n') {
@@ -120,6 +130,7 @@ export class TextFile {
     const text = parts.join('')
     // Decoders replace malformed sequences. A clean revision must still keep the exact input.
     if (text === this.raw && this.original) return this.original
+    if (this.malformed) throw new Error(`This file contains invalid ${this.encoding.startsWith('utf-16') ? 'UTF-16' : 'UTF-8'} bytes. Saving edits would replace them. Undo your edits or repair the file’s encoding before saving.`)
     return encodeText(text, this.encoding).bytes
   }
 }

@@ -513,11 +513,6 @@ export default function App() {
         return true
       }),
     )
-    let unsaved = false
-    const stopUnsaved = useWorkspace.subscribe((s) => {
-      const now = s.tabs.some((t) => t.dirty)
-      if (now !== unsaved) void platform.setUnsaved((unsaved = now))
-    })
     // Shortcuts changed in Settings: the menu is built with the defaults.
     void syncMenu()
     const stopUpdateChecks = startUpdateChecks()
@@ -529,7 +524,6 @@ export default function App() {
     const stopPruneOnChange = useSettings.subscribe((s, prev) => s.recentDays !== prev.recentDays && pruneRecents())
     return () => {
       window.clearInterval(pruneTimer)
-      stopUnsaved()
       stopPruneOnChange()
       stopUpdateChecks()
       stopAutosave()

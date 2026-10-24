@@ -257,7 +257,14 @@ fn atomic_write_with(path: &Path, write: impl FnOnce(&mut fs::File) -> std::io::
     let dir = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
     // A separate, exclusively created file for each save. A predictable name can be a symlink
     // to another document, or be shared by two saves in progress.
-    let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
+    let mut builder = tempfile::Builder::new();
+    // Match ordinary new-file creation: the kernel applies the process umask.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        builder.permissions(fs::Permissions::from_mode(0o666));
+    }
+    let mut tmp = builder.tempfile_in(dir)?;
     write(tmp.as_file_mut())?;
     tmp.as_file().sync_all()?;
     if let Ok(meta) = fs::metadata(path) {
@@ -342,6 +349,24 @@ mod tests {
         assert_eq!(fs::read(&file).unwrap(), b"two");
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 1, "temp file left behind");
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn new_saves_follow_umask_and_existing_saves_keep_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let ordinary = dir.path().join("ordinary.txt");
+        fs::write(&ordinary, b"ordinary").unwrap();
+        let saved = dir.path().join("saved.txt");
+        atomic_write(&saved, b"new").unwrap();
+        assert_eq!(
+            fs::metadata(&saved).unwrap().permissions().mode() & 0o777,
+            fs::metadata(&ordinary).unwrap().permissions().mode() & 0o777
+        );
+        fs::set_permissions(&saved, fs::Permissions::from_mode(0o640)).unwrap();
+        atomic_write(&saved, b"replacement").unwrap();
+        assert_eq!(fs::metadata(&saved).unwrap().permissions().mode() & 0o777, 0o640);
     }
 
     #[test]

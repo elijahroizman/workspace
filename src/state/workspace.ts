@@ -482,6 +482,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
           }
           const savePath = path
           return await withSaveLock(savePath, async () => {
+            editor.prepareSave?.()
+            const editsBefore = edits.get(tab.id) ?? 0
+            const revisionBefore = editor.getRevision?.()
+            const bytes = await editor.getBytes()
             // Another app, or another tab on this file, changed it since: ask before writing over that.
             if (savePath === tab.path && !(await unchangedOnDisk(tab.id, savePath))) {
               if (opts?.quiet) throw new Error(`“${tab.title}” was changed in another app or tab. Save it yourself to choose which to keep.`)
@@ -492,10 +496,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => {
               })
               if (!ok) return false
             }
-            editor.prepareSave?.()
-            const editsBefore = edits.get(tab.id) ?? 0
-            const revisionBefore = editor.getRevision?.()
-            const bytes = await editor.getBytes()
             await platform.writeFile(savePath, bytes, { history: useSettings.getState().history, label: opts?.label })
             await remember(tab.id, bytes, true)
             const title = stripExtension(platform.basename(savePath))

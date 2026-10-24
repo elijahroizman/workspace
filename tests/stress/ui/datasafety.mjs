@@ -73,12 +73,15 @@ try {
     await ws((w) => w.closeTab())
   }
 
-  for (const file of ['S2-markdown-malformed-utf8-bom.md', 'S2-text-truncated-utf16.txt']) {
+  for (const file of ['S2-markdown-malformed-utf8-bom.md', 'S2-text-truncated-utf16.txt', 'S2-text-unpaired-utf16le.txt', 'S2-text-unpaired-utf16be.txt']) {
     const original = readFileSync(`${S}/${file}`)
     await ready(file)
     check(`${file}: unchanged save succeeds`, await save())
     check(`${file}: unchanged malformed bytes survive`, (await written(`${S}/${file}`)).equals(original))
     await edit('Z')
+    const writesBefore = await page.evaluate(() => window.__fake.writes.length)
+    check(`${file}: edited malformed save is refused`, await expectDialog(save(), /invalid UTF-(8|16) bytes/, 'OK') === false)
+    check(`${file}: refusal preserves disk and dirty state`, (await written(`${S}/${file}`)).equals(original) && (await activeTab()).dirty && await page.evaluate(() => window.__fake.writes.length) === writesBefore)
     await page.keyboard.press('Control+z')
     check(`${file}: undo then save succeeds`, await save())
     check(`${file}: undo restores malformed bytes too`, (await written(`${S}/${file}`)).equals(original))
@@ -175,6 +178,36 @@ try {
   check('external deletion requires confirmation before recreation', (await written(path)).equals(outside))
   await page.evaluate((p) => window.__fake.infoOverride.delete(p), path)
   await expectDialog(save(), /changed on disk/, 'Save Anyway')
+
+  // An external write while a slow export is running must be checked after export finishes.
+  const exportPath = path
+  const duringExport = Buffer.from('outside during export')
+  await page.evaluate(() => {
+    const w = window.__workspace
+    const editor = w.getEditor(w.useWorkspace.getState().activeId)
+    const original = editor.getBytes.bind(editor)
+    editor.getBytes = async () => {
+      window.__fake.exportStarted = true
+      await new Promise((resolve) => { window.__fake.finishExport = resolve })
+      editor.getBytes = original
+      return original()
+    }
+  })
+  const slowSave = save()
+  await page.waitForFunction(() => window.__fake.exportStarted)
+  await external(exportPath, duringExport)
+  await page.evaluate(() => window.__fake.finishExport())
+  await expectDialog(slowSave, /changed on disk/)
+  check('external change during export survives Cancel', (await written(exportPath)).equals(duringExport))
+  await expectDialog(save(), /changed on disk/, 'Save Anyway')
+
+  // Dock Quit follows the same page confirmation even immediately after an edit.
+  await edit(' before Dock Quit')
+  await page.evaluate(() => window.__fake.emit('menu', 'quit'))
+  await dialog.waitFor()
+  check('Dock Quit asks about the current dirty editor', /save/i.test(await dialog.textContent()))
+  await answer('Cancel')
+  check('Cancel prevents native quit', !await page.evaluate(() => window.__fake.calls.includes('quit_app')))
 
   // Undo back to the last saved text while a newer snapshot is still being written.
   // markDirty(false) alone must not let the in-flight save mark that newer edit as saved.

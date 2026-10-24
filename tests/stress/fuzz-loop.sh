@@ -4,6 +4,8 @@
 # as OUT/suspect-*. 8 GB address space.
 seeds=$1; out=$2; threads=$3; total=$4
 F=$(dirname "$0")/harness/target/release/fuzz
+[ -x "$F" ] || { echo "fuzz binary not built: $F" >&2; exit 1; }
+[ -d "$seeds" ] || { echo "seed directory missing: $seeds" >&2; exit 1; }
 mkdir -p "$out"
 end=$(( $(date +%s) + total ))
 while [ "$(date +%s)" -lt "$end" ]; do
@@ -16,4 +18,5 @@ while [ "$(date +%s)" -lt "$end" ]; do
     echo "exit $code at $t" >> "$out/log.txt"
     for c in "$out"/cur-*; do [ -f "$c" ] && cp "$c" "$out/suspect-$t-$(basename "$c" | sed s/^cur-//)"; done
   fi
+  sleep 1
 done

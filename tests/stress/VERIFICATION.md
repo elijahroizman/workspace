@@ -1,18 +1,18 @@
 # Final verification
 
-The fixes are committed on `stress-test`. No release, tag, version bump, push, updater-feed change, or package-repository change was made. The severity-sorted result, including open findings, is [BUGS.md](BUGS.md). Repro files and generators are under this directory.
+The fixes are committed on `stress-test`. The branch is published in PR #34; PR #33 was merged and integrated before the review follow-up. Release work follows the PR merge. The severity-sorted result, including open findings, is [BUGS.md](BUGS.md). Repro files and generators are under this directory.
 
 ## Results
 
 | Check | Result |
 | --- | --- |
-| Native Rust tests on this Linux machine | 38 passed, 0 failed, 3 ignored. Workloads ran sequentially. |
+| Native Rust tests on this Linux machine | 39 passed, 0 failed, 3 ignored (including new-file umask and existing permission preservation). Workloads ran sequentially. |
 | Native Clippy, all targets with warnings denied | Passed. |
 | Combined Office workspace, release and all features, on bbb | 378 passed, 0 failed, 8 ignored. `CORPUS_FILES` supplied for the original CJK fixtures. |
 | Forced WASM compilation | Passed; logs show compilation of all six Office crates, followed by wasm-bindgen. |
 | App/plugin typecheck and production build | Passed. A later text-only fix was rebuilt and its affected regressions repeated. |
 | Office Rust formatting | Passed after formatting one inherited test closure. |
-| Data safety in Chromium and WebKit | 108 assertions per browser, including byte preservation, undo, failed saves, equal-size/equal-time conflicts, concurrent tabs, and queued Save As. |
+| Data safety in Chromium and WebKit | 133 assertions per browser after CodeRabbit fixes, including byte preservation, undo, failed saves, equal-size/equal-time conflicts, concurrent tabs, and queued Save As. |
 | Hidden sheets, malformed files, document links, and hostile fonts | Passed in both browsers. Hostile-font documents must serialize and save, not merely leave the app chrome visible. |
 | Session reload observation | 8 assertions per browser confirm the existing limitation: unsaved edits and untitled tabs are lost. This is an open finding, not recovered data. |
 | Native save-flow browser regression | Both browsers block conflicting autosave, preserve Cancel, allow explicit overwrite, and resume autosave. |
@@ -22,7 +22,7 @@ The fixes are committed on `stress-test`. No release, tag, version bump, push, u
 | CJK lists on the combined browser build | Both browsers paint all 20 expected markers for each original fixture; saved table/control order is preserved. |
 | Controlled Linux GIO launch | Two sample paths, including spaces and Unicode, arrive together. This does not launch the packaged app. |
 
-[Machine-readable final evidence](corpus/evidence/final-2026-10-24.json) records the combined core counts, browser assertions, exact workbook preservation, PDF digests, reference page counts, and actual CJK markers. The data-safety count includes eight new checks for malformed BOM-marked UTF-8 and truncated UTF-16. Both failed byte preservation before the final text fix; unchanged saves and undo now return the original bytes. Saving actual edits to malformed input can still replace invalid sequences.
+[Machine-readable final evidence](corpus/evidence/final-2026-10-24.json) records the combined core counts, browser assertions, exact workbook preservation, PDF digests, reference page counts, and actual CJK markers. The original 108-assertion pass included eight checks for malformed BOM-marked UTF-8 and truncated UTF-16. Both failed byte preservation before the final text fix; unchanged saves and undo now return the original bytes. Edited saves of malformed BOM-marked UTF-8 or UTF-16 are now refused with an explanation; disk bytes and the dirty buffer are preserved. The follow-up includes incomplete code units and unpaired surrogates in both byte orders.
 
 The original corpus pass covered 102 files in both browsers, 81 CLI round trips, and 387 reference opens. The final combined corpus rerun intentionally targets the four files affected by the workbook/table/numbering fixes, in both browsers. Those are eight follow-up open/save flows, not a second complete 102-file pass. The separate PDF script checks the 1,298-page signed document.
 
@@ -64,3 +64,13 @@ Screenshots, DOM assertions, save/download checks, and console checks establish 
 Native tests still ignore the actual full-filesystem mount, TeX execution, and all-font download. Office tests still ignore eight external-reference/performance cases. Native Windows/macOS app behavior, actual cloud synchronization, filesystem aliases, another process writing in the final check/write window, installer upgrades, physical multi-monitor/high-DPI hardware, IME/clipboard interoperability, and sustained memory soaks remain unverified. Aggregate/media OOM, recalculation after edits to unsupported formulas, crash recovery, and the documented rendering gaps remain material limitations.
 
 The task-owned preview servers on ports 1420, 1443, and 4173 were stopped after verification. Source copies, samples, logs, saved outputs, and reference artifacts remain on bbb.
+
+## CodeRabbit follow-up on the renamed combined build
+
+PR #33's Debian repack now forces root ownership for every archive entry and verifies it. The ordinary-user package fixture passed on bbb. The native helper contract comments were added in the same review response.
+
+PR #34's application fixes preserve umask permissions for new Unix files, check disk contents after export, refuse destructive malformed-text saves, allow empty TSV, and route every native macOS termination request to the page's current-state Quit handler. There is no asynchronous native dirty cache. The browser event path is tested; the AppKit callback itself still requires a Mac and is not claimed as exercised on Linux.
+
+After integration, native tests (39 passed, 3 ignored), native Clippy, app/plugin typecheck and production build passed. Chromium and WebKit each passed 133 data-safety assertions. The focused empty TSV run passed 8 assertions per browser. The fuzz harness now rejects empty seeds/zero workers and propagates worker failure; the wrapper checks its executable and delays restarts. Its rebuilt release binary refused the empty-seed fixture with status 1. These checks are not a new sustained fuzz run.
+
+Follow-up logs on bbb are `/tmp/writan-pr34-{build,chromium,webkit,tsv,fuzz}.log`; native test/Clippy output on prodesk is `/tmp/writan-pr34-native-local.log`. An initial native build attempt on bbb stopped for missing system D-Bus development files; native verification used the configured prodesk environment sequentially.

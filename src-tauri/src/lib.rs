@@ -44,7 +44,6 @@ fn take_pending_opens(state: tauri::State<'_, PendingOpens>) -> Vec<String> {
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
     // The page has already asked about unsaved changes.
-    quit::set_unsaved(false);
     app.exit(0);
 }
 
@@ -175,7 +174,6 @@ pub fn run() {
             cli::cli_install,
             cli::cli_uninstall,
             quit_app,
-            quit::set_unsaved,
             update::latest_release,
             update::relaunch_in_place,
             update::linux_package,
