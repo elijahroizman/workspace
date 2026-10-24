@@ -190,6 +190,23 @@ try {
   const concurrentBytes = (await written(path)).toString()
   check('concurrent saves warn before replacing the first write', concurrentBytes.includes('concurrent A') && !concurrentBytes.includes('concurrent B'))
   await page.evaluate(() => (window.__fake.writeDelay = 0))
+  // Save As changes the destination before another queued save from the same tab starts.
+  await ws((w) => w.newDocument('txt'))
+  await page.locator('.view[data-active=true] .cm-content').waitFor()
+  await edit('queued Save As')
+  const queuedPath = '/tmp/writan-stress/queued-save-as.txt'
+  await page.evaluate(() => (window.__fake.writeDelay = 200))
+  const queuedBefore = await page.evaluate(() => window.__fake.writes.length)
+  const callsBefore = await page.evaluate(() => window.__fake.calls.filter((c) => c === 'write_file').length)
+  const saveAs = ws((w, path) => w.save(undefined, { to: path, quiet: true }), queuedPath)
+  await page.waitForFunction((before) => window.__fake.calls.filter((c) => c === 'write_file').length > before, callsBefore)
+  await edit(' plus later edit')
+  const queued = save()
+  check('queued Save As and subsequent Save both succeed', (await saveAs) && (await queued))
+  const destinations = await page.evaluate((before) => window.__fake.writes.slice(before).map((w) => w.path), queuedBefore)
+  check('queued Save uses the new destination', destinations.length === 2 && destinations.every((p) => p === queuedPath))
+  check('queued Save writes the later edit and leaves a clean tab', (await written(queuedPath)).toString().includes('plus later edit') && !(await activeTab()).dirty)
+  await page.evaluate(() => (window.__fake.writeDelay = 0))
   await page.screenshot({ path: `/tmp/writan-stress/datasafety-${process.env.ENGINE ?? 'chromium'}.png` })
 } finally {
   await done(browser, logs)

@@ -8,7 +8,15 @@ const { browser, page, logs } = await launch()
 await start(page)
 for (const f of ['S2-docx-css-font-names.docx', 'S2-pptx-css-font-names.pptx', 'S2-xlsx-css-font-names.xlsx']) {
   await open(page, `${S}/${f}`)
-  await page.waitForTimeout(4000)
+  await page.waitForFunction(async () => {
+    const w = window.__workspace
+    const s = w.useWorkspace.getState()
+    try { return (await w.getEditor(s.activeId)?.getBytes())?.length > 0 } catch { return false }
+  }, null, { timeout: 20000 })
+  check(`${f}: document still saves`, await page.evaluate(async () => {
+    const s = window.__workspace.useWorkspace.getState()
+    return s.save(s.activeId, { quiet: true })
+  }))
   await page.screenshot({ path: `/tmp/writan-stress/css-${f}.png` })
   const look = await page.evaluate(() => ({
     app: getComputedStyle(document.querySelector('.app') ?? document.body).display,

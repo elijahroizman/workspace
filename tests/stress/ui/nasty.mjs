@@ -45,6 +45,7 @@ for (const f of files) {
     if (f.includes('password.')) check(`${f}: password is explained`, /password/i.test(state), state)
     if (/docx-renamed\.(pptx|xlsx)$/.test(f)) check(`${f}: correct file type is explained`, /Word document.*not.*(PowerPoint|Excel)/i.test(state), state)
   }
+  if (f.includes('pdf-no-pages')) check(`${f}: zero pages are explained`, /no pages/i.test(state), state)
   check(`${f}: no unhandled errors`, errs.length === 0, errs.join(' | ').slice(0, 300))
   if (state.startsWith('dialog')) await page.locator('.dialog button').last().click()
   // Close the tab again; the app must respond.
