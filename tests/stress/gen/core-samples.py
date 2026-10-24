@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Writes the small repro files in tests/stress/samples/ (standard library only):
 
-    python3 tests/stress/gen/samples.py tests/stress/samples
+    python3 tests/stress/gen/core-samples.py tests/stress/samples
 
 Each sample is a minimal package written by hand, so it shows exactly the markup that matters.
 """
@@ -130,3 +130,24 @@ TBL = (
     '<w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>b</w:t></w:r></w:p></w:tc></w:tr></w:tbl>'
 )
 save("S2-docx-table-grid-change-lost.docx", docx(TBL + '<w:p/>'))
+
+# Clock initialization used to recalculate even an untouched workbook, destroying cached
+# results when Excel's formula wasn't supported here (CORPUS-001, the PBO budget model).
+save("S1-unchanged-formula-caches.xlsx", xlsx([("Sheet1", '<row r="1"><c r="A1"><f>_xlfn.ANCHORARRAY(B1)</f><v>42</v></c><c r="B1"><f>A1*2</f><v>84</v></c><c r="C1"><f>NOW()</f><v>40000</v></c></row>')]))
+
+# Recalculation cloned the tree before evaluation. A flat sum parsed, but cloning its
+# left-nested tree overflowed a small stack. Reproduce with drive --edit --stack 1024.
+long_sum = "+".join(["1"] * 100_000)
+save("S1-long-formula-stack-overflow.xlsx", xlsx([("Sheet1", f'<row r="1"><c r="A1"><f>{long_sum}</f></c></row>')]))
+
+# The XML parser accepted 500 nested groups, then recursive clone inside the slide reader
+# overflowed the app's smaller stack. Such markup now fails before modeling starts.
+groups = '<p:grpSp><p:nvGrpSpPr><p:cNvPr id="1" name="g"/></p:nvGrpSpPr><p:grpSpPr/>' * 500
+slide = f'<p:sld xmlns:p="{P}" xmlns:a="{A}"><p:cSld><p:spTree>{groups}<p:sp/> {"</p:grpSp>" * 500}</p:spTree></p:cSld></p:sld>'
+save("S1-deep-groups-stack-overflow.pptx", zipped([
+    ("[Content_Types].xml", types([("/ppt/presentation.xml", "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"), ("/ppt/slides/slide1.xml", "application/vnd.openxmlformats-officedocument.presentationml.slide+xml")])),
+    ("_rels/.rels", rels([("rId1", OD, "ppt/presentation.xml")])),
+    ("ppt/presentation.xml", f'<p:presentation xmlns:p="{P}" xmlns:r="{R}"><p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst></p:presentation>'),
+    ("ppt/_rels/presentation.xml.rels", rels([("rId1", R + "/slide", "slides/slide1.xml")])),
+    ("ppt/slides/slide1.xml", slide),
+]))

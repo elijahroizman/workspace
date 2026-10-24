@@ -109,6 +109,7 @@ pub fn run(bytes: &[u8], name: &str, edit: bool, compare: bool) -> Result<Report
         _ => {
             r.kind = "sheets".into();
             let mut v = SheetsView::open(bytes, name).map_err(|e| e.to_string())?;
+            v.set_now(46000.5);
             r.open_ms = t.elapsed().as_millis();
             let t = Instant::now();
             r.pages = v.sheets().len();

@@ -1,11 +1,12 @@
 #!/bin/sh
 # run-drive.sh LIST OUT [drive flags]: runs the harness's drive over every file named in LIST,
-# one process per file (8 GB address space, 120 s), 18 at a time, into OUT.
+# one process per file (8,000,000 KiB address space, 120 s), two at a time, into OUT.
+# Override concurrency with JOBS; keep it small when other remote workloads are running.
 # Each file's result is one line; aborts and timeouts say so.
 list=$1; out=$2; shift 2
 D=$(dirname "$0")/harness/target/release/drive
 export D FLAGS="$*"
-tr '\n' '\0' < "$list" | xargs -0 -P 18 -n 1 sh -c '
+tr '\n' '\0' < "$list" | xargs -0 -P "${JOBS:-2}" -n 1 sh -c '
   r=$( (ulimit -v 8000000; timeout 120 /usr/bin/time -f "MEM %M" $D $FLAGS "$0") 2>&1 )
   code=$?
   line=$(printf "%s\n" "$r" | grep -v "^MEM" | grep -P "^\Q$0\E\t" || true)
